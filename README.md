@@ -82,7 +82,16 @@ plugins:
 
 同一插件有多份配置时，每份键名都必须使用 `插件名:随机哈希`，哈希为 8–32 位小写十六进制。哈希在创建配置时生成并保存，重启不重新生成；复制实例时生成新哈希。加载器导出 `createInstanceId(pluginId)`，也可运行 `node -e "console.log(require('node:crypto').randomBytes(4).toString('hex'))"` 生成哈希。单实例可以省略哈希。启用和禁用条目不能重复使用同一个实例标识。哈希不替代 `backendId` 等业务标识，也不会让原本只支持单实例的插件获得多实例能力。
 
-内置短名 `agent`、`agent-demo`、`adapter-cli` 映射到对应的 `@antarestra/*` 包。其他插件使用完整 npm 包名，通过 `pnpm --filter @antarestra/server add 包名` 安装后加载；以 `@` 开头的 YAML 键必须加引号，如 `'@antarestra/agent-demo:9ce0b8f2'`。模块需导出默认函数、类、插件对象或命名的 `apply` 函数；内置 `agent` 使用其 `AgentRegistry` 类。
+插件包名采用自动解析，无需在 server 维护别名表。配置中的 `example` 按以下顺序查找，使用第一个存在的包：
+
+1. `@antarestra/example`
+2. `@antarestra/plugin-example`
+3. `antarestra-plugin-example`
+4. `example`
+
+任意不带 scope 的名字均遵循此顺序。带 scope 的完整包名（如 `@other/example`）直接精确匹配；以 `@` 开头的 YAML 键必须加引号，如 `'@antarestra/agent-demo:9ce0b8f2'`。通过 `pnpm --filter @antarestra/server add 包名` 安装插件后即可由配置加载。候选包不存在时才尝试下一级；包已找到但入口损坏、内部依赖缺失或执行失败时直接报错，不静默回退。
+
+模块需导出默认函数、类、插件对象或命名的 `apply` 函数。所有插件遵循同一入口协议；`agent` 默认导出 `AgentRegistry`，不需要加载器特殊处理。
 
 插件按声明顺序加载并等待启动。建议先声明定义，再声明实现，最后声明消费入口；CLI 这类一次性消费者只能看到其启动时已注册的后端。加载结束时检查所有插件是否就绪，缺少启用的服务依赖会报错。启动失败时回收本次创建的插件，退出时等待资源清理。有监听器或定时器的插件会持续运行，默认 CLI 演示完成后自然退出。
 
@@ -113,7 +122,7 @@ export default class ExampleService extends Service {
 
 ### 极小启动器，三层插件
 
-启动器负责建立上下文、选择主配置路径、提供模块解析及处理退出。独立的 `config-loader` 插件读取 YAML 并装配启用的插件，配置管理界面尚未实现。
+启动器负责建立上下文、选择主配置路径、提供模块解析范围及处理退出。核心直接依赖的 `config-loader` 放在 `packages/config-loader`，读取 YAML、自动解析包名并装配启用的插件。`plugins/` 中仅放由主配置发现和加载的外部插件；将包列为 server 的依赖仅用于安装与模块解析，不会自动激活它。配置管理界面尚未实现。
 
 | 层次     | 职责                                 | 示例                                      |
 | -------- | ------------------------------------ | ----------------------------------------- |

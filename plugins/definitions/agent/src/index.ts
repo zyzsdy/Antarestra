@@ -27,3 +27,5 @@ export class AgentRegistry extends Service {
     super(ctx, 'agents')
   }
 }
+
+export default AgentRegistry

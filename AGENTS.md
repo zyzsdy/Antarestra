@@ -16,20 +16,19 @@
 Antarestra/
 ├─ apps/
 │  ├─ server/                      # 启动入口与主配置路径选择
-│  │  └─ src/plugins.ts            # 插件短名映射与动态模块解析
+│  │  └─ src/plugins.ts            # 提供 server 的模块解析范围
 │  └─ web/                         # Vue + Vite 页面壳，尚无后端连接
 ├─ packages/
 │  ├─ contracts/                   # 最小跨边界 DTO，不引用 pi 或 Vue
+│  ├─ config-loader/               # 核心配置加载与自动包名解析
 │  └─ plugin-sdk/                  # Cordis 统一导出与注册表辅助类
 ├─ plugins/
 │  ├─ definitions/
 │  │  └─ agent/                    # Agent 接口与 ctx.agents 运行时服务
 │  ├─ implementations/
 │  │  └─ agent-demo/               # 无模型调用的回显演示，支持多实例
-│  ├─ adapters/
-│  │  └─ cli/                      # 一次性演示消费者，仅依赖定义层
-│  └─ features/
-│     └─ config-loader/            # YAML 主配置校验与插件生命周期装配
+│  └─ adapters/
+│     └─ cli/                      # 一次性演示消费者，仅依赖定义层
 ├─ tests/integration/             # Cordis 插件与资源生命周期测试
 ├─ .github/workflows/             # Windows / Linux 检查流程
 ├─ pnpm-workspace.yaml            # 工作区范围与明确允许的构建脚本
@@ -40,7 +39,7 @@ Antarestra/
 └─ vitest.config.ts               # 测试入口，使用源码 development 导出
 ```
 
-`plugins/features/*` 当前包含配置加载器，后续按需要增加业务功能包。不要为了填目录而批量创建空包。
+`plugins/` 仅放通过主配置发现和加载的外部插件。核心直接依赖的基础设施（如 `config-loader`）放在 `packages/`。工作区预留 `plugins/features/*`，不要为了填目录而批量创建空包。
 
 后续按实际任务增加：
 

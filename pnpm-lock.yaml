@@ -16,7 +16,7 @@ importers:
         version: link:plugins/implementations/agent-demo
       '@antarestra/config-loader':
         specifier: workspace:*
-        version: link:plugins/features/config-loader
+        version: link:packages/config-loader
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:packages/plugin-sdk
@@ -49,7 +49,7 @@ importers:
         version: link:../../plugins/implementations/agent-demo
       '@antarestra/config-loader':
         specifier: workspace:*
-        version: link:../../plugins/features/config-loader
+        version: link:../../packages/config-loader
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -72,6 +72,15 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  packages/config-loader:
+    dependencies:
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
 
   packages/contracts: {}
 
@@ -98,15 +107,6 @@ importers:
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
-
-  plugins/features/config-loader:
-    dependencies:
-      '@antarestra/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.0
 
   plugins/implementations/agent-demo:
     dependencies:

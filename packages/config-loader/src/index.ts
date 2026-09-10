@@ -4,6 +4,7 @@ import type { PluginEntry } from './config.js'
 
 export { createInstanceId, parseConfig, readConfig, resolveConfigPath } from './config.js'
 export type { ConfigLocation, PluginEntry } from './config.js'
+export { createPluginResolver, pluginCandidates } from './resolver.js'
 
 export type PluginResolver = (pluginId: string) => Promise<Plugin<unknown>>
 
