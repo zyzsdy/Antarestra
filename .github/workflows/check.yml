@@ -1,0 +1,26 @@
+name: 项目检查
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    name: 检查与构建
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 执行检查
+        run: pnpm check
+      - name: 验证服务端启动
+        run: pnpm start

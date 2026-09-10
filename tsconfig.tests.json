@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "lib": ["ES2024", "ESNext.Array"] },
+  "include": ["tests/**/*.ts", "vitest.config.ts"]
+}

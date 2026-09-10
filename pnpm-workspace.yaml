@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+  - plugins/definitions/*
+  - plugins/implementations/*
+  - plugins/features/*
+  - plugins/adapters/*
+allowBuilds:
+  esbuild: true

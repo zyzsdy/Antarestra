@@ -1,0 +1,18 @@
+{
+  "name": "@antarestra/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "dev": "tsx watch --conditions=development src/index.ts"
+  },
+  "dependencies": {
+    "@antarestra/adapter-cli": "workspace:*",
+    "@antarestra/agent": "workspace:*",
+    "@antarestra/agent-demo": "workspace:*",
+    "cordis": "4.0.0-rc.10"
+  }
+}

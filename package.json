@@ -1,0 +1,34 @@
+{
+  "name": "antarestra",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "pnpm": ">=11 <12"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter @antarestra/server --filter @antarestra/web dev",
+    "dev:server": "pnpm --filter @antarestra/server dev",
+    "dev:web": "pnpm --filter @antarestra/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tests.json",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "start": "pnpm --filter @antarestra/server start"
+  },
+  "devDependencies": {
+    "@antarestra/agent": "workspace:*",
+    "@antarestra/agent-demo": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@types/node": "^24.13.3",
+    "cordis": "4.0.0-rc.10",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
+  }
+}

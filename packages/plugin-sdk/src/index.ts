@@ -1,0 +1,31 @@
+import type { Context } from 'cordis'
+
+/** 注册项归属调用方上下文，卸载时自动释放，重复标识直接拒绝。 */
+export class ScopedRegistry<T> {
+  private readonly entries = new Map<string, T>()
+
+  register(ctx: Context, id: string, value: T): () => Promise<void> {
+    if (!id.trim()) throw new Error('注册标识不能为空')
+    if (this.entries.has(id)) throw new Error(`注册标识重复：${id}`)
+
+    return ctx.effect(() => {
+      this.entries.set(id, value)
+      let active = true
+      return () => {
+        if (!active) return
+        active = false
+        this.entries.delete(id)
+      }
+    })
+  }
+
+  get(id: string): T {
+    const value = this.entries.get(id)
+    if (value === undefined) throw new Error(`能力不可用：${id}`)
+    return value
+  }
+
+  list(): readonly string[] {
+    return [...this.entries.keys()]
+  }
+}

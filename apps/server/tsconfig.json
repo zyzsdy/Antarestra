@@ -1,0 +1,20 @@
+{
+  "include": ["src/**/*.ts"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": true
+  },
+  "extends": "../../tsconfig.base.json",
+  "references": [
+    {
+      "path": "../../plugins/adapters/cli"
+    },
+    {
+      "path": "../../plugins/definitions/agent"
+    },
+    {
+      "path": "../../plugins/implementations/agent-demo"
+    }
+  ]
+}
