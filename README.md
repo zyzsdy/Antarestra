@@ -8,7 +8,7 @@ Antarestra 是一个面向多用户、多 Agent 的 Cloud AI Harness。目标是
 
 本仓库完成的是项目初始化，还不是可部署的云端聊天产品。
 
-- 已实现：工作区与构建配置、Cordis 启动器、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、Vue 页面壳与插件生命周期测试。
+- 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、Vue 页面壳与插件生命周期测试。
 - 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、登录与权限、持久化、HTTP / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
 - `agent-demo` 只回显输入，不调用模型，也不模拟真实认证或租户隔离。网页展示项目方向，尚未连接后端。
 
@@ -46,9 +46,74 @@ pnpm start
 
 ## 核心设计
 
+### 主配置与插件加载
+
+服务端按以下优先级选择一个 YAML 主配置文件。选中的文件不存在或格式错误时启动失败，不回退到低优先级配置：
+
+1. 命令行参数 `--conf=路径`。
+2. 环境变量 `ANTARESTRA_CONFIG`。
+3. 仓库根目录的 `antarestra.yml`，由 server 源文件或编译产物位置计算，与启动工作目录无关。
+
+显式指定的相对路径相对于服务端进程工作目录。`pnpm start` / `pnpm dev:server` 在 `apps/server` 下运行，推荐使用绝对路径，含空格时给整个参数加引号：
+
+```powershell
+pnpm start '--conf=E:/Antarestra 配置/antarestra.yml'
+pnpm dev:server '--conf=E:/Antarestra 配置/antarestra.yml'
+$env:ANTARESTRA_CONFIG = 'E:/Antarestra 配置/antarestra.yml'
+pnpm start
+```
+
+配置采用 Koishi 风格的平铺 `plugins` 映射，每个条目保存一份独立实例配置。键名前加 `~` 禁用实例，禁用条目不会解析或导入插件模块：
+
+```yaml
+plugins:
+  agent: {}
+  agent-demo:9ce0b8f2:
+    backendId: demo-a
+    prefix: 演示实例甲：
+  agent-demo:73f1a6d4:
+    backendId: demo-b
+    prefix: 演示实例乙：
+  ~agent-demo:d4f706a9:
+    backendId: demo-disabled
+    prefix: 已禁用实例：
+  adapter-cli: {}
+```
+
+同一插件有多份配置时，每份键名都必须使用 `插件名:随机哈希`，哈希为 8–32 位小写十六进制。哈希在创建配置时生成并保存，重启不重新生成；复制实例时生成新哈希。加载器导出 `createInstanceId(pluginId)`，也可运行 `node -e "console.log(require('node:crypto').randomBytes(4).toString('hex'))"` 生成哈希。单实例可以省略哈希。启用和禁用条目不能重复使用同一个实例标识。哈希不替代 `backendId` 等业务标识，也不会让原本只支持单实例的插件获得多实例能力。
+
+内置短名 `agent`、`agent-demo`、`adapter-cli` 映射到对应的 `@antarestra/*` 包。其他插件使用完整 npm 包名，通过 `pnpm --filter @antarestra/server add 包名` 安装后加载；以 `@` 开头的 YAML 键必须加引号，如 `'@antarestra/agent-demo:9ce0b8f2'`。模块需导出默认函数、类、插件对象或命名的 `apply` 函数；内置 `agent` 使用其 `AgentRegistry` 类。
+
+插件按声明顺序加载并等待启动。建议先声明定义，再声明实现，最后声明消费入口；CLI 这类一次性消费者只能看到其启动时已注册的后端。加载结束时检查所有插件是否就绪，缺少启用的服务依赖会报错。启动失败时回收本次创建的插件，退出时等待资源清理。有监听器或定时器的插件会持续运行，默认 CLI 演示完成后自然退出。
+
+当前只支持平铺映射，不支持 Koishi 插件分组、表达式、YAML 别名、配置热重载或在线编辑。加载器校验主配置结构，插件自身负责具体配置字段的语义校验。不要在仓库配置中保存真实凭据。
+
+### 插件 SDK 与包标识
+
+插件统一依赖 `@antarestra/plugin-sdk`，从中导入 `Context`、`Service` 等运行时入口，以及 `Plugin`、`Fiber`、`Inject` 等 Cordis 类型。SDK 直接转导出上游 API，并提供 `ScopedRegistry`；只有 SDK 直接依赖精确版本的 Cordis，不创建另一套上下文或兼容层。服务类型扩展也声明在 SDK 模块上：
+
+```typescript
+import { Service } from '@antarestra/plugin-sdk'
+import type { Context } from '@antarestra/plugin-sdk'
+
+declare module '@antarestra/plugin-sdk' {
+  interface Context {
+    example: ExampleService
+  }
+}
+
+export default class ExampleService extends Service {
+  constructor(ctx: Context) {
+    super(ctx, 'example')
+  }
+}
+```
+
+所有 `plugins/` 下的插件包在 `package.json` 中声明 `"keywords": ["antarestra-plugin"]`，供未来市场识别。使用 npm 标准的复数 `keywords` 字段；市场插件本身尚未实现。
+
 ### 极小启动器，三层插件
 
-启动器只负责建立 Cordis 上下文、装配插件、处理进程退出与资源清理。当前使用 TypeScript profile 装配；未来的配置解析、动态加载与管理界面也应由插件实现。
+启动器负责建立上下文、选择主配置路径、提供模块解析及处理退出。独立的 `config-loader` 插件读取 YAML 并装配启用的插件，配置管理界面尚未实现。
 
 | 层次     | 职责                                 | 示例                                      |
 | -------- | ------------------------------------ | ----------------------------------------- |
@@ -70,13 +135,13 @@ TypeScript 接口不等于运行时服务。多实现能力由定义插件提供
 
 必须区分以下标识：
 
-| 标识           | 含义                                           |
-| -------------- | ---------------------------------------------- |
-| `pluginId`     | 插件包的身份                                   |
-| `instanceId`   | 某次持久化配置的插件激活身份，后续由加载器管理 |
-| `backendId`    | Agent 后端注册项                               |
-| `connectionId` | 某个模型连接，关联独立的账号和配置             |
-| `provider`     | 模型提供方                                     |
+| 标识           | 含义                                                   |
+| -------------- | ------------------------------------------------------ |
+| `pluginId`     | 插件包的身份                                           |
+| `instanceId`   | 持久化的插件实例键名，包含可选的随机哈希，由加载器管理 |
+| `backendId`    | Agent 后端注册项                                       |
+| `connectionId` | 某个模型连接，关联独立的账号和配置                     |
+| `provider`     | 模型提供方                                             |
 
 同一个模型厂商的两个账号使用两个连接实例，不通过覆盖 `ctx.llm` 切换账号。各实例独立管理凭据、刷新锁、连接状态和在途请求。Cordis Fiber 的运行时编号不能代替持久化的 `instanceId`。
 

@@ -1,4 +1,4 @@
-import type { Context } from 'cordis'
+import type { Context } from '@antarestra/plugin-sdk'
 import type {} from '@antarestra/agent'
 
 export const name = 'adapter-cli'

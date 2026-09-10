@@ -1,5 +1,5 @@
-import { Service } from 'cordis'
-import type { Context } from 'cordis'
+import { Service } from '@antarestra/plugin-sdk'
+import type { Context } from '@antarestra/plugin-sdk'
 import type { AgentEvent, ChatMessage, RequestContext } from '@antarestra/contracts'
 import { ScopedRegistry } from '@antarestra/plugin-sdk'
 
@@ -14,7 +14,7 @@ export interface AgentBackend {
   run(request: AgentRequest): AsyncIterable<AgentEvent>
 }
 
-declare module 'cordis' {
+declare module '@antarestra/plugin-sdk' {
   interface Context {
     agents: AgentRegistry
   }

@@ -1,4 +1,4 @@
-import type { Context } from 'cordis'
+import type { Context } from '@antarestra/plugin-sdk'
 import type { AgentBackend } from '@antarestra/agent'
 
 export interface Config {

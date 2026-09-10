@@ -1,5 +1,8 @@
 import type { Context } from 'cordis'
 
+// 统一提供 Cordis 运行时与类型，插件不必直接依赖底层运行时包。
+export * from 'cordis'
+
 /** 注册项归属调用方上下文，卸载时自动释放，重复标识直接拒绝。 */
 export class ScopedRegistry<T> {
   private readonly entries = new Map<string, T>()

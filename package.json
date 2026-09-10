@@ -23,9 +23,9 @@
   "devDependencies": {
     "@antarestra/agent": "workspace:*",
     "@antarestra/agent-demo": "workspace:*",
+    "@antarestra/config-loader": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@types/node": "^24.13.3",
-    "cordis": "4.0.0-rc.10",
     "prettier": "^3.9.6",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",

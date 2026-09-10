@@ -8,6 +8,9 @@
   "extends": "../../tsconfig.base.json",
   "references": [
     {
+      "path": "../../plugins/features/config-loader"
+    },
+    {
       "path": "../../plugins/adapters/cli"
     },
     {
@@ -15,6 +18,9 @@
     },
     {
       "path": "../../plugins/implementations/agent-demo"
+    },
+    {
+      "path": "../../packages/plugin-sdk"
     }
   ]
 }

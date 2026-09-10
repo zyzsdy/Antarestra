@@ -13,6 +13,7 @@
     "@antarestra/adapter-cli": "workspace:*",
     "@antarestra/agent": "workspace:*",
     "@antarestra/agent-demo": "workspace:*",
-    "cordis": "4.0.0-rc.10"
+    "@antarestra/config-loader": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*"
   }
 }

@@ -8,35 +8,39 @@
 4. Cordis 使用 **`cordis@4.0.0-rc.10` 精确版本**，允许使用新特性。后续遇到破坏性变更再明确升级和重构，不维护 3.x 兼容层，不擅自切换到 `@cordisjs/core` 或 `@deepseek-ai/cordis`。
 5. 当前工作环境是 Windows，默认 shell 为 PowerShell 7（`pwsh`）；Node 由 fnm 管理，应在 pwsh 中运行 Node 与 pnpm。路径可能带空格，命令参数必须正确引用；注意最大命令长度，大型编辑拆成多次。
 6. 可以建立 Git 分支，除非用户明确要求，不主动建立工作树。尊重已有文件的缩进与换行，不覆盖任务之外的改动。
+7. 插件统一依赖 `@antarestra/plugin-sdk` 并从中导入 Cordis 运行时和类型，只有 SDK 直接依赖 Cordis。服务类型扩展声明在 `@antarestra/plugin-sdk` 模块上。所有 `plugins/` 下插件包必须在 `package.json` 的 `keywords` 数组中包含 `antarestra-plugin`。
 
 ## 当前项目结构
 
 ```text
 Antarestra/
 ├─ apps/
-│  ├─ server/                      # Cordis 启动入口与类型化开发装配
-│  │  └─ src/profile.ts            # 当前双实例演示 profile
+│  ├─ server/                      # 启动入口与主配置路径选择
+│  │  └─ src/plugins.ts            # 插件短名映射与动态模块解析
 │  └─ web/                         # Vue + Vite 页面壳，尚无后端连接
 ├─ packages/
 │  ├─ contracts/                   # 最小跨边界 DTO，不引用 pi 或 Vue
-│  └─ plugin-sdk/                  # 带上下文归属的注册表辅助类
+│  └─ plugin-sdk/                  # Cordis 统一导出与注册表辅助类
 ├─ plugins/
 │  ├─ definitions/
 │  │  └─ agent/                    # Agent 接口与 ctx.agents 运行时服务
 │  ├─ implementations/
 │  │  └─ agent-demo/               # 无模型调用的回显演示，支持多实例
-│  └─ adapters/
-│     └─ cli/                      # 一次性演示消费者，仅依赖定义层
+│  ├─ adapters/
+│  │  └─ cli/                      # 一次性演示消费者，仅依赖定义层
+│  └─ features/
+│     └─ config-loader/            # YAML 主配置校验与插件生命周期装配
 ├─ tests/integration/             # Cordis 插件与资源生命周期测试
 ├─ .github/workflows/             # Windows / Linux 检查流程
 ├─ pnpm-workspace.yaml            # 工作区范围与明确允许的构建脚本
 ├─ pnpm-lock.yaml                 # 必须提交的依赖锁文件
+├─ antarestra.yml                  # 默认主配置与双实例演示
 ├─ tsconfig.base.json             # 公共严格类型配置
 ├─ tsconfig.tests.json            # 测试与 Vitest 配置的类型检查
 └─ vitest.config.ts               # 测试入口，使用源码 development 导出
 ```
 
-工作区预留了 `plugins/features/*` 匹配规则，目前没有业务功能包。不要为了填目录而批量创建空包。
+`plugins/features/*` 当前包含配置加载器，后续按需要增加业务功能包。不要为了填目录而批量创建空包。
 
 后续按实际任务增加：
 
@@ -44,7 +48,7 @@ Antarestra/
 - 实现插件：`agent-pi`、`llm-pi`、身份映射、数据库等；pi-agent 与 pi-ai 必须是独立插件。
 - 业务插件：`plugins/features/chat` 与 `agent-presets` 等。
 - 入口插件：网页 API、嵌入入口与具体 IM 平台适配器。
-- 配置加载插件落地后，再增加独立配置目录与校验规则。
+- 主配置使用根目录 `antarestra.yml`，加载器校验平铺 `plugins` 映射；后续按需要扩展配置管理能力。
 
 ## 开发命令
 

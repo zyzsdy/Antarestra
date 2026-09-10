@@ -1,20 +1,37 @@
-import { Context } from 'cordis'
-import { installDevelopmentProfile } from './profile.js'
+import { Context } from '@antarestra/plugin-sdk'
+import { fileURLToPath } from 'node:url'
+import * as loader from '@antarestra/config-loader'
+import { resolvePlugin } from './plugins.js'
 
 const ctx = new Context()
 
-async function stop(): Promise<void> {
-  process.off('SIGINT', stop)
-  process.off('SIGTERM', stop)
-  await ctx.fiber.dispose()
+let stopping: Promise<void> | undefined
+
+function stop(): Promise<void> {
+  return (stopping ??= ctx.fiber.dispose())
 }
 
-process.once('SIGINT', stop)
-process.once('SIGTERM', stop)
+function shutdown(): void {
+  void stop().catch(() => {
+    console.error('服务端资源清理失败')
+    process.exitCode = 1
+  })
+}
+
+process.once('SIGINT', shutdown)
+process.once('SIGTERM', shutdown)
+process.once('beforeExit', shutdown)
 
 try {
-  await installDevelopmentProfile(ctx)
-} finally {
-  // 当前 profile 是一次性演示，没有 HTTP 监听；完成后回收全部资源。
-  await stop()
+  const filename = loader.resolveConfigPath({
+    argv: process.argv.slice(2),
+    env: process.env,
+    cwd: process.cwd(),
+    defaultPath: fileURLToPath(new URL('../../../antarestra.yml', import.meta.url)),
+  })
+  await ctx.plugin(loader, { filename, resolvePlugin })
+} catch (error) {
+  console.error(error instanceof Error ? error.message : '服务端启动失败')
+  process.exitCode = 1
+  shutdown()
 }

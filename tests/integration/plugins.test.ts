@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from 'cordis'
+import { Context } from '@antarestra/plugin-sdk'
 import { AgentRegistry } from '@antarestra/agent'
 import type { AgentRequest } from '@antarestra/agent'
 import * as demo from '@antarestra/agent-demo'

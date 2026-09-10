@@ -16,6 +16,9 @@
   },
   "dependencies": {
     "@antarestra/agent": "workspace:*",
-    "cordis": "4.0.0-rc.10"
-  }
+    "@antarestra/plugin-sdk": "workspace:*"
+  },
+  "keywords": [
+    "antarestra-plugin"
+  ]
 }

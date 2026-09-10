@@ -8,9 +8,6 @@
   "extends": "../../../tsconfig.base.json",
   "references": [
     {
-      "path": "../../definitions/agent"
-    },
-    {
       "path": "../../../packages/plugin-sdk"
     }
   ]

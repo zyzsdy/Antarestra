@@ -1,5 +1,5 @@
 {
-  "name": "@antarestra/adapter-cli",
+  "name": "@antarestra/config-loader",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,8 +15,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@antarestra/agent": "workspace:*",
-    "@antarestra/plugin-sdk": "workspace:*"
+    "@antarestra/plugin-sdk": "workspace:*",
+    "yaml": "^2.9.0"
   },
   "keywords": [
     "antarestra-plugin"

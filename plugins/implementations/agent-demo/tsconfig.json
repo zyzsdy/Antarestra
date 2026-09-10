@@ -9,6 +9,9 @@
   "references": [
     {
       "path": "../../definitions/agent"
+    },
+    {
+      "path": "../../../packages/plugin-sdk"
     }
   ]
 }
