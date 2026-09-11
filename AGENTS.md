@@ -28,7 +28,8 @@ Antarestra/
 │  ├─ implementations/
 │  │  └─ agent-demo/               # 无模型调用的回显演示，支持多实例
 │  └─ adapters/
-│     └─ cli/                      # 一次性演示消费者，仅依赖定义层
+│     ├─ cli/                      # 一次性演示消费者，仅依赖定义层
+│     └─ server/                   # HTTP/HTTPS、API 路由、中间件与静态文件
 ├─ tests/integration/             # Cordis 插件与资源生命周期测试
 ├─ .github/workflows/             # Windows / Linux 检查流程
 ├─ pnpm-workspace.yaml            # 工作区范围与明确允许的构建脚本
@@ -53,19 +54,19 @@ Antarestra/
 
 在仓库根目录运行，使用 Node.js 24 与 pnpm 11.7.0。
 
-| 命令                             | 用途                                    |
-| -------------------------------- | --------------------------------------- |
-| `pnpm install --frozen-lockfile` | 按锁文件恢复依赖                        |
-| `pnpm dev`                       | 同时运行网页开发服务和服务端 watch 演示 |
-| `pnpm dev:web`                   | 仅启动网页开发服务                      |
-| `pnpm dev:server`                | 仅启动服务端 watch 演示                 |
-| `pnpm build`                     | 按依赖顺序构建各包与网页                |
-| `pnpm start`                     | 执行编译后的双实例演示，需先构建        |
-| `pnpm typecheck`                 | 检查服务端项目引用、Vue 与测试类型      |
-| `pnpm test`                      | 执行插件生命周期测试，不需要模型密钥    |
-| `pnpm format`                    | 用 Prettier 格式化仓库                  |
-| `pnpm format:check`              | 检查格式，不改写文件                    |
-| `pnpm check`                     | 格式、类型、测试、构建的完整检查        |
+| 命令                             | 用途                                      |
+| -------------------------------- | ----------------------------------------- |
+| `pnpm install --frozen-lockfile` | 按锁文件恢复依赖                          |
+| `pnpm dev`                       | 同时运行网页开发服务和服务端 watch 演示   |
+| `pnpm dev:web`                   | 仅启动网页开发服务                        |
+| `pnpm dev:server`                | 仅启动服务端 watch 演示                   |
+| `pnpm build`                     | 按依赖顺序构建各包与网页                  |
+| `pnpm start`                     | 执行编译后的演示并持续监听 HTTP，需先构建 |
+| `pnpm typecheck`                 | 检查服务端项目引用、Vue 与测试类型        |
+| `pnpm test`                      | 执行插件生命周期测试，不需要模型密钥      |
+| `pnpm format`                    | 用 Prettier 格式化仓库                    |
+| `pnpm format:check`              | 检查格式，不改写文件                      |
+| `pnpm check`                     | 格式、类型、测试、构建的完整检查          |
 
 新增依赖示例：`pnpm --filter @antarestra/web add 包名`；根级开发工具使用 `pnpm add -Dw 包名`；工作区依赖使用 `pnpm --filter 目标包 add '内部包名@workspace:*'`。
 
@@ -103,6 +104,8 @@ Antarestra/
 ## 验证与提交
 
 初始化的完整检查为 `pnpm check`，另用 `pnpm start` 验证编译产物。后续变更运行相关检查；插件生命周期改动应覆盖独立卸载、依赖变化和资源清理，租户功能改动应覆盖跨空间拒绝访问。
+
+默认启用 `plugin-server`，健康接口为 `/api/health`，默认监听 `0.0.0.0:14451`。CI 使用 `node scripts/smoke-server.mjs` 验证编译产物并回收子进程，避免持续监听阻塞流水线。Server 消费插件使用 `inject: ['server']`，通过带所属上下文的 `use`、`route`、`static` 注册能力；API 路径由 server 统一添加 `/api`。
 
 网页布局修改需在浏览器检查实际页面，至少关注常规窗口和窄屏布局。不要把演示后端测试称为真实模型集成测试，也不要把内存验证称为数据库验证。
 

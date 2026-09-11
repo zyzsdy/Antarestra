@@ -1,0 +1,32 @@
+{
+  "name": "@antarestra/plugin-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "build": "tsc -b"
+  },
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "dependencies": {
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@koa/router": "^15.7.0",
+    "koa": "^3.2.1",
+    "koa-compose": "^4.1.0",
+    "koa-send": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/koa": "^3.0.3",
+    "@types/koa-compose": "^3.2.9",
+    "@types/koa-send": "^4.1.6"
+  }
+}

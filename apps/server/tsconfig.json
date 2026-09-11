@@ -8,6 +8,9 @@
   "extends": "../../tsconfig.base.json",
   "references": [
     {
+      "path": "../../plugins/adapters/server"
+    },
+    {
       "path": "../../packages/config-loader"
     },
     {

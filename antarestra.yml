@@ -1,6 +1,7 @@
 # 按声明顺序加载；先声明定义与实现，再声明使用它们的入口插件。
 # 多实例的随机哈希保存后保持不变，复制实例时生成新的哈希。
 plugins:
+  plugin-server: {}
   agent: {}
   agent-demo:9ce0b8f2:
     backendId: demo-a

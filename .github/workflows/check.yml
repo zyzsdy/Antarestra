@@ -23,4 +23,4 @@ jobs:
       - name: 执行检查
         run: pnpm check
       - name: 验证服务端启动
-        run: pnpm start
+        run: node scripts/smoke-server.mjs
