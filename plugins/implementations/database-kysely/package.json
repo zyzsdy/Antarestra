@@ -1,0 +1,32 @@
+{
+  "name": "@antarestra/plugin-database-kysely",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "build": "tsc -b"
+  },
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "dependencies": {
+    "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "kysely": "^0.29.5",
+    "mysql2": "^3.24.4",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/pg": "^8.23.1"
+  }
+}

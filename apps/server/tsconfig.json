@@ -27,6 +27,12 @@
     },
     {
       "path": "../../packages/plugin-sdk"
+    },
+    {
+      "path": "../../plugins/definitions/database"
+    },
+    {
+      "path": "../../plugins/implementations/database-kysely"
     }
   ]
 }

@@ -8,8 +8,8 @@ Antarestra 是一个面向多用户、多 Agent 的 Cloud AI Harness。目标是
 
 本仓库完成的是项目初始化，还不是可部署的云端聊天产品。
 
-- 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、HTTP/HTTPS Server 插件、Vue 页面壳与插件生命周期测试。
-- 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、登录与权限、持久化、聊天 API / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
+- 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、HTTP/HTTPS Server 插件、数据库服务与声明式插件迁移、Vue 页面壳与插件生命周期测试。
+- 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、登录与权限、业务数据持久化、聊天 API / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
 - `agent-demo` 只回显输入，不调用模型，也不模拟真实认证或租户隔离。网页展示项目方向，尚未连接后端。
 
 ## 快速开始
@@ -136,6 +136,10 @@ export default class ExampleService extends Service {
 TypeScript 接口不等于运行时服务。多实现能力由定义插件提供真实注册表，具体实现往其中注册；消费者注入注册表后，还需校验选定后端是否可用。单实现服务可由实现插件直接提供，但契约仍放在定义包。
 
 `packages/contracts` 只容纳跨边界的消息、身份上下文和预设 DTO；服务接口属于各自定义插件，避免形成不断膨胀的中心包。
+
+### 数据库插件
+
+数据库默认启用 SQLite，通过 `database` 定义与 `plugin-database-kysely` 实现装配。支持 PostgreSQL 及 MySQL 方言，消费插件通过 `inject: ['database']` 使用类型化查询。配置及运行要求见 [数据库实现说明](plugins/implementations/database-kysely/README.md)，插件 API 与迁移示例见 [数据库定义说明](plugins/definitions/database/README.md)。
 
 ### HTTP Server 插件
 

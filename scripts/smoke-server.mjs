@@ -23,7 +23,12 @@ try {
   const config = await readFile(join(root, 'antarestra.yml'), 'utf8')
   await writeFile(
     filename,
-    config.replace('plugin-server: {}', `plugin-server: { host: 127.0.0.1, port: ${port} }`),
+    config
+      .replace('plugin-server: {}', `plugin-server: { host: 127.0.0.1, port: ${port} }`)
+      .replace(
+        'plugin-database-kysely: {}',
+        `plugin-database-kysely: ${JSON.stringify({ filename: join(temporary, 'smoke.sqlite') })}`,
+      ),
   )
   child = spawn(process.execPath, ['apps/server/dist/index.js', `--conf=${filename}`], {
     cwd: root,

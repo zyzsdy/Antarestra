@@ -6,4 +6,5 @@ packages:
   - plugins/features/*
   - plugins/adapters/*
 allowBuilds:
+  better-sqlite3: true
   esbuild: true
