@@ -17,6 +17,9 @@ importers:
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:packages/config-loader
+      '@antarestra/plugin-logger':
+        specifier: workspace:*
+        version: link:plugins/implementations/logger
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:packages/plugin-sdk
@@ -56,6 +59,9 @@ importers:
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:../../packages/config-loader
+      '@antarestra/plugin-logger':
+        specifier: workspace:*
+        version: link:../../plugins/implementations/logger
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -150,6 +156,12 @@ importers:
       '@antarestra/agent':
         specifier: workspace:*
         version: link:../../definitions/agent
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+
+  plugins/implementations/logger:
+    dependencies:
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk

@@ -24,6 +24,7 @@
     "@antarestra/agent": "workspace:*",
     "@antarestra/agent-demo": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
+    "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@types/node": "^24.13.3",

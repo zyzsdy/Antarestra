@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from '@antarestra/plugin-sdk'
+import { Context, Logger } from '@antarestra/plugin-sdk'
 import HttpServer from '@antarestra/plugin-server'
 import type { Config } from '@antarestra/plugin-server'
 import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises'
@@ -64,6 +64,78 @@ afterEach(async () => {
 })
 
 describe('HTTP 服务与路由', () => {
+  it('客户端提前断开只记录中断，回收日志事件监听', async () => {
+    const { ctx, url } = await start()
+    const logs: string[] = []
+    ctx.logger.exporter({
+      export(message) {
+        logs.push(`[${message.type}] ${Logger.format({ export() {} }, message)}`)
+      },
+    })
+    let response: import('node:http').ServerResponse | undefined
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    ctx.server.route(ctx, 'GET', '/disconnect', async (http) => {
+      response = http.res
+      entered()
+      await waiting
+      http.body = '完成'
+    })
+    const client = httpRequest(`${url}/api/disconnect`)
+    client.on('error', () => {})
+    client.end()
+    try {
+      await started
+      const closed = new Promise<void>((resolve) => response!.once('close', resolve))
+      client.destroy()
+      await closed
+      expect(logs).toEqual(['[warn] [http-req] GET /api/disconnect 连接中断'])
+      expect(response!.listeners('finish').some((listener) => listener.name === 'finished')).toBe(
+        false,
+      )
+      expect(response!.listeners('close').some((listener) => listener.name === 'closed')).toBe(
+        false,
+      )
+    } finally {
+      client.destroy()
+      release()
+    }
+  })
+
+  it('原生日志记录启动与最终状态，不记录查询参数，消费方不依赖输出器插件', async () => {
+    const ctx = context()
+    const logs: string[] = []
+    ctx.logger.exporter({
+      export(message) {
+        logs.push(`[${message.type}] [${message.name}] ${Logger.format({ export() {} }, message)}`)
+      },
+    })
+    await ctx.plugin(HttpServer, { host: '127.0.0.1', port: 0 })
+    const url = `http://127.0.0.1:${ctx.server.address!.port}`
+    expect(logs).toEqual([`[info] [server] 服务已监听 ${url}`])
+    ctx.server.route(ctx, 'GET', '/failure', () => {
+      throw new Error('处理失败')
+    })
+    await request(url, '/api/health?token=secret')
+    await request(url, '/missing')
+    await request(url, '/api/failure')
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        '[info] [server] [http-req] GET /api/health 200',
+        '[info] [server] [http-req] GET /missing 404',
+        '[info] [server] [http-req] GET /api/failure 500',
+      ]),
+    )
+    expect(logs.filter((line) => line.startsWith('[error]'))).toHaveLength(1)
+    expect(logs.join('\n')).not.toMatch(/token|secret/)
+  })
+
   it('监听就绪后返回健康状态、UTC 时间和实际地址', async () => {
     const { ctx, url } = await start()
     expect(ctx.server.publicUrl).toBe('')
@@ -281,6 +353,12 @@ describe('全局错误处理', () => {
 
   it('发送响应头后抛错终止连接，后续请求仍然可用', async () => {
     const { ctx, url } = await start()
+    const logs: { type: string; content: string }[] = []
+    ctx.logger.exporter({
+      export(message) {
+        logs.push({ type: message.type, content: Logger.format({ export() {} }, message) })
+      },
+    })
     ctx.server.route(ctx, 'GET', '/partial', (http) => {
       http.res.writeHead(200)
       http.res.write('部分内容')
@@ -288,10 +366,19 @@ describe('全局错误处理', () => {
     })
     await expect(request(url, '/api/partial')).rejects.toThrow()
     expect((await request(url, '/api/health')).status).toBe(200)
+    expect(logs.filter((line) => line.type === 'error')).toHaveLength(1)
+    expect(logs).toContainEqual({ type: 'warn', content: '[http-req] GET /api/partial 连接中断' })
+    expect(logs.some((line) => line.content === '[http-req] GET /api/partial 200')).toBe(false)
   })
 
   it('流在发送前出错返回 500，发送后出错终止连接', async () => {
     const { ctx, url } = await start({ debug: true })
+    const logs: { type: string; content: string }[] = []
+    ctx.logger.exporter({
+      export(message) {
+        logs.push({ type: message.type, content: Logger.format({ export() {} }, message) })
+      },
+    })
     ctx.server.route(ctx, 'GET', '/stream-before', (http) => {
       http.body = new Readable({
         read() {
@@ -312,6 +399,14 @@ describe('全局错误处理', () => {
     expect(response.status).toBe(500)
     expect(response.body).toContain('流读取失败')
     await expect(request(url, '/api/stream-after')).rejects.toThrow()
+    expect(logs.filter((line) => line.type === 'error')).toHaveLength(2)
+    expect(logs).toContainEqual({ type: 'info', content: '[http-req] GET /api/stream-before 500' })
+    // 用下一次请求确保服务端 close 事件已处理。
+    await request(url, '/api/health')
+    expect(logs).toContainEqual({
+      type: 'warn',
+      content: '[http-req] GET /api/stream-after 连接中断',
+    })
   })
 })
 

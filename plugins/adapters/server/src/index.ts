@@ -80,15 +80,45 @@ export class HttpServer extends Service<Config> {
   async [Service.init](): Promise<void> {
     const app = new Koa()
     const debug = this.config.debug
+    const logger = this.ctx.logger('server')
+    const reported = new WeakMap<Koa.Context, Set<unknown>>()
+    const handleError = (http: Koa.Context, error: unknown) => {
+      let errors = reported.get(http)
+      if (!errors) reported.set(http, (errors = new Set()))
+      if (!errors.has(error)) {
+        errors.add(error)
+        logger.error(
+          '[http-error] %s',
+          error instanceof Error ? (error.stack ?? error.message) : '未知异常',
+        )
+      }
+      respondError(http, error, debug)
+    }
     app.context.onerror = function (this: Koa.Context, error: unknown) {
-      if (error != null) respondError(this, error, debug)
+      if (error != null) handleError(this, error)
     }
     app.use(async (ctx, next) => {
+      const { res } = ctx
+      const path = ctx.path.replace(/[\r\n\x1b]/g, '')
+      const cleanup = () => {
+        res.off('finish', finished)
+        res.off('close', closed)
+      }
+      const finished = () => {
+        cleanup()
+        logger.info('[http-req] %s %s %d', ctx.method, path, res.statusCode)
+      }
+      const closed = () => {
+        cleanup()
+        logger.warn('[http-req] %s %s 连接中断', ctx.method, path)
+      }
+      res.once('finish', finished)
+      res.once('close', closed)
       try {
         await this.dispatch(ctx, next)
         await sendStream(ctx)
       } catch (error) {
-        respondError(ctx, error, debug)
+        handleError(ctx, error)
       }
     })
     const { host, port, https, cert, key, passphraseFile } = this.config
@@ -138,6 +168,9 @@ export class HttpServer extends Service<Config> {
         resolveListen()
       })
     })
+    const address = this.address!
+    const hostname = address.family === 'IPv6' ? `[${address.address}]` : address.address
+    logger.info('服务已监听 %s://%s:%d', https ? 'https' : 'http', hostname, address.port)
   }
 
   use(owner: Context, middleware: Middleware): Dispose {

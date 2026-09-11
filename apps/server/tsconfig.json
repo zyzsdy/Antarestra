@@ -8,6 +8,9 @@
   "extends": "../../tsconfig.base.json",
   "references": [
     {
+      "path": "../../plugins/implementations/logger"
+    },
+    {
       "path": "../../plugins/adapters/server"
     },
     {
