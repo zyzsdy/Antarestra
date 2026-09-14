@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+# 本地配置凭据不入库，仅保留配置示例。
 .env
 .env.*
 !.env.example

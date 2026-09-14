@@ -11,7 +11,7 @@ plugins:
     allowRegistration: true
     # 首次创建管理员时取消以下注释，并在环境变量中设置密码。
     # bootstrapEmail: admin@example.com
-    # bootstrapPasswordEnv: ANTARESTRA_ADMIN_PASSWORD
+    # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
   agent: {}
   agent-demo:9ce0b8f2:
     backendId: demo-a

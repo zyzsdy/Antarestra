@@ -64,7 +64,7 @@ pnpm startdevdb
 ```yaml
 plugin-database-kysely:
   type: postgresql
-  urlEnv: ANTARESTRA_DATABASE_URL
+  url: $ANTARESTRA_DATABASE_URL
 ```
 
 在启动服务的 PowerShell 中设置连接串：
@@ -80,19 +80,20 @@ SQLite 与 PostgreSQL 数据互不迁移。Docker 拉取失败时需恢复到 Do
 
 ### 主配置与插件加载
 
+复制 `.env.example` 为所选 YAML 同级的 `.env` 并填写凭据；Git 已忽略 `.env`。配置字符串以 `$` 开头时，按 `$ENV_NAME` 读取变量，否则保持原样。变量名仅允许字母、数字、下划线且不能以数字开头。支持嵌套映射和数组的值，不替换键、不做插值或递归展开，结果始终为字符串。非法引用或变量缺失时启动失败，禁用插件不解析变量。
+
+进程环境优先（包括空字符串），未设置时才取同级 `.env` 的值。`.env` 可省略，支持引号、注释及多行值，不会修改进程环境。旧字段 `urlEnv`、`bootstrapPasswordEnv` 分别改为 `url: $ANTARESTRA_DATABASE_URL`、`bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD`；配置路径不再读取 `ANTARESTRA_CONFIG`，改用 `--conf`。
+
 服务端按以下优先级选择一个 YAML 主配置文件。选中的文件不存在或格式错误时启动失败，不回退到低优先级配置：
 
 1. 命令行参数 `--conf=路径`。
-2. 环境变量 `ANTARESTRA_CONFIG`。
-3. 仓库根目录的 `antarestra.yml`，由 server 源文件或编译产物位置计算，与启动工作目录无关。
+2. 仓库根目录的 `antarestra.yml`，由 server 源文件或编译产物位置计算，与启动工作目录无关。
 
 显式指定的相对路径相对于服务端进程工作目录。`pnpm start` / `pnpm dev:server` 在 `apps/server` 下运行，推荐使用绝对路径，含空格时给整个参数加引号：
 
 ```powershell
 pnpm start '--conf=E:/Antarestra 配置/antarestra.yml'
 pnpm dev:server '--conf=E:/Antarestra 配置/antarestra.yml'
-$env:ANTARESTRA_CONFIG = 'E:/Antarestra 配置/antarestra.yml'
-pnpm start
 ```
 
 配置采用 Koishi 风格的平铺 `plugins` 映射，每个条目保存一份独立实例配置。键名前加 `~` 禁用实例，禁用条目不会解析或导入插件模块：

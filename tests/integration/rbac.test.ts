@@ -28,21 +28,14 @@ async function setup(config: DatabaseConfig = { filename: ':memory:' }, options:
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
   const definition = await ctx.plugin(rbac)
   const providerId = `test-${randomUUID()}`
-  const envName = `ANTARESTRA_TEST_ADMIN_${randomUUID().replaceAll('-', '')}`
-  process.env[envName] = password
   const localConfig = {
     providerId,
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
-    bootstrapPasswordEnv: envName,
+    bootstrapPassword: password,
     ...options,
   }
-  let implementation
-  try {
-    implementation = await ctx.plugin(local, localConfig)
-  } finally {
-    delete process.env[envName]
-  }
+  const implementation = await ctx.plugin(local, localConfig)
   const url = `http://127.0.0.1:${ctx.server.address!.port}`
   const base = `/auth/local/${providerId}`
   const db = ctx.database.scope<Tables>(ctx, '@antarestra/rbac')
@@ -91,12 +84,12 @@ const backends: { name: string; config: DatabaseConfig; enabled: boolean }[] = [
   { name: 'SQLite', config: { filename: ':memory:' }, enabled: true },
   {
     name: 'PostgreSQL',
-    config: { type: 'postgresql', urlEnv: 'ANTARESTRA_TEST_POSTGRES' },
+    config: { type: 'postgresql', url: process.env.ANTARESTRA_TEST_POSTGRES ?? '' },
     enabled: !!process.env.ANTARESTRA_TEST_POSTGRES,
   },
   {
     name: 'MySQL',
-    config: { type: 'mysql', urlEnv: 'ANTARESTRA_TEST_MYSQL' },
+    config: { type: 'mysql', url: process.env.ANTARESTRA_TEST_MYSQL ?? '' },
     enabled: !!process.env.ANTARESTRA_TEST_MYSQL,
   },
 ]

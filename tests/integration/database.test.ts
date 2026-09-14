@@ -76,12 +76,12 @@ const backends: { name: string; config: Config; enabled: boolean }[] = [
   { name: 'SQLite', config: { type: 'sqlite', filename: ':memory:' }, enabled: true },
   {
     name: 'PostgreSQL',
-    config: { type: 'postgresql', urlEnv: 'ANTARESTRA_TEST_POSTGRES' },
+    config: { type: 'postgresql', url: process.env.ANTARESTRA_TEST_POSTGRES ?? '' },
     enabled: Boolean(process.env.ANTARESTRA_TEST_POSTGRES),
   },
   {
     name: 'MySQL',
-    config: { type: 'mysql', urlEnv: 'ANTARESTRA_TEST_MYSQL' },
+    config: { type: 'mysql', url: process.env.ANTARESTRA_TEST_MYSQL ?? '' },
     enabled: Boolean(process.env.ANTARESTRA_TEST_MYSQL),
   },
 ]
@@ -480,15 +480,14 @@ describe('database 声明与配置校验', () => {
     expect(() => values.readTimestamp(Number.NaN)).toThrow()
   })
 
-  it('网络连接串只从环境变量读取且启动错误不包含凭据', async () => {
+  it('网络连接串必须显式配置且拒绝无效值', async () => {
     const ctx = new Context()
     contexts.push(ctx)
     await ctx.plugin(DatabaseProvider)
-    await expect(ctx.plugin({ ...implementation }, { type: 'mysql' })).rejects.toThrow('urlEnv')
+    await expect(ctx.plugin({ ...implementation }, { type: 'mysql' })).rejects.toThrow('url')
     await expect(ctx.plugin({ ...implementation }, { filename: '' })).rejects.toThrow('文件名')
-    const key = `ANTARESTRA_MISSING_${randomUUID().replaceAll('-', '')}`
     await expect(
-      ctx.plugin({ ...implementation }, { type: 'postgresql', urlEnv: key }),
-    ).rejects.toThrow('环境变量未设置')
+      ctx.plugin({ ...implementation }, { type: 'postgresql', url: 'invalid-secret' }),
+    ).rejects.toThrow('连接串格式无效')
   })
 })

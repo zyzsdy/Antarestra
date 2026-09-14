@@ -9,7 +9,7 @@ plugin-auth-local:
   providerId: local
   allowRegistration: true
   bootstrapEmail: admin@example.com
-  bootstrapPasswordEnv: ANTARESTRA_ADMIN_PASSWORD
+  bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
 ```
 
 `providerId` 为 1–64 位小写字母、数字或连字符，首字符必须是字母。多实例使用不同 providerId，URL 包含该标识。省略 `allowRegistration` 时默认关闭注册；项目演示配置显式开启。

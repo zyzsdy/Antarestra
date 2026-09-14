@@ -25,18 +25,65 @@ afterEach(async () => {
 })
 
 describe('主配置查找与解析', () => {
-  it('命令行覆盖环境变量，环境变量覆盖固定默认位置，相对路径允许空格', () => {
+  it('递归解析美元前缀，保留普通字符串、类型和变量原值', () => {
+    const entries = loader.parseConfig(
+      `plugins:
+  agent:
+    nested: { value: $TOKEN }
+    list: [$EMPTY, plain, 42, true, null, prefix$TOKEN]
+    $TOKEN: literal
+`,
+      { TOKEN: '$OTHER\nsecret: value', EMPTY: '' },
+    )
+    expect(entries[0]?.config).toEqual({
+      nested: { value: '$OTHER\nsecret: value' },
+      list: ['', 'plain', 42, true, null, 'prefix$TOKEN'],
+      $TOKEN: 'literal',
+    })
+    expect(() => loader.parseConfig('plugins: { agent: { value: $MISSING } }', {})).toThrow(
+      '未配置',
+    )
+    for (const value of ['$', '$1BAD', '$TOKEN/suffix', '${TOKEN}'])
+      expect(() => loader.parseConfig(`plugins:\n  agent:\n    value: '${value}'`, {})).toThrow(
+        '格式无效',
+      )
+    expect(loader.parseConfig('plugins: { ~agent: { value: $MISSING } }', {})[0]?.enabled).toBe(
+      false,
+    )
+  })
+
+  it('读取主配置同级 .env，进程值和空字符串优先且不污染进程环境', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'antarestra-env-'))
+    directories.push(directory)
+    const filename = join(directory, 'antarestra.yml')
+    await writeFile(filename, 'plugins: { agent: { value: $TOKEN, empty: $EMPTY } }')
+    await writeFile(join(directory, '.env'), 'TOKEN="本地 # 密钥"\nEMPTY=fallback\n')
+    const before = { ...process.env }
+    expect((await loader.readConfig(filename, { TOKEN: '上下文', EMPTY: '' }))[0]?.config).toEqual({
+      value: '上下文',
+      empty: '',
+    })
+    expect((await loader.readConfig(filename, { TOKEN: undefined }))[0]?.config).toEqual({
+      value: '本地 # 密钥',
+      empty: 'fallback',
+    })
+    expect(process.env).toEqual(before)
+    await rm(join(directory, '.env'))
+    expect((await loader.readConfig(filename, { TOKEN: '独立', EMPTY: '' }))[0]?.config.value).toBe(
+      '独立',
+    )
+    await expect(loader.readConfig(filename, {})).rejects.toThrow('未配置')
+  })
+
+  it('命令行覆盖固定默认位置，相对路径允许空格', () => {
     const options = {
       argv: ['--conf=custom config/main.yml'],
-      env: { ANTARESTRA_CONFIG: 'environment.yml' },
       cwd: resolve('another directory'),
       defaultPath: resolve('antarestra.yml'),
     }
     expect(loader.resolveConfigPath(options)).toBe(resolve(options.cwd, 'custom config/main.yml'))
-    expect(loader.resolveConfigPath({ ...options, argv: [] })).toBe(
-      resolve(options.cwd, 'environment.yml'),
-    )
-    expect(loader.resolveConfigPath({ ...options, argv: [], env: {} })).toBe(options.defaultPath)
+    expect(loader.resolveConfigPath({ ...options, argv: [] })).toBe(options.defaultPath)
+    expect(loader.resolveConfigPath({ ...options, argv: [] })).toBe(options.defaultPath)
     expect(() => loader.resolveConfigPath({ ...options, argv: ['--conf='] })).toThrow('不能为空')
     expect(() => loader.resolveConfigPath({ ...options, argv: ['--conf'] })).toThrow('--conf=')
     expect(() => loader.resolveConfigPath({ ...options, argv: ['--conf=a', '--conf=b'] })).toThrow(

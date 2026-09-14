@@ -24,19 +24,19 @@ plugins:
 
 `filename: ':memory:'` 适合隔离测试，重启或卸载连接后数据消失。
 
-网络数据库只接受连接串环境变量的名称，不接受配置中的明文 URL。先通过部署环境注入 `ANTARESTRA_DATABASE_URL`，其值格式分别为 `postgres://用户:URL编码后的密码@地址:5432/数据库` 或 `mysql://用户:URL编码后的密码@地址:3306/数据库`。
+网络数据库通过 url 接收连接串，由 config-loader 统一解析环境变量。通过同级 .env 或进程环境设置 `ANTARESTRA_DATABASE_URL`，其值格式分别为 `postgres://用户:URL编码后的密码@地址:5432/数据库` 或 `mysql://用户:URL编码后的密码@地址:3306/数据库`。
 
 ```yaml
 plugins:
   database: {}
   plugin-database-kysely:
     type: postgresql
-    urlEnv: ANTARESTRA_DATABASE_URL
+    url: $ANTARESTRA_DATABASE_URL
 ```
 
 连接 MySQL 或 MariaDB 时将 `type` 改为 `mysql`。数据库和账号应预先建立；账号需要目标库的 CRUD、DDL 和索引权限，不需要全服务器管理权限。插件不会创建数据库、用户或修改授权。使用 UTF-8 数据库，并按业务需要明确字符串排序规则。
 
-SQLite 不能配置 `urlEnv`，网络数据库不能配置 `filename`，未知配置字段会拒绝。连接池最多 10 个连接，连接及迁移锁等待上限为 30 秒。连接建立失败时不发布 `database`；连接池报告连接异常时撤销实现，依赖消费者随之清理。恢复由重新加载插件负责，不提供后台自动重连平台。
+SQLite 不能配置 `url`，网络数据库不能配置 `filename`，未知配置字段会拒绝。连接池最多 10 个连接，连接及迁移锁等待上限为 30 秒。连接建立失败时不发布 `database`；连接池报告连接异常时撤销实现，依赖消费者随之清理。恢复由重新加载插件负责，不提供后台自动重连平台。
 
 ## 测试
 

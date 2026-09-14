@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { parseEnv } from 'node:util'
 import { parseDocument } from 'yaml'
 
 export interface PluginEntry {
@@ -12,7 +13,6 @@ export interface PluginEntry {
 
 export interface ConfigLocation {
   argv: readonly string[]
-  env: Readonly<Record<string, string | undefined>>
   cwd: string
   defaultPath: string
 }
@@ -22,7 +22,7 @@ export function resolveConfigPath(options: ConfigLocation): string {
   if (args.length > 1) throw new Error('只能指定一次 --conf=路径')
   const argument = args[0]
   if (argument === '--conf') throw new Error('请使用 --conf=路径 指定配置文件')
-  const selected = argument?.slice('--conf='.length) ?? options.env.ANTARESTRA_CONFIG
+  const selected = argument?.slice('--conf='.length)
   if (selected !== undefined) {
     if (!selected.trim()) throw new Error('配置文件路径不能为空')
     return resolve(options.cwd, selected)
@@ -38,7 +38,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-export function parseConfig(source: string): PluginEntry[] {
+type Environment = Readonly<Record<string, string | undefined>>
+
+function resolveEnvironment(value: unknown, env: Environment): unknown {
+  if (typeof value === 'string') {
+    if (!value.startsWith('$')) return value
+    const name = value.slice(1)
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error('环境变量引用格式无效')
+    const resolved = Object.hasOwn(env, name) ? env[name] : undefined
+    if (resolved === undefined) throw new Error(`环境变量未配置：${name}`)
+    return resolved
+  }
+  if (Array.isArray(value)) return value.map((item) => resolveEnvironment(item, env))
+  if (isRecord(value))
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, resolveEnvironment(item, env)]),
+    )
+  return value
+}
+
+export function parseConfig(source: string, env: Environment = process.env): PluginEntry[] {
   // 禁止别名展开，避免共享可变配置和递归配置；不回显 YAML 原文中的凭据。
   let document: unknown
   try {
@@ -71,7 +90,14 @@ export function parseConfig(source: string): PluginEntry[] {
     }
     identities.add(instanceId)
     counts.set(pluginId, (counts.get(pluginId) ?? 0) + 1)
-    entries.push({ pluginId, instanceId, enabled, config: value ?? {} })
+    entries.push({
+      pluginId,
+      instanceId,
+      enabled,
+      config: enabled
+        ? (resolveEnvironment(value ?? {}, env) as Record<string, unknown>)
+        : (value ?? {}),
+    })
   }
   for (const entry of entries) {
     if (counts.get(entry.pluginId)! > 1 && entry.instanceId === entry.pluginId) {
@@ -81,7 +107,10 @@ export function parseConfig(source: string): PluginEntry[] {
   return entries
 }
 
-export async function readConfig(filename: string): Promise<PluginEntry[]> {
+export async function readConfig(
+  filename: string,
+  env: Environment = process.env,
+): Promise<PluginEntry[]> {
   let source: string
   try {
     source = await readFile(filename, 'utf8')
@@ -89,7 +118,19 @@ export async function readConfig(filename: string): Promise<PluginEntry[]> {
     throw new Error(`无法读取主配置文件：${filename}`)
   }
   try {
-    return parseConfig(source)
+    let defaults: Environment = {}
+    try {
+      defaults = parseEnv(await readFile(resolve(dirname(filename), '.env'), 'utf8'))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw new Error('无法读取或解析同级 .env 文件')
+    }
+    const merged = { ...defaults }
+    for (const [name, value] of Object.entries(env)) {
+      if (value !== undefined)
+        Object.defineProperty(merged, name, { value, enumerable: true, configurable: true })
+    }
+    return parseConfig(source, merged)
   } catch (error) {
     throw new Error(`主配置文件 ${filename}：${(error as Error).message}`)
   }

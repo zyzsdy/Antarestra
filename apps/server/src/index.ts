@@ -25,7 +25,6 @@ process.once('beforeExit', shutdown)
 try {
   const filename = loader.resolveConfigPath({
     argv: process.argv.slice(2),
-    env: process.env,
     cwd: process.cwd(),
     defaultPath: fileURLToPath(new URL('../../../antarestra.yml', import.meta.url)),
   })

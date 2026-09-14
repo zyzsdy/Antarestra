@@ -11,7 +11,7 @@ export interface Config {
   providerId?: string
   allowRegistration?: boolean
   bootstrapEmail?: string
-  bootstrapPasswordEnv?: string
+  bootstrapPassword?: string
 }
 
 export default defineDatabasePlugin({
@@ -24,9 +24,7 @@ export default defineDatabasePlugin({
       typeof config !== 'object' ||
       Object.keys(config).some(
         (key) =>
-          !['providerId', 'allowRegistration', 'bootstrapEmail', 'bootstrapPasswordEnv'].includes(
-            key,
-          ),
+          !['providerId', 'allowRegistration', 'bootstrapEmail', 'bootstrapPassword'].includes(key),
       )
     )
       throw new Error('本地认证配置无效')
@@ -72,16 +70,11 @@ export default defineDatabasePlugin({
       })
     }
 
-    if (config.bootstrapEmail !== undefined || config.bootstrapPasswordEnv !== undefined) {
+    if (config.bootstrapEmail !== undefined || config.bootstrapPassword !== undefined) {
       const normalized = email(config.bootstrapEmail)
-      if (
-        !config.bootstrapPasswordEnv ||
-        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(config.bootstrapPasswordEnv)
-      )
-        throw new Error('初始化管理员必须指定密码环境变量')
+      const password = passwordInput(config.bootstrapPassword)
       // 只创建新账号，绝不按同名邮箱提升公开注册账号，也不覆盖既有密码。
       if (!(await lookup(normalized))) {
-        const password = passwordInput(process.env[config.bootstrapPasswordEnv])
         await create(normalized, password, '系统管理员', true)
       }
     }

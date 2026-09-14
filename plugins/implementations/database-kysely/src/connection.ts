@@ -10,18 +10,18 @@ import type { DatabaseType } from '@antarestra/database'
 export interface Config {
   type?: DatabaseType
   filename?: string
-  urlEnv?: string
+  url?: string
 }
 
 export function parseConfig(input: Config = {}): Required<Pick<Config, 'type'>> & Config {
   if (!input || typeof input !== 'object' || Array.isArray(input))
     throw new Error('数据库配置必须是对象')
-  if (Object.keys(input).some((key) => !['type', 'filename', 'urlEnv'].includes(key)))
+  if (Object.keys(input).some((key) => !['type', 'filename', 'url'].includes(key)))
     throw new Error('数据库配置包含未知字段')
   const type = input.type ?? 'sqlite'
   if (!['sqlite', 'postgresql', 'mysql'].includes(type)) throw new Error('不支持的数据库类型')
   if (type === 'sqlite') {
-    if (input.urlEnv !== undefined) throw new Error('SQLite 配置不接受 urlEnv')
+    if (input.url !== undefined) throw new Error('SQLite 配置不接受 url')
     if (
       input.filename !== undefined &&
       (typeof input.filename !== 'string' || !input.filename.trim())
@@ -29,8 +29,8 @@ export function parseConfig(input: Config = {}): Required<Pick<Config, 'type'>> 
       throw new Error('SQLite 文件名不能为空')
   } else {
     if (input.filename !== undefined) throw new Error('网络数据库不接受 filename')
-    if (typeof input.urlEnv !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(input.urlEnv))
-      throw new Error('网络数据库必须提供连接串环境变量名 urlEnv')
+    if (typeof input.url !== 'string' || !input.url.trim())
+      throw new Error('网络数据库必须提供连接串 url')
   }
   return { ...input, type }
 }
@@ -64,8 +64,8 @@ export async function createDialect(
       },
     })
   }
-  const url = process.env[config.urlEnv!]
-  if (!url) throw new Error('数据库连接串环境变量未设置')
+  const url = config.url
+  if (!url) throw new Error('数据库连接串未设置')
   let parsed: URL
   try {
     parsed = new URL(url)
