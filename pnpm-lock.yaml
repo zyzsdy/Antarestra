@@ -20,6 +20,9 @@ importers:
       '@antarestra/database':
         specifier: workspace:*
         version: link:plugins/definitions/database
+      '@antarestra/plugin-auth-local':
+        specifier: workspace:*
+        version: link:plugins/implementations/auth-local
       '@antarestra/plugin-database-kysely':
         specifier: workspace:*
         version: link:plugins/implementations/database-kysely
@@ -32,6 +35,9 @@ importers:
       '@antarestra/plugin-server':
         specifier: workspace:*
         version: link:plugins/adapters/server
+      '@antarestra/rbac':
+        specifier: workspace:*
+        version: link:plugins/definitions/rbac
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
@@ -68,6 +74,9 @@ importers:
       '@antarestra/database':
         specifier: workspace:*
         version: link:../../plugins/definitions/database
+      '@antarestra/plugin-auth-local':
+        specifier: workspace:*
+        version: link:../../plugins/implementations/auth-local
       '@antarestra/plugin-database-kysely':
         specifier: workspace:*
         version: link:../../plugins/implementations/database-kysely
@@ -80,6 +89,9 @@ importers:
       '@antarestra/plugin-server':
         specifier: workspace:*
         version: link:../../plugins/adapters/server
+      '@antarestra/rbac':
+        specifier: workspace:*
+        version: link:../../plugins/definitions/rbac
 
   apps/web:
     dependencies:
@@ -172,6 +184,18 @@ importers:
         specifier: ^0.29.5
         version: 0.29.5
 
+  plugins/definitions/rbac:
+    dependencies:
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../database
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@antarestra/plugin-server':
+        specifier: workspace:*
+        version: link:../../adapters/server
+
   plugins/implementations/agent-demo:
     dependencies:
       '@antarestra/agent':
@@ -180,6 +204,21 @@ importers:
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
+
+  plugins/implementations/auth-local:
+    dependencies:
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../../definitions/database
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@antarestra/plugin-server':
+        specifier: workspace:*
+        version: link:../../adapters/server
+      '@antarestra/rbac':
+        specifier: workspace:*
+        version: link:../../definitions/rbac
 
   plugins/implementations/database-kysely:
     dependencies:

@@ -15,9 +15,11 @@
     "@antarestra/agent-demo": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
-    "@antarestra/plugin-server": "workspace:*"
+    "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/rbac": "workspace:*"
   }
 }

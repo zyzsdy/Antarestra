@@ -7,6 +7,8 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
+    { "path": "../../plugins/definitions/rbac" },
+    { "path": "../../plugins/implementations/auth-local" },
     {
       "path": "../../plugins/implementations/logger"
     },

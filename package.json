@@ -9,6 +9,7 @@
     "pnpm": ">=11 <12"
   },
   "scripts": {
+    "startdevdb": "docker compose -p antarestra-dev -f compose.dev.yml up -d --wait",
     "dev": "pnpm -r --parallel --filter @antarestra/server --filter @antarestra/web dev",
     "dev:server": "pnpm --filter @antarestra/server dev",
     "dev:web": "pnpm --filter @antarestra/web dev",
@@ -25,10 +26,12 @@
     "@antarestra/agent-demo": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/rbac": "workspace:*",
     "@types/node": "^24.13.3",
     "prettier": "^3.9.6",
     "selfsigned": "^5.5.0",

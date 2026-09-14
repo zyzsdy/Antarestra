@@ -60,7 +60,7 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
       - name: 验证三种真实数据库
-        run: pnpm exec vitest run tests/integration/database.test.ts
+        run: pnpm exec vitest run tests/integration/database.test.ts tests/integration/rbac.test.ts
         env:
           ANTARESTRA_TEST_POSTGRES: postgres://antarestra:antarestra-test@127.0.0.1:5432/antarestra
           ANTARESTRA_TEST_MYSQL: mysql://antarestra:antarestra-test@127.0.0.1:3306/antarestra

@@ -1,0 +1,20 @@
+# 仅供本机开发使用；数据保留在命名卷中。
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_USER: antarestra
+      POSTGRES_PASSWORD: lp1234xy
+      POSTGRES_DB: antarestra
+    volumes:
+      - antarestra_dev_pg:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U antarestra -d antarestra']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  antarestra_dev_pg:

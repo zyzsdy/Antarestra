@@ -49,14 +49,24 @@ try {
         body.status === 'ok' &&
         Number.isFinite(Date.parse(body.time)) &&
         Object.keys(body).length === 2
-      if (healthy) break
+      if (healthy) {
+        const page = await fetch(`http://127.0.0.1:${port}/auth/local/local`, {
+          signal: AbortSignal.timeout(1000),
+        })
+        const identity = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+          signal: AbortSignal.timeout(1000),
+        })
+        healthy =
+          page.status === 200 && (await page.text()).includes('账号中心') && identity.status === 401
+        if (healthy) break
+      }
     } catch {
       // 启动过程中短暂拒绝连接是正常情况。
     }
     await delay(100)
   }
   if (!healthy) throw new Error('编译产物健康检查失败')
-  console.log('编译产物健康检查通过')
+  console.log('编译产物健康接口、认证页面与未登录拒绝检查通过')
   child.kill('SIGTERM')
   await exited
 } finally {

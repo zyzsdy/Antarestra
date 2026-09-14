@@ -1,5 +1,11 @@
 import type { Context } from '@antarestra/plugin-sdk'
-import type { DatabaseBackend, DatabaseScope, DatabaseType, Migration } from '@antarestra/database'
+import type {
+  DatabaseBackend,
+  DatabaseScope,
+  DatabaseTransaction,
+  DatabaseType,
+  Migration,
+} from '@antarestra/database'
 import { Kysely, sql } from 'kysely'
 import type { Dialect } from 'kysely'
 import { createDialect, managedDialect, parseConfig } from './connection.js'
@@ -91,6 +97,39 @@ class Backend implements DatabaseBackend {
     const pending = this.queue.then(() => migrate(this.db, this.type, pluginId, snapshot, guard))
     this.queue = pending.catch(() => {})
     await pending
+  }
+
+  transaction<T>(
+    ctx: Context,
+    callback: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T> {
+    const ownerGuard = this.guard(ctx)
+    return this.db.transaction().execute(async (trx) => {
+      let active = true
+      const guards = new Set([ownerGuard])
+      const assertActive = () => {
+        if (!active) throw new Error('数据库事务已结束')
+        for (const guard of guards) guard()
+      }
+      try {
+        assertActive()
+        const result = await callback({
+          scope: <Tables>(owner: Context, pluginId: string) => {
+            assertActive()
+            pluginName(pluginId)
+            guards.add(this.guard(owner))
+            const scoped = trx.withPlugin(
+              queryPlugin(pluginId, assertActive),
+            ) as unknown as Kysely<Tables>
+            return queries(scoped, assertActive)
+          },
+        })
+        assertActive()
+        return result
+      } finally {
+        active = false
+      }
+    })
   }
 
   close(): Promise<void> {

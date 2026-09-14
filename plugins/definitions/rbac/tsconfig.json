@@ -1,0 +1,20 @@
+{
+  "include": ["src/**/*.ts"],
+  "extends": "../../../tsconfig.base.json",
+  "references": [
+    {
+      "path": "../../../packages/plugin-sdk"
+    },
+    {
+      "path": "../database"
+    },
+    {
+      "path": "../../adapters/server"
+    }
+  ],
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  }
+}

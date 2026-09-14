@@ -9,7 +9,8 @@ Antarestra 是一个面向多用户、多 Agent 的 Cloud AI Harness。目标是
 本仓库完成的是项目初始化，还不是可部署的云端聊天产品。
 
 - 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、HTTP/HTTPS Server 插件、数据库服务与声明式插件迁移、Vue 页面壳与插件生命周期测试。
-- 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、登录与权限、业务数据持久化、聊天 API / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
+- 已实现用户基础能力：可插拔认证实例、主体与会话、RBAC 权限、local 注册登录与管理页面，使用 database 插件持久保存。
+- 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、聊天业务数据持久化、聊天 API / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
 - `agent-demo` 只回显输入，不调用模型，也不模拟真实认证或租户隔离。网页展示项目方向，尚未连接后端。
 
 ## 快速开始
@@ -45,6 +46,35 @@ pnpm start
 ```
 
 CI 使用 `node scripts/smoke-server.mjs` 在临时端口启动编译产物，验证健康接口并关闭子进程；本机也可以运行该命令。
+
+## 用户与权限
+
+服务启动后打开 <http://127.0.0.1:14451/auth/local/local>，可以注册和登录。公开注册不授予管理员权限，首次管理员通过 [local 插件配置](plugins/implementations/auth-local/README.md) 显式初始化。业务授权接入见 [RBAC 说明](plugins/definitions/rbac/README.md)。
+
+### 独立开发 PostgreSQL
+
+```powershell
+pnpm startdevdb
+```
+
+命令通过 `compose.dev.yml` 启动 PostgreSQL 18，等待健康后返回。重复执行复用容器和数据卷，不与 `pnpm dev` 联动，也不随开发服务退出。用户名与数据库名均为 `antarestra`，开发密码为 `lp1234xy`，只监听本机 `127.0.0.1:5432`。
+
+默认主配置仍使用现有 SQLite。需要切换到开发 PostgreSQL 时，将 `plugin-database-kysely: {}` 改为：
+
+```yaml
+plugin-database-kysely:
+  type: postgresql
+  urlEnv: ANTARESTRA_DATABASE_URL
+```
+
+在启动服务的 PowerShell 中设置连接串：
+
+```powershell
+$env:ANTARESTRA_DATABASE_URL = 'postgres://antarestra:lp1234xy@127.0.0.1:5432/antarestra'
+pnpm dev
+```
+
+SQLite 与 PostgreSQL 数据互不迁移。Docker 拉取失败时需恢复到 Docker Hub 的网络连接，不要删除已有数据卷来重试。一般无需关闭开发库，必要时可运行 `docker compose -p antarestra-dev -f compose.dev.yml stop`，保留数据。
 
 ## 核心设计
 

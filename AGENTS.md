@@ -59,6 +59,7 @@ Antarestra/
 | `pnpm install --frozen-lockfile` | 按锁文件恢复依赖                          |
 | `pnpm dev`                       | 同时运行网页开发服务和服务端 watch 演示   |
 | `pnpm dev:web`                   | 仅启动网页开发服务                        |
+| `pnpm startdevdb`                | 独立启动 Docker PostgreSQL 开发库         |
 | `pnpm dev:server`                | 仅启动服务端 watch 演示                   |
 | `pnpm build`                     | 按依赖顺序构建各包与网页                  |
 | `pnpm start`                     | 执行编译后的演示并持续监听 HTTP，需先构建 |
@@ -106,6 +107,8 @@ Antarestra/
 初始化的完整检查为 `pnpm check`，另用 `pnpm start` 验证编译产物。后续变更运行相关检查；插件生命周期改动应覆盖独立卸载、依赖变化和资源清理，租户功能改动应覆盖跨空间拒绝访问。
 
 默认启用 `plugin-server`，健康接口为 `/api/health`，默认监听 `0.0.0.0:14451`。CI 使用 `node scripts/smoke-server.mjs` 验证编译产物并回收子进程，避免持续监听阻塞流水线。Server 消费插件使用 `inject: ['server']`，通过带所属上下文的 `use`、`route`、`static` 注册能力；API 路径由 server 统一添加 `/api`。
+
+用户权限基础位于 `plugins/definitions/rbac`，本地认证位于 `plugins/implementations/auth-local`。需要授权的业务插件同时注入 `rbac` 和 `server`，声明权限后通过 `ctx.rbac.require()` 检查；空间范围必须由服务端解析，`system` 不覆盖工作空间。local 页面默认位于 `/auth/local/local`，管理员仅通过环境变量显式初始化。多个插件联合写入使用 `ctx.database.transaction()`，每个插件在事务中通过自己的服务操作自己的命名空间。数据库切换和本地开发库说明见根 README。
 
 网页布局修改需在浏览器检查实际页面，至少关注常规窗口和窄屏布局。不要把演示后端测试称为真实模型集成测试，也不要把内存验证称为数据库验证。
 

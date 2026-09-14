@@ -87,6 +87,12 @@ export default defineDatabasePlugin({
 
 `readJson` 返回 `unknown`，业务自行校验解析结果。可空列的表类型需要显式写 `null`；Kysely 的 `KyselyColumnType`、`Insertable`、`Selectable`、`Updateable` 类型由定义包转导出，供区分查询、插入及更新类型。
 
+## 跨插件事务
+
+`ctx.database.transaction(owner, callback)` 提供同一连接上的多个命名空间查询入口。回调收到的 `transaction.scope<Tables>(pluginContext, pluginId)` 与普通 scope 使用相同的表名前缀和生命周期校验。参与插件通过自己的服务接收 transaction 并写自己的表，不应让调用方直接操作其他插件私有表。
+
+例如 local 注册在同一个事务内调用 RBAC 的 `provision`，再写入本地账号。回调抛错时所有命名空间一起回滚；事务结束或任何参与上下文卸载后，保存的查询入口失效。该接口不提供跨数据库事务、嵌套事务或进程隔离。
+
 ## 声明式迁移
 
 迁移声明为 `{ id, steps }`，ID 使用固定宽度数字及说明，例如 `001_init`、`002_add_index`，按字典序严格递增且不可重复。操作列表支持：

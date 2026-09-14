@@ -15,10 +15,18 @@ export type DatabaseScope<Tables> = Queries<Tables> & {
   transaction<T>(callback: (db: Queries<Tables>) => Promise<T>): Promise<T>
 }
 
+export interface DatabaseTransaction {
+  scope<Tables>(ctx: Context, pluginId: string): Queries<Tables>
+}
+
 export interface DatabaseBackend {
   readonly type: DatabaseType
   scope<Tables>(ctx: Context, pluginId: string): DatabaseScope<Tables>
   migrate(ctx: Context, pluginId: string, migrations: readonly Migration[]): Promise<void>
+  transaction<T>(
+    ctx: Context,
+    callback: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T>
 }
 
 declare module '@antarestra/plugin-sdk' {
@@ -54,6 +62,14 @@ export class DatabaseService extends Service<DatabaseBackend> {
   async migrate(ctx: Context, pluginId: string, migrations: readonly Migration[]): Promise<void> {
     this.assertActive()
     await this.backend.migrate(ctx, pluginId, migrations)
+  }
+
+  transaction<T>(
+    ctx: Context,
+    callback: (transaction: DatabaseTransaction) => Promise<T>,
+  ): Promise<T> {
+    this.assertActive()
+    return this.backend.transaction(ctx, callback)
   }
 
   private assertActive(): void {

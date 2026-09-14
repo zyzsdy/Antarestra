@@ -1,0 +1,26 @@
+{
+  "name": "@antarestra/plugin-auth-local",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -b",
+    "build": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/rbac": "workspace:*"
+  }
+}
