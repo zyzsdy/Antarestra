@@ -15,16 +15,16 @@
 ```text
 Antarestra/
 ├─ apps/
-│  ├─ server/                      # 启动入口与主配置路径选择
-│  │  └─ src/plugins.ts            # 提供 server 的模块解析范围
-│  └─ web/                         # Vue + Vite 页面壳，尚无后端连接
+│  └─ server/                      # 启动入口与主配置路径选择
+│     └─ src/plugins.ts            # 提供 server 的模块解析范围
 ├─ packages/
 │  ├─ contracts/                   # 最小跨边界 DTO，不引用 pi 或 Vue
 │  ├─ config-loader/               # 核心配置加载与自动包名解析
 │  └─ plugin-sdk/                  # Cordis 统一导出与注册表辅助类
 ├─ plugins/
 │  ├─ definitions/
-│  │  └─ agent/                    # Agent 接口与 ctx.agents 运行时服务
+│  │  ├─ agent/                    # Agent 接口与 ctx.agents 运行时服务
+│  │  └─ webui/                    # WebUI 服务、Vue 页面壳与客户端页面契约
 │  ├─ implementations/
 │  │  └─ agent-demo/               # 无模型调用的回显演示，支持多实例
 │  └─ adapters/
@@ -57,8 +57,8 @@ Antarestra/
 | 命令                             | 用途                                      |
 | -------------------------------- | ----------------------------------------- |
 | `pnpm install --frozen-lockfile` | 按锁文件恢复依赖                          |
-| `pnpm dev`                       | 同时运行网页开发服务和服务端 watch 演示   |
-| `pnpm dev:web`                   | 仅启动网页开发服务                        |
+| `pnpm dev`                       | 构建后运行前端构建监听与服务端 watch      |
+| `pnpm dev:web`                   | 仅启动前端静态资源构建监听                |
 | `pnpm startdevdb`                | 独立启动 Docker PostgreSQL 开发库         |
 | `pnpm dev:server`                | 仅启动服务端 watch 演示                   |
 | `pnpm build`                     | 按依赖顺序构建各包与网页                  |
@@ -69,7 +69,7 @@ Antarestra/
 | `pnpm format:check`              | 检查格式，不改写文件                      |
 | `pnpm check`                     | 格式、类型、测试、构建的完整检查          |
 
-新增依赖示例：`pnpm --filter @antarestra/web add 包名`；根级开发工具使用 `pnpm add -Dw 包名`；工作区依赖使用 `pnpm --filter 目标包 add '内部包名@workspace:*'`。
+新增依赖示例：`pnpm --filter @antarestra/webui add 包名`；根级开发工具使用 `pnpm add -Dw 包名`；工作区依赖使用 `pnpm --filter 目标包 add '内部包名@workspace:*'`。
 
 一般选择最新稳定依赖；明确的兼容性限制可锁版本并记录原因。TypeScript 固定为 6.0.3，原因是初始化时 TypeScript 7.0.2 与 vue-tsc 3.3.11 不兼容；根包与网页包需一起升级并验证。`@types/node` 跟随 Node 24。pnpm 的 `allowBuilds` 只显式允许需要的依赖构建脚本，不全局放开。
 
@@ -108,7 +108,7 @@ Antarestra/
 
 默认启用 `plugin-server`，健康接口为 `/api/health`，默认监听 `0.0.0.0:14451`。CI 使用 `node scripts/smoke-server.mjs` 验证编译产物并回收子进程，避免持续监听阻塞流水线。Server 消费插件使用 `inject: ['server']`，通过带所属上下文的 `use`、`route`、`static` 注册能力；API 路径由 server 统一添加 `/api`。
 
-用户权限基础位于 `plugins/definitions/rbac`，本地认证位于 `plugins/implementations/auth-local`。需要授权的业务插件同时注入 `rbac` 和 `server`，声明权限后通过 `ctx.rbac.require()` 检查；空间范围必须由服务端解析，`system` 不覆盖工作空间。local 页面默认位于 `/auth/local/local`，管理员仅通过环境变量显式初始化。多个插件联合写入使用 `ctx.database.transaction()`，每个插件在事务中通过自己的服务操作自己的命名空间。数据库切换和本地开发库说明见根 README。
+用户权限基础位于 `plugins/definitions/rbac`，本地认证位于 `plugins/implementations/auth-local`。需要授权的业务插件同时注入 `rbac` 和 `server`，声明权限后通过 `ctx.rbac.require()` 检查；空间范围必须由服务端解析，`system` 不覆盖工作空间。local 页面通过 WebUI 客户端扩展注册，默认位于 `/auth/user/`，管理员仅通过环境变量显式初始化。多个插件联合写入使用 `ctx.database.transaction()`，每个插件在事务中通过自己的服务操作自己的命名空间。数据库切换和本地开发库说明见根 README。
 
 网页布局修改需在浏览器检查实际页面，至少关注常规窗口和窄屏布局。不要把演示后端测试称为真实模型集成测试，也不要把内存验证称为数据库验证。
 

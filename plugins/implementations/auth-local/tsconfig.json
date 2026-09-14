@@ -13,6 +13,9 @@
     },
     {
       "path": "../../adapters/server"
+    },
+    {
+      "path": "../../definitions/webui"
     }
   ],
   "compilerOptions": {

@@ -10,6 +10,7 @@ plugins:
     type: postgresql
     url: $ANTARESTRA_DATABASE_URL
   plugin-server: {}
+  webui: {}
   rbac: {}
   plugin-auth-local:
     providerId: local

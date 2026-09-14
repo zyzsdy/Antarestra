@@ -1,0 +1,118 @@
+import * as vue from 'vue'
+import type { ClientContext, ClientPlugin, Page } from '../src/client.js'
+import type { EntryManifest } from '../src/index.js'
+
+export const pages = vue.shallowReactive(new Map<string, Page>())
+export const failures = vue.ref<string[]>([])
+const loaded = new Map<string, { signature: string; dispose: () => void }>()
+
+function context(config: EntryManifest['config']) {
+  const effects: (() => void)[] = []
+  let active = true
+  const ctx: ClientContext = {
+    vue,
+    config,
+    page(page) {
+      if (!active) throw new Error('客户端扩展已卸载')
+      if (
+        !/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(page.path) ||
+        page.path === '/' ||
+        page.path.startsWith('/api/') ||
+        page.path.startsWith('/webui/')
+      )
+        throw new Error('页面路径必须为带结尾斜杠的普通路径')
+      if (pages.has(page.path)) throw new Error(`页面路径重复：${page.path}`)
+      pages.set(page.path, page)
+      let registered = true
+      const dispose = () => {
+        if (!registered) return
+        registered = false
+        if (pages.get(page.path) === page) pages.delete(page.path)
+      }
+      effects.push(dispose)
+      return dispose
+    },
+    effect(setup) {
+      if (!active) throw new Error('客户端扩展已卸载')
+      const dispose = setup()
+      if (dispose) effects.push(dispose)
+    },
+  }
+  return {
+    ctx,
+    dispose() {
+      active = false
+      for (const dispose of effects.splice(0).reverse()) {
+        try {
+          dispose()
+        } catch (error) {
+          console.error(error)
+        }
+      }
+    },
+  }
+}
+
+export function startExtensions() {
+  let active = true
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const controller = new AbortController()
+  async function sync() {
+    const errors: string[] = []
+    try {
+      const response = await fetch('/webui/entries.json', {
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+      if (!response.ok) throw new Error('无法获取页面扩展')
+      const entries = (await response.json()) as EntryManifest[]
+      if (!active) return
+      const signatures = new Map(entries.map((entry) => [entry.id, JSON.stringify(entry)]))
+      for (const [id, entry] of loaded) {
+        if (signatures.get(id) !== entry.signature) {
+          entry.dispose()
+          loaded.delete(id)
+        }
+      }
+      for (const entry of entries) {
+        if (loaded.has(entry.id)) continue
+        const scope = context(entry.config)
+        try {
+          const url = new URL(entry.url, location.origin)
+          if (url.origin !== location.origin || !url.pathname.startsWith('/webui/extensions/'))
+            throw new Error('扩展入口地址无效')
+          const module = (await import(/* @vite-ignore */ url.href)) as { default: ClientPlugin }
+          if (!active) {
+            scope.dispose()
+            return
+          }
+          await module.default(scope.ctx)
+          if (!active) {
+            scope.dispose()
+            return
+          }
+          loaded.set(entry.id, { signature: signatures.get(entry.id)!, dispose: scope.dispose })
+        } catch (error) {
+          scope.dispose()
+          errors.push(`扩展 ${entry.id} 加载失败`)
+          console.error(error)
+        }
+      }
+    } catch (error) {
+      if (active) errors.push('页面扩展暂时不可用，正在重试。')
+    } finally {
+      if (active) {
+        failures.value = errors
+        timer = setTimeout(sync, 3000)
+      }
+    }
+  }
+  void sync()
+  return () => {
+    active = false
+    controller.abort()
+    clearTimeout(timer)
+    for (const entry of loaded.values()) entry.dispose()
+    loaded.clear()
+  }
+}

@@ -6,6 +6,7 @@ import type { Queries } from '@antarestra/database'
 import * as database from '@antarestra/plugin-database-kysely'
 import type { Config as DatabaseConfig } from '@antarestra/plugin-database-kysely'
 import Server from '@antarestra/plugin-server'
+import WebUI from '@antarestra/webui'
 import rbac from '@antarestra/rbac'
 import type { AuthContext } from '@antarestra/rbac'
 import local from '@antarestra/plugin-auth-local'
@@ -26,6 +27,7 @@ async function setup(config: DatabaseConfig = { filename: ':memory:' }, options:
   await ctx.plugin(DatabaseProvider)
   const backend = await ctx.plugin(database, config)
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.plugin(WebUI)
   const definition = await ctx.plugin(rbac)
   const providerId = `test-${randomUUID()}`
   const localConfig = {
@@ -286,9 +288,14 @@ describe('认证边界与生命周期', () => {
     expect(response.headers.get('set-cookie')).toMatch(/httponly/i)
     expect(response.headers.get('set-cookie')).toMatch(/samesite=strict/i)
     expect(await response.text()).not.toContain('token')
-    const page = await fetch(`${app.url}${app.base}`)
+    const page = await fetch(`${app.url}/webui/entries.json`)
     expect(page.status).toBe(200)
-    expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(await page.json()).toEqual([
+      expect.objectContaining({
+        id: 'auth-local-' + app.providerId,
+        config: expect.objectContaining({ path: '/auth/user/' + app.providerId + '/' }),
+      }),
+    ])
   })
 
   it('权限范围精确匹配，未声明、过期角色绑定、过期会话一律拒绝', async () => {
@@ -374,7 +381,9 @@ describe('认证边界与生命周期', () => {
       (await app.request('/auth/me', undefined, await app.login('member@example.com'))).status,
     ).toBe(200)
     await second.dispose()
-    expect((await fetch(`${app.url}/auth/local/second`)).status).toBe(404)
+    expect(
+      JSON.stringify(await (await fetch(`${app.url}/webui/entries.json`)).json()),
+    ).not.toContain('auth-local-second')
   })
 
   it('跨插件事务整体回滚，结束后的查询拒绝执行', async () => {
@@ -445,6 +454,6 @@ describe('认证边界与生命周期', () => {
     await app.backend.dispose()
     expect((await app.request('/auth/me', undefined, cookie)).status).toBe(404)
     await expect(service.authenticate(cookie.split('=')[1])).rejects.toThrow()
-    expect((await fetch(`${app.url}${app.base}`)).status).toBe(404)
+    expect(await (await fetch(`${app.url}/webui/entries.json`)).json()).toEqual([])
   })
 })

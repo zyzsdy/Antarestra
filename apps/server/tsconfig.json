@@ -42,6 +42,9 @@
     },
     {
       "path": "../../plugins/features/hmr"
+    },
+    {
+      "path": "../../plugins/definitions/webui"
     }
   ]
 }

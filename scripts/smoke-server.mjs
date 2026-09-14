@@ -26,7 +26,7 @@ try {
     config
       .replace('plugin-server: {}', `plugin-server: { host: 127.0.0.1, port: ${port} }`)
       .replace(
-        'plugin-database-kysely: {}',
+        /plugin-database-kysely:(?: \{\}|\r?\n    type: postgresql\r?\n    url: \$ANTARESTRA_DATABASE_URL)/,
         `plugin-database-kysely: ${JSON.stringify({ filename: join(temporary, 'smoke.sqlite') })}`,
       ),
   )
@@ -54,14 +54,29 @@ try {
         Number.isFinite(Date.parse(body.time)) &&
         Object.keys(body).length === 2
       if (healthy) {
-        const page = await fetch(`http://127.0.0.1:${port}/auth/local/local`, {
+        const page = await fetch(`http://127.0.0.1:${port}/auth/user/`, {
           signal: AbortSignal.timeout(1000),
         })
         const identity = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
           signal: AbortSignal.timeout(1000),
         })
         healthy =
-          page.status === 200 && (await page.text()).includes('账号中心') && identity.status === 401
+          page.status === 200 &&
+          (await page.text()).includes('<div id="app"></div>') &&
+          identity.status === 401
+        if (healthy) {
+          const entries = await (
+            await fetch('http://127.0.0.1:' + port + '/webui/entries.json')
+          ).json()
+          const entry = entries.find((item) => item.id === 'auth-local-local')
+          healthy = entry?.config.path === '/auth/user/'
+          if (healthy) {
+            const resource = await fetch('http://127.0.0.1:' + port + entry.url)
+            healthy =
+              resource.status === 200 &&
+              resource.headers.get('content-type')?.includes('javascript')
+          }
+        }
         if (healthy) break
       }
     } catch {

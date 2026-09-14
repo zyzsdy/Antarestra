@@ -13,3 +13,6 @@ coverage/
 .vscode/
 data/
 log/
+
+/plugins/definitions/webui/public/
+/plugins/implementations/auth-local/public/

@@ -5,7 +5,8 @@ import { AuthError, readJson, textField } from '@antarestra/rbac'
 import { pluginId, migrations } from './schema.js'
 import type { Tables } from './schema.js'
 import { email, emailKey, passwordInput, hashPassword, verifyPassword } from './password.js'
-import { renderPage } from './page.js'
+import '@antarestra/webui'
+import { fileURLToPath } from 'node:url'
 
 export interface Config {
   providerId?: string
@@ -17,7 +18,7 @@ export interface Config {
 export default defineDatabasePlugin({
   name: pluginId,
   migrations,
-  inject: ['rbac', 'server'],
+  inject: ['rbac', 'server', 'webui'],
   async apply(ctx: Context, config: Config = {}) {
     if (
       !config ||
@@ -174,27 +175,15 @@ export default defineDatabasePlugin({
         http.body = { ok: true }
       },
     )
-    ctx.server.use(ctx, async (http, next) => {
-      if (http.path !== base || !['GET', 'HEAD'].includes(http.method)) return next()
-      http.type = 'html'
-      http.set(
-        'Content-Security-Policy',
-        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-      )
-      http.set('X-Content-Type-Options', 'nosniff')
-      http.body = renderPage(base, !!config.allowRegistration)
-    })
-    ctx.server.use(ctx, async (http, next) => {
-      if (!['GET', 'HEAD'].includes(http.method)) return next()
-      if (http.path === `${base}/app.js`) {
-        http.type = 'application/javascript'
-        http.body = pageScript
-      } else if (http.path === `${base}/style.css`) {
-        http.type = 'text/css'
-        http.body = pageStyle
-      } else await next()
+    ctx.webui.addEntry(ctx, {
+      id: 'auth-local-' + providerId,
+      directory: fileURLToPath(new URL('../public/', import.meta.url)),
+      config: {
+        base,
+        allowRegistration: !!config.allowRegistration,
+        path: providerId === 'local' ? '/auth/user/' : '/auth/user/' + providerId + '/',
+        title: providerId === 'local' ? '账号中心' : '账号中心 · ' + providerId,
+      },
     })
   },
 })
-
-import { pageScript, pageStyle } from './page.js'

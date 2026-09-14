@@ -11,7 +11,7 @@ Antarestra 是一个面向多用户、多 Agent 的 Cloud AI Harness。目标是
 - 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、HTTP/HTTPS Server 插件、数据库服务与声明式插件迁移、Vue 页面壳与插件生命周期测试。
 - 已实现用户基础能力：可插拔认证实例、主体与会话、RBAC 权限、local 注册登录与管理页面，使用 database 插件持久保存。
 - 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、聊天业务数据持久化、聊天 API / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
-- `agent-demo` 只回显输入，不调用模型，也不模拟真实认证或租户隔离。网页展示项目方向，尚未连接后端。
+- `agent-demo` 只回显输入，不调用模型，也不模拟真实认证或租户隔离。网页通过 WebUI 插件加载页面，账号中心已连接认证与权限 API。
 
 ## 快速开始
 
@@ -22,12 +22,14 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-网页默认位于 <http://127.0.0.1:5173>，端口占用时以 Vite 输出为准。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。网页仍未连接后端。
+网页与 API 共用 Server，首页位于 <http://localhost:14451/>。`pnpm dev` 先构建静态资源，再启动服务端与前端构建监听。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。前端文件修改后自动重新构建，刷新浏览器查看；后端扩展注册变化由浏览器每 3 秒同步。
 
 也可以分别运行：
 
 ```powershell
+pnpm build
 pnpm dev:web
+# 在另一终端运行
 pnpm dev:server
 ```
 
@@ -47,9 +49,13 @@ pnpm start
 
 CI 使用 `node scripts/smoke-server.mjs` 在临时端口启动编译产物，验证健康接口并关闭子进程；本机也可以运行该命令。
 
+## WebUI 页面插件
+
+`webui` 定义插件提供页面壳和扩展注册能力。后端使用 `ctx.webui.addEntry()` 注册浏览器入口，客户端通过 `ctx.page()` 注册 Vue 页面与导航。接入方式见 [WebUI 说明](plugins/definitions/webui/README.md)。
+
 ## 用户与权限
 
-服务启动后打开 <http://127.0.0.1:14451/auth/local/local>，可以注册和登录。公开注册不授予管理员权限，首次管理员通过 [local 插件配置](plugins/implementations/auth-local/README.md) 显式初始化。业务授权接入见 [RBAC 说明](plugins/definitions/rbac/README.md)。
+服务启动后打开 <http://127.0.0.1:14451/auth/user/>，可以注册和登录。公开注册不授予管理员权限，首次管理员通过 [local 插件配置](plugins/implementations/auth-local/README.md) 显式初始化。业务授权接入见 [RBAC 说明](plugins/definitions/rbac/README.md)。
 
 ### 独立开发 PostgreSQL
 
@@ -59,7 +65,7 @@ pnpm startdevdb
 
 命令通过 `compose.dev.yml` 启动 PostgreSQL 18，等待健康后返回。重复执行复用容器和数据卷，不与 `pnpm dev` 联动，也不随开发服务退出。用户名与数据库名均为 `antarestra`，开发密码为 `lp1234xy`，只监听本机 `127.0.0.1:5432`。
 
-默认主配置仍使用现有 SQLite。需要切换到开发 PostgreSQL 时，将 `plugin-database-kysely: {}` 改为：
+默认主配置使用 PostgreSQL，并从 `ANTARESTRA_DATABASE_URL` 读取连接串：
 
 ```yaml
 plugin-database-kysely:
