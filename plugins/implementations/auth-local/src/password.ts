@@ -21,8 +21,8 @@ export function email(value: unknown): string {
 }
 
 export function passwordInput(value: unknown): string {
-  if (typeof value !== 'string' || value.length < 12 || value.length > 128)
-    throw new AuthError(400, '密码长度必须为 12 到 128 个字符')
+  if (typeof value !== 'string' || value.length < 8 || value.length > 128)
+    throw new AuthError(400, '密码长度必须为 8 到 128 个字符')
   return value
 }
 

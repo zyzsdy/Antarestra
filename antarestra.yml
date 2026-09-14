@@ -3,14 +3,16 @@
 plugins:
   plugin-logger: {}
   database: {}
-  plugin-database-kysely: {}
+  plugin-database-kysely:
+    type: postgresql
+    url: $ANTARESTRA_DATABASE_URL
   plugin-server: {}
   rbac: {}
   plugin-auth-local:
     providerId: local
     allowRegistration: true
     # 首次创建管理员时取消以下注释，并在环境变量中设置密码。
-    # bootstrapEmail: admin@example.com
+    # bootstrapEmail: admin@ikp.yt
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
   agent: {}
   agent-demo:9ce0b8f2:
