@@ -1,4 +1,5 @@
 import type { Context, Fiber, Plugin } from '@antarestra/plugin-sdk'
+import { Entry, Loader } from '@antarestra/plugin-sdk/loader'
 import { readConfig } from './config.js'
 import type { PluginEntry } from './config.js'
 
@@ -6,11 +7,15 @@ export { createInstanceId, parseConfig, readConfig, resolveConfigPath } from './
 export type { ConfigLocation, PluginEntry } from './config.js'
 export { createPluginResolver, pluginCandidates } from './resolver.js'
 
-export type PluginResolver = (pluginId: string) => Promise<Plugin<unknown>>
+export interface PluginResolver {
+  (pluginId: string): Promise<Plugin<unknown>>
+  resolveUrl?: (pluginId: string) => string
+}
 
 export interface Config {
   filename: string
   resolvePlugin: PluginResolver
+  baseUrl?: string
 }
 
 export const name = 'config-loader'
@@ -22,8 +27,42 @@ export async function loadPlugins(
   ctx: Context,
   entries: readonly PluginEntry[],
   resolvePlugin: PluginResolver,
+  baseUrl?: string,
+): Promise<ReadonlyMap<string, Fiber>> {
+  if (baseUrl) ctx = ctx.extend({ baseUrl })
+  // 保留原有配置解析与启动语义，只向官方 loader 登记模块和实例供 HMR 使用。
+  if (!resolvePlugin.resolveUrl) return loadEntries(ctx, entries, resolvePlugin)
+  const loaderFiber = await ctx.plugin(Loader, baseUrl ? { baseUrl } : {})
+  let result: ReadonlyMap<string, Fiber> = new Map()
+  const scope = ctx.inject(['loader'], async (owner) => {
+    result = await loadEntries(owner, entries, resolvePlugin)
+  })
+  try {
+    await scope
+    return result
+  } catch (error) {
+    await scope.dispose()
+    await loaderFiber.dispose()
+    throw error
+  }
+}
+
+async function loadEntries(
+  ctx: Context,
+  entries: readonly PluginEntry[],
+  resolvePlugin: PluginResolver,
 ): Promise<ReadonlyMap<string, Fiber>> {
   const instances = new Map<string, Fiber>()
+  if (resolvePlugin.resolveUrl) {
+    const store = ctx.loader.store
+    ctx.on('internal/plugin', (fiber) => {
+      const entry = fiber.entry
+      const id = entry?.options.id
+      if (fiber.uid && id && fiber.parent.fiber === ctx.fiber && store[id] === entry) {
+        instances.set(id, fiber)
+      }
+    })
+  }
   try {
     for (const entry of entries) {
       if (!entry.enabled) continue
@@ -31,7 +70,25 @@ export async function loadPlugins(
       let fiber: Fiber
       try {
         const plugin = await resolvePlugin(entry.pluginId)
-        fiber = ctx.plugin(plugin, structuredClone(entry.config))
+        let owner = ctx
+        if (resolvePlugin.resolveUrl) {
+          const tracked = new Entry(ctx.loader)
+          tracked.parent = ctx.loader.root
+          tracked.options = {
+            id: entry.instanceId,
+            name: resolvePlugin.resolveUrl(entry.pluginId),
+            config: structuredClone(entry.config),
+          }
+          // 不调用 Entry.update()，避免引入官方 loader 的 JS 表达式配置语义。
+          owner = ctx.extend({ [Entry.key]: tracked, baseUrl: ctx.loader.ctx.baseUrl })
+          tracked.ctx = owner
+          ctx.loader.store[entry.instanceId] = tracked
+          ctx.loader.root.data.push(tracked.options)
+          fiber = owner.plugin(plugin, structuredClone(entry.config))
+          tracked.fiber = fiber
+        } else {
+          fiber = owner.plugin(plugin, structuredClone(entry.config))
+        }
         instances.set(entry.instanceId, fiber)
         await fiber
       } catch {
@@ -65,5 +122,5 @@ export async function loadPlugins(
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  await loadPlugins(ctx, await readConfig(config.filename), config.resolvePlugin)
+  await loadPlugins(ctx, await readConfig(config.filename), config.resolvePlugin, config.baseUrl)
 }

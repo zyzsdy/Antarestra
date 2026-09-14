@@ -2,6 +2,9 @@
 # 多实例的随机哈希保存后保持不变，复制实例时生成新的哈希。
 plugins:
   plugin-logger: {}
+  plugin-hmr:
+    include: [plugins]
+    exclude: []
   database: {}
   plugin-database-kysely:
     type: postgresql

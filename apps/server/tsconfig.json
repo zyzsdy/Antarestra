@@ -7,8 +7,12 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
-    { "path": "../../plugins/definitions/rbac" },
-    { "path": "../../plugins/implementations/auth-local" },
+    {
+      "path": "../../plugins/definitions/rbac"
+    },
+    {
+      "path": "../../plugins/implementations/auth-local"
+    },
     {
       "path": "../../plugins/implementations/logger"
     },
@@ -35,6 +39,9 @@
     },
     {
       "path": "../../plugins/implementations/database-kysely"
+    },
+    {
+      "path": "../../plugins/features/hmr"
     }
   ]
 }

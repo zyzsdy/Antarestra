@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node dist/index.js",
+    "start": "node --expose-internals dist/index.js",
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "dev": "tsx watch --conditions=development src/index.ts"
+    "dev": "tsx watch --include '../../packages/**/src/**' --include '../*/src/**' --exclude '../../plugins/**' --expose-internals --conditions=development src/index.ts"
   },
   "dependencies": {
     "@antarestra/adapter-cli": "workspace:*",
@@ -17,6 +17,7 @@
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
+    "@antarestra/plugin-hmr": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",

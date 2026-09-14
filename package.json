@@ -28,6 +28,7 @@
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
+    "@antarestra/plugin-hmr": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",

@@ -22,7 +22,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-网页默认位于 <http://127.0.0.1:5173>，端口占用时以 Vite 输出为准。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>，源码变化后重新运行。网页仍未连接后端。
+网页默认位于 <http://127.0.0.1:5173>，端口占用时以 Vite 输出为准。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。网页仍未连接后端。
 
 也可以分别运行：
 

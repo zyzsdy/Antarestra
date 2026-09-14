@@ -30,11 +30,15 @@ try {
         `plugin-database-kysely: ${JSON.stringify({ filename: join(temporary, 'smoke.sqlite') })}`,
       ),
   )
-  child = spawn(process.execPath, ['apps/server/dist/index.js', `--conf=${filename}`], {
-    cwd: root,
-    stdio: 'inherit',
-    windowsHide: true,
-  })
+  child = spawn(
+    process.execPath,
+    ['--expose-internals', 'apps/server/dist/index.js', `--conf=${filename}`],
+    {
+      cwd: root,
+      stdio: 'inherit',
+      windowsHide: true,
+    },
+  )
   const exited = once(child, 'exit')
   let healthy = false
   for (let attempt = 0; attempt < 100; attempt++) {

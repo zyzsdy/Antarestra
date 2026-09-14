@@ -11,7 +11,7 @@ export function createPluginResolver(
   resolveModule: (specifier: string) => string,
   importModule: (url: string) => Promise<unknown> = (url) => import(url),
 ): PluginResolver {
-  return async (pluginId) => {
+  const resolveUrl = (pluginId: string): string => {
     for (const candidate of pluginCandidates(pluginId)) {
       let url: string
       try {
@@ -23,26 +23,31 @@ export function createPluginResolver(
         }
         throw error
       }
-      // 包已命中后，导入异常（包括内部依赖缺失）必须直接失败。
-      const namespace = await importModule(url)
-      if (typeof namespace !== 'object' || namespace === null) {
-        throw new Error(`插件模块无效：${candidate}`)
-      }
-      const exports = namespace as Record<string, unknown>
-      const plugin = exports.default ?? exports
-      if (
-        typeof plugin !== 'function' &&
-        !(
-          typeof plugin === 'object' &&
-          plugin !== null &&
-          'apply' in plugin &&
-          typeof plugin.apply === 'function'
-        )
-      ) {
-        throw new Error(`插件必须导出默认函数、类或 apply 函数：${candidate}`)
-      }
-      return plugin as Plugin<unknown>
+      return url
     }
     throw new Error(`未找到插件：${pluginId}，已尝试 ${pluginCandidates(pluginId).join('、')}`)
   }
+  const resolver: PluginResolver = async (pluginId) => {
+    // 包已命中后，导入异常（包括内部依赖缺失）必须直接失败。
+    const namespace = await importModule(resolveUrl(pluginId))
+    if (typeof namespace !== 'object' || namespace === null) {
+      throw new Error(`插件模块无效：${pluginId}`)
+    }
+    const exports = namespace as Record<string, unknown>
+    const plugin = exports.default ?? exports
+    if (
+      typeof plugin !== 'function' &&
+      !(
+        typeof plugin === 'object' &&
+        plugin !== null &&
+        'apply' in plugin &&
+        typeof plugin.apply === 'function'
+      )
+    ) {
+      throw new Error(`插件必须导出默认函数、类或 apply 函数：${pluginId}`)
+    }
+    return plugin as Plugin<unknown>
+  }
+  resolver.resolveUrl = resolveUrl
+  return resolver
 }

@@ -28,7 +28,11 @@ try {
     cwd: process.cwd(),
     defaultPath: fileURLToPath(new URL('../../../antarestra.yml', import.meta.url)),
   })
-  await ctx.plugin(loader, { filename, resolvePlugin })
+  await ctx.plugin(loader, {
+    filename,
+    resolvePlugin,
+    baseUrl: new URL('../../../', import.meta.url).href,
+  })
 } catch (error) {
   console.error(error instanceof Error ? error.message : '服务端启动失败')
   process.exitCode = 1
