@@ -8,12 +8,6 @@ importers:
 
   .:
     devDependencies:
-      '@antarestra/agent':
-        specifier: workspace:*
-        version: link:plugins/definitions/agent
-      '@antarestra/agent-demo':
-        specifier: workspace:*
-        version: link:plugins/implementations/agent-demo
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:packages/config-loader
@@ -74,15 +68,6 @@ importers:
 
   apps/server:
     dependencies:
-      '@antarestra/adapter-cli':
-        specifier: workspace:*
-        version: link:../../plugins/adapters/cli
-      '@antarestra/agent':
-        specifier: workspace:*
-        version: link:../../plugins/definitions/agent
-      '@antarestra/agent-demo':
-        specifier: workspace:*
-        version: link:../../plugins/implementations/agent-demo
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:../../packages/config-loader
@@ -143,15 +128,6 @@ importers:
         specifier: 4.0.0-rc.10
         version: 4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7)
 
-  plugins/adapters/cli:
-    dependencies:
-      '@antarestra/agent':
-        specifier: workspace:*
-        version: link:../../definitions/agent
-      '@antarestra/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
-
   plugins/adapters/server:
     dependencies:
       '@antarestra/plugin-sdk':
@@ -179,15 +155,6 @@ importers:
       '@types/koa-send':
         specifier: ^4.1.6
         version: 4.1.6
-
-  plugins/definitions/agent:
-    dependencies:
-      '@antarestra/contracts':
-        specifier: workspace:*
-        version: link:../../../packages/contracts
-      '@antarestra/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
 
   plugins/definitions/database:
     dependencies:
@@ -284,15 +251,6 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
-
-  plugins/implementations/agent-demo:
-    dependencies:
-      '@antarestra/agent':
-        specifier: workspace:*
-        version: link:../../definitions/agent
-      '@antarestra/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
 
   plugins/implementations/auth-local:
     dependencies:

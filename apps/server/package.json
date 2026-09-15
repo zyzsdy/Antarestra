@@ -10,9 +10,6 @@
     "dev": "tsx watch --include '../../packages/**/src/**' --include '../*/src/**' --exclude '../../plugins/**' --expose-internals --conditions=development src/index.ts"
   },
   "dependencies": {
-    "@antarestra/adapter-cli": "workspace:*",
-    "@antarestra/agent": "workspace:*",
-    "@antarestra/agent-demo": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",

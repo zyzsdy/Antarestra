@@ -19,15 +19,3 @@ plugins:
     # bootstrapEmail: admin@ikp.yt
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
   plugin-chat-webui: {}
-  agent: {}
-  agent-demo:9ce0b8f2:
-    backendId: demo-a
-    prefix: 演示实例甲：
-  agent-demo:73f1a6d4:
-    backendId: demo-b
-    prefix: 演示实例乙：
-  adapter-cli: {}
-  # 在插件名之前加 ~ 禁用，保留该实例的配置。
-  ~agent-demo:d4f706a9:
-    backendId: demo-disabled
-    prefix: 已禁用实例：

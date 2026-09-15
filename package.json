@@ -20,8 +20,6 @@
     "start": "pnpm --filter @antarestra/server start"
   },
   "devDependencies": {
-    "@antarestra/agent": "workspace:*",
-    "@antarestra/agent-demo": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",

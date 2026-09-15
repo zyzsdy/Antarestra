@@ -22,7 +22,7 @@ plugins:
 | `include` | 字符串数组 | `[plugins]` | 监视的目录，包含子目录；空数组不监视目录 |
 | `exclude` | 字符串数组 | `[]`        | 排除的目录及其子目录，优先于 include     |
 
-相对路径以项目根目录为基准，与工作目录、`--conf` 指向的配置文件位置无关，也支持绝对目录。目录按字面路径处理，不接受 glob 通配符语义。例如排除 `plugins/implementations/agent-demo` 不会排除同级 `agent-demo-extra`。即使某个排除目录也出现在 include 中，仍不触发刷新。
+相对路径以项目根目录为基准，与工作目录、`--conf` 指向的配置文件位置无关，也支持绝对目录。目录按字面路径处理，不接受 glob 通配符语义。例如排除 `plugins/implementations/example` 不会排除同级 `example-extra`。即使某个排除目录也出现在 include 中，仍不触发刷新。
 
 沿用官方对 `node_modules` 的排除，避免监视 pnpm 依赖链接；工作区插件实际源码仍从 `plugins` 目录监视。
 

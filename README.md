@@ -8,10 +8,10 @@ Antarestra 是一个面向多用户、多 Agent 的 Cloud AI Harness。目标是
 
 本仓库完成的是项目初始化，还不是可部署的云端聊天产品。
 
-- 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、Agent 定义插件、带生命周期归属的注册表、两个演示后端实例、一次性 CLI 冒烟消费者、HTTP/HTTPS Server 插件、数据库服务与声明式插件迁移、Vue 页面壳与插件生命周期测试。
+- 已实现：工作区与构建配置、Cordis 启动器、YAML 配置加载插件、统一插件 SDK、带生命周期归属的注册表、HTTP/HTTPS Server 插件、数据库服务与声明式插件迁移、Vue 页面壳与插件生命周期测试。
 - 已实现用户基础能力：可插拔认证实例、主体与会话、RBAC 权限、local 注册登录与管理页面，使用 database 插件持久保存。
 - 尚未实现：真实 pi-agent / pi-ai 适配、预设管理、聊天业务数据持久化、聊天 API / SSE、网站嵌入、IM、工具执行、Skill 加载、MCP 和运行沙箱。
-- `agent-demo` 只回显输入，不调用模型，也不模拟真实认证或租户隔离。网页通过 WebUI 插件加载页面，账号中心已连接认证与权限 API。
+- 网页通过 WebUI 插件加载页面，账号中心已连接认证与权限 API。
 
 ## 快速开始
 
@@ -22,7 +22,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-网页与 API 共用 Server，首页位于 <http://localhost:14451/>。`pnpm dev` 先构建静态资源，再启动服务端与前端构建监听。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。前端文件修改后自动重新构建，刷新浏览器查看；后端扩展注册变化通过 HMR WebSocket 同步。
+网页与 API 共用 Server，首页位于 <http://localhost:14451/>。`pnpm dev` 先构建静态资源，再启动服务端与前端构建监听。服务端启动后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。前端文件修改后自动重新构建，刷新浏览器查看；后端扩展注册变化通过 HMR WebSocket 同步。
 
 也可以分别运行：
 
@@ -40,12 +40,7 @@ pnpm check
 pnpm start
 ```
 
-`pnpm start` 输出以下演示内容并持续监听 HTTP，不需要 API 密钥；按 Ctrl+C 关闭：
-
-```text
-[demo-a] 演示实例甲：插件骨架已就绪
-[demo-b] 演示实例乙：插件骨架已就绪
-```
+`pnpm start` 启动服务并持续监听 HTTP；按 Ctrl+C 关闭。
 
 CI 使用 `node scripts/smoke-server.mjs` 在临时端口启动编译产物，验证健康接口并关闭子进程；本机也可以运行该命令。
 
@@ -107,17 +102,17 @@ pnpm dev:server '--conf=E:/Antarestra 配置/antarestra.yml'
 ```yaml
 plugins:
   plugin-server: {}
-  agent: {}
-  agent-demo:9ce0b8f2:
-    backendId: demo-a
-    prefix: 演示实例甲：
-  agent-demo:73f1a6d4:
-    backendId: demo-b
-    prefix: 演示实例乙：
-  ~agent-demo:d4f706a9:
-    backendId: demo-disabled
-    prefix: 已禁用实例：
-  adapter-cli: {}
+  database: {}
+  plugin-database-kysely:
+    filename: antarestra.sqlite
+  webui: {}
+  rbac: {}
+  plugin-auth-local:9ce0b8f2:
+    providerId: local
+    allowRegistration: true
+  ~plugin-auth-local:73f1a6d4:
+    providerId: secondary
+    allowRegistration: false
 ```
 
 同一插件有多份配置时，每份键名都必须使用 `插件名:随机哈希`，哈希为 8–32 位小写十六进制。哈希在创建配置时生成并保存，重启不重新生成；复制实例时生成新哈希。加载器导出 `createInstanceId(pluginId)`，也可运行 `node -e "console.log(require('node:crypto').randomBytes(4).toString('hex'))"` 生成哈希。单实例可以省略哈希。启用和禁用条目不能重复使用同一个实例标识。哈希不替代 `backendId` 等业务标识，也不会让原本只支持单实例的插件获得多实例能力。
@@ -129,9 +124,9 @@ plugins:
 3. `antarestra-plugin-example`
 4. `example`
 
-任意不带 scope 的名字均遵循此顺序。带 scope 的完整包名（如 `@other/example`）直接精确匹配；以 `@` 开头的 YAML 键必须加引号，如 `'@antarestra/agent-demo:9ce0b8f2'`。通过 `pnpm --filter @antarestra/server add 包名` 安装插件后即可由配置加载。候选包不存在时才尝试下一级；包已找到但入口损坏、内部依赖缺失或执行失败时直接报错，不静默回退。
+任意不带 scope 的名字均遵循此顺序。带 scope 的完整包名（如 `@other/example`）直接精确匹配；以 `@` 开头的 YAML 键必须加引号，如 `'@antarestra/plugin-auth-local:9ce0b8f2'`。通过 `pnpm --filter @antarestra/server add 包名` 安装插件后即可由配置加载。候选包不存在时才尝试下一级；包已找到但入口损坏、内部依赖缺失或执行失败时直接报错，不静默回退。
 
-模块需导出默认函数、类、插件对象或命名的 `apply` 函数。所有插件遵循同一入口协议；`agent` 默认导出 `AgentRegistry`，不需要加载器特殊处理。
+模块需导出默认函数、类、插件对象或命名的 `apply` 函数。所有插件遵循同一入口协议；`database` 默认导出服务类，不需要加载器特殊处理。
 
 插件按声明顺序加载并等待启动。建议先声明定义，再声明实现，最后声明消费入口；CLI 这类一次性消费者只能看到其启动时已注册的后端。加载结束时检查所有插件是否就绪，缺少启用的服务依赖会报错。启动失败时回收本次创建的插件，退出时等待资源清理。有监听器或定时器的插件会持续运行，默认 CLI 演示完成后自然退出。
 
@@ -164,11 +159,11 @@ export default class ExampleService extends Service {
 
 启动器负责建立上下文、选择主配置路径、提供模块解析范围及处理退出。核心直接依赖的 `config-loader` 放在 `packages/config-loader`，读取 YAML、自动解析包名并装配启用的插件。`plugins/` 中仅放由主配置发现和加载的外部插件；将包列为 server 的依赖仅用于安装与模块解析，不会自动激活它。配置管理界面尚未实现。
 
-| 层次     | 职责                                 | 示例                                      |
-| -------- | ------------------------------------ | ----------------------------------------- |
-| 定义插件 | 定义服务接口、事件与运行时注册表     | `agent` 提供 `ctx.agents`                 |
-| 实现插件 | 适配具体能力并注册实例，承担资源回收 | `agent-pi`、`llm-pi`，当前有 `agent-demo` |
-| 消费插件 | 只依赖定义，组合能力完成业务         | 聊天编排、预设管理、网页与 IM 入口        |
+| 层次     | 职责                                 | 示例                                          |
+| -------- | ------------------------------------ | --------------------------------------------- |
+| 定义插件 | 定义服务接口、事件与运行时注册表     | `database` 提供 `ctx.database`                |
+| 实现插件 | 适配具体能力并注册实例，承担资源回收 | `plugin-database-kysely`、`plugin-auth-local` |
+| 消费插件 | 只依赖定义，组合能力完成业务         | 聊天编排、预设管理、网页与 IM 入口            |
 
 TypeScript 接口不等于运行时服务。多实现能力由定义插件提供真实注册表，具体实现往其中注册；消费者注入注册表后，还需校验选定后端是否可用。单实现服务可由实现插件直接提供，但契约仍放在定义包。
 
@@ -237,7 +232,7 @@ export function apply(ctx: Context): void {
 
 本项目采用 **上游 `cordis@4.0.0-rc.10`，精确锁定版本**。按 4.x 使用可等待的 `ctx.plugin()`、`ctx.effect()`、服务注入与 `fiber.dispose()`；不添加 3.x 兼容层，也不混用 DeepSeek Harness 的 vendored 包。允许采用 4.x 新特性，后续出现破坏性变更时再明确升级并重构。
 
-当前测试验证双实例独立卸载、重复加载无注册残留、服务撤销后的依赖清理与恢复、重复标识拒绝，以及取消请求。尚不具备运行时管理 API、配置热重载或第三方插件沙箱。
+当前测试验证双实例独立卸载、重复加载无注册残留、服务撤销后的依赖清理与恢复、重复标识拒绝；通用生命周期测试使用测试专用服务。尚不具备运行时管理 API、配置热重载或第三方插件沙箱。
 
 必须区分以下标识：
 
@@ -290,7 +285,7 @@ const preset = {
 - `agent-pi` 通过 LLM 定义层使用连接，不依赖 `llm-pi` 实现包。接入前需验证 pi 提供的流式调用扩展点，避免在两层各建一套模型请求实现。
 - 工具提供结构化输入与执行能力；Skill 提供版本化指令和资源；MCP 插件负责协议连接与远端工具映射。Skill 文本不能绕过工具授权。
 
-当前 `AgentRequest` 只是验证生命周期的最小端口。真实适配阶段需要补充预设快照、工具调用、用量、错误及持久化协议，不把 pi 的具体类型泄漏进公共契约。
+Agent 定义与真实适配将在后续实现，需要明确预设快照、工具调用、用量、错误及持久化协议，不把 pi 的具体类型泄漏进公共契约。
 
 ### 云端运行方向
 

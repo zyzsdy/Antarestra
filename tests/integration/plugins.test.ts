@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
-import { AgentRegistry } from '@antarestra/agent'
-import type { AgentRequest } from '@antarestra/agent'
-import * as demo from '@antarestra/agent-demo'
+import { TestRegistry, registration } from '../fixtures/registry.js'
 import { ScopedRegistry } from '@antarestra/plugin-sdk'
 
 const contexts: Context[] = []
@@ -13,19 +11,6 @@ function createContext(): Context {
   return ctx
 }
 
-function request(signal = new AbortController().signal): AgentRequest {
-  return {
-    context: {
-      actorId: 'test-user',
-      workspaceId: 'test-workspace',
-      conversationId: 'test-conversation',
-      channelInstanceId: 'test-cli',
-    },
-    messages: [{ role: 'user', content: '你好' }],
-    signal,
-  }
-}
-
 afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
 })
@@ -33,54 +18,42 @@ afterEach(async () => {
 describe('Cordis 4 插件生命周期', () => {
   it('同一实现加载两份，卸载甲实例不影响乙实例', async () => {
     const ctx = createContext()
-    await ctx.plugin(AgentRegistry)
-    const first = await ctx.plugin(demo, { backendId: 'a', prefix: '甲：' })
-    await ctx.plugin(demo, { backendId: 'b', prefix: '乙：' })
-    expect(ctx.agents.backends.list()).toEqual(['a', 'b'])
+    await ctx.plugin(TestRegistry)
+    const first = await ctx.plugin(registration, { id: 'a', value: '甲：' })
+    await ctx.plugin(registration, { id: 'b', value: '乙：' })
+    expect(ctx.testRegistry.entries.list()).toEqual(['a', 'b'])
 
     await first.dispose()
-    expect(ctx.agents.backends.list()).toEqual(['b'])
-    const events = await Array.fromAsync(ctx.agents.backends.get('b').run(request()))
-    expect(events).toEqual([{ type: 'text-delta', text: '乙：你好' }, { type: 'completed' }])
-    expect(() => ctx.agents.backends.get('a')).toThrow('能力不可用')
+    expect(ctx.testRegistry.entries.list()).toEqual(['b'])
+    expect(ctx.testRegistry.entries.get('b')).toBe('乙：')
+    expect(() => ctx.testRegistry.entries.get('a')).toThrow('能力不可用')
   })
 
   it('重复加载与卸载不残留注册项，根上下文销毁时一起回收', async () => {
     const ctx = createContext()
-    await ctx.plugin(AgentRegistry)
-    const registry = ctx.agents.backends
+    await ctx.plugin(TestRegistry)
+    const registry = ctx.testRegistry.entries
     for (let index = 0; index < 3; index++) {
-      const instance = await ctx.plugin(demo, { backendId: 'a', prefix: '' })
+      const instance = await ctx.plugin(registration, { id: 'a', value: '' })
       await instance.dispose()
       expect(registry.list()).toEqual([])
     }
-    await ctx.plugin(demo, { backendId: 'a', prefix: '' })
+    await ctx.plugin(registration, { id: 'a', value: '' })
     await ctx.fiber.dispose()
     expect(registry.list()).toEqual([])
   })
 
   it('服务先卸载再恢复时，依赖它的实现随之清理和重新注册', async () => {
     const ctx = createContext()
-    const definition = await ctx.plugin(AgentRegistry)
-    const implementation = await ctx.plugin(demo, { backendId: 'a', prefix: '' })
-    const oldRegistry = ctx.agents.backends
+    const definition = await ctx.plugin(TestRegistry)
+    const implementation = await ctx.plugin(registration, { id: 'a', value: '' })
+    const oldRegistry = ctx.testRegistry.entries
     await definition.dispose()
     expect(oldRegistry.list()).toEqual([])
 
-    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(TestRegistry)
     await implementation.await()
-    expect(ctx.agents.backends.list()).toEqual(['a'])
-  })
-
-  it('已取消的请求不会输出正文', async () => {
-    const ctx = createContext()
-    await ctx.plugin(AgentRegistry)
-    await ctx.plugin(demo, { backendId: 'a', prefix: '' })
-    const controller = new AbortController()
-    controller.abort()
-    expect(
-      await Array.fromAsync(ctx.agents.backends.get('a').run(request(controller.signal))),
-    ).toEqual([{ type: 'cancelled' }])
+    expect(ctx.testRegistry.entries.list()).toEqual(['a'])
   })
 })
 

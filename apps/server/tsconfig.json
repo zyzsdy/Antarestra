@@ -7,7 +7,9 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
-    { "path": "../../plugins/features/chat-webui" },
+    {
+      "path": "../../plugins/features/chat-webui"
+    },
     {
       "path": "../../plugins/definitions/rbac"
     },
@@ -22,15 +24,6 @@
     },
     {
       "path": "../../packages/config-loader"
-    },
-    {
-      "path": "../../plugins/adapters/cli"
-    },
-    {
-      "path": "../../plugins/definitions/agent"
-    },
-    {
-      "path": "../../plugins/implementations/agent-demo"
     },
     {
       "path": "../../packages/plugin-sdk"

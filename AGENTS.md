@@ -23,18 +23,17 @@ Antarestra/
 │  └─ plugin-sdk/                  # Cordis 统一导出与注册表辅助类
 ├─ plugins/
 │  ├─ definitions/
-│  │  ├─ agent/                    # Agent 接口与 ctx.agents 运行时服务
+│  │  ├─ database/                 # 数据库服务与插件迁移契约
 │  │  └─ webui/                    # WebUI 服务、Vue 页面壳与客户端页面契约
 │  ├─ implementations/
-│  │  └─ agent-demo/               # 无模型调用的回显演示，支持多实例
+│  │  └─ database-kysely/          # 数据库实现
 │  └─ adapters/
-│     ├─ cli/                      # 一次性演示消费者，仅依赖定义层
 │     └─ server/                   # HTTP/HTTPS、API 路由、中间件与静态文件
 ├─ tests/integration/             # Cordis 插件与资源生命周期测试
 ├─ .github/workflows/             # Windows / Linux 检查流程
 ├─ pnpm-workspace.yaml            # 工作区范围与明确允许的构建脚本
 ├─ pnpm-lock.yaml                 # 必须提交的依赖锁文件
-├─ antarestra.yml                  # 默认主配置与双实例演示
+├─ antarestra.yml                  # 默认主配置
 ├─ tsconfig.base.json             # 公共严格类型配置
 ├─ tsconfig.tests.json            # 测试与 Vitest 配置的类型检查
 └─ vitest.config.ts               # 测试入口，使用源码 development 导出
@@ -44,7 +43,7 @@ Antarestra/
 
 后续按实际任务增加：
 
-- 定义插件：`llm`、`identity`、`workspace`、`conversation`、`storage`、`tools`、`skills`、`mcp`。
+- 定义插件：`agent`、`llm`、`identity`、`workspace`、`conversation`、`storage`、`tools`、`skills`、`mcp`。
 - 实现插件：`agent-pi`、`llm-pi`、身份映射、数据库等；pi-agent 与 pi-ai 必须是独立插件。
 - 业务插件：`plugins/features/chat` 与 `agent-presets` 等。
 - 入口插件：网页 API、嵌入入口与具体 IM 平台适配器。
@@ -60,9 +59,9 @@ Antarestra/
 | `pnpm dev`                       | 构建后运行前端构建监听与服务端 watch      |
 | `pnpm dev:web`                   | 仅启动前端静态资源构建监听                |
 | `pnpm startdevdb`                | 独立启动 Docker PostgreSQL 开发库         |
-| `pnpm dev:server`                | 仅启动服务端 watch 演示                   |
+| `pnpm dev:server`                | 仅启动服务端 watch                        |
 | `pnpm build`                     | 按依赖顺序构建各包与网页                  |
-| `pnpm start`                     | 执行编译后的演示并持续监听 HTTP，需先构建 |
+| `pnpm start`                     | 执行编译后的服务并持续监听 HTTP，需先构建 |
 | `pnpm typecheck`                 | 检查服务端项目引用、Vue 与测试类型        |
 | `pnpm test`                      | 执行插件生命周期测试，不需要模型密钥      |
 | `pnpm format`                    | 用 Prettier 格式化仓库                    |

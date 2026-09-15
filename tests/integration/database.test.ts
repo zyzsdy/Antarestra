@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
-import { AgentRegistry } from '@antarestra/agent'
+import { TestRegistry } from '../fixtures/registry.js'
 import DatabaseProvider, {
   defineDatabasePlugin,
   defineMigration,
@@ -337,13 +337,13 @@ for (const { name, config, enabled } of backends) {
 
     it('保留其他注入依赖，依赖恢复后新作用域可用而旧作用域失效', async () => {
       const { ctx } = await setup(config)
-      const agents = await ctx.plugin(AgentRegistry)
-      const app = consumer(id(), [initial], ['agents'])
+      const dependency = await ctx.plugin(TestRegistry)
+      const app = consumer(id(), [initial], ['testRegistry'])
       const fiber = await ctx.plugin(app.plugin)
       const old = app.db
-      await agents.dispose()
+      await dependency.dispose()
       expect(() => old.selectFrom('records')).toThrow()
-      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(TestRegistry)
       await fiber.await()
       expect(app.starts).toBe(2)
       await app.db.selectFrom('records').selectAll().execute()
