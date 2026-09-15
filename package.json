@@ -10,9 +10,7 @@
   },
   "scripts": {
     "startdevdb": "docker compose -p antarestra-dev -f compose.dev.yml up -d --wait",
-    "dev": "pnpm build && pnpm -r --parallel --filter @antarestra/server --filter @antarestra/webui --filter @antarestra/plugin-auth-local dev",
-    "dev:server": "pnpm --filter @antarestra/server dev",
-    "dev:web": "pnpm -r --parallel --filter @antarestra/webui --filter @antarestra/plugin-auth-local dev",
+    "dev": "pnpm --filter @antarestra/server dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tests.json",
     "test": "vitest run",
