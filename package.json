@@ -17,7 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
-    "start": "pnpm --filter @antarestra/server start"
+    "start": "pnpm --filter @antarestra/server start",
+    "create:webui": "node scripts/create-webui.mjs"
   },
   "devDependencies": {
     "@antarestra/config-loader": "workspace:*",
@@ -37,6 +38,7 @@
     "selfsigned": "^5.5.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
+    "vite": "^8.2.2",
     "vitest": "^5.0.0",
     "ws": "^8.21.3"
   }

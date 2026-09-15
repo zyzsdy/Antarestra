@@ -2,6 +2,12 @@ import * as vue from 'vue'
 import { createRouter, createWebHistory, createMemoryHistory } from 'vue-router'
 import type { ClientContext, ClientPlugin, EntryManifest, Page } from '../src/client.js'
 
+// 扩展的编译产物通过统一构建插件读取此共享运行时。
+Object.defineProperty(globalThis, Symbol.for('antarestra.webui.vue'), {
+  value: vue,
+  configurable: true,
+})
+
 export const pages = vue.shallowReactive(new Map<string, Page>())
 export const router = createRouter({
   history: typeof window === 'undefined' ? createMemoryHistory() : createWebHistory(),

@@ -318,3 +318,7 @@ Agent 定义与真实适配将在后续实现，需要明确预设快照、工�
 - [DeepSeek Harness：Cordis 教程](https://deepseek-harness.github.io/deepseek-harness/develop/cordis-tutorial/)：将工具、LLM 与 Agent 循环拆分为插件的思路。其包名与示例需对照当前 Cordis 版本后采用。
 
 项目结构、命令和协作约定见 [AGENTS.md](./AGENTS.md)。
+
+## 新建 WebUI 插件
+
+必须使用 `pnpm create:webui <名称>` 从标准模板创建。页面在 `client/*.vue` 中编写，模板自带共享 Vue 运行时、scoped CSS、样式卸载与构建监听支持。完整步骤见 [WebUI 插件说明](plugins/definitions/webui/README.md#webui-sfc-插件模板)。

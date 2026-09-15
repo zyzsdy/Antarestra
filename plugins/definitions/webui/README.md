@@ -53,3 +53,15 @@ export default apply
 `pnpm build` 按依赖顺序构建框架与客户端扩展。服务端在同一端口提供静态资源和 HTML 回退；API、扩展资源和缺失文件不会回退到 HTML。
 
 浏览器首次获取一次清单。启用 `plugin-hmr` 时通过同源 WebSocket 接收扩展更新，替换对应页面并回收副作用；未变化的扩展保留。未启用时需要刷新页面获取新的清单。WebUI 可配置 `directory` 指向其他框架构建目录。
+
+## WebUI SFC 插件模板
+
+新增 WebUI 插件必须从 `pnpm create:webui <名称>` 生成，模板位于 `templates/webui-plugin/`。生成器只接受小写短横线名称，并拒绝覆盖已有目录；随后按命令输出安装依赖、装配服务端并启用配置。
+
+模板使用 `@antarestra/webui/vite` 的 `defineWebUIConfig()`，统一输出 `public/index.js` 和 `public/style.css`。页面用 Vue SFC 编写，可使用 `<script setup lang="ts">`、`<template>`、`<style scoped>` 和独立 CSS 文件。`client/index.ts` 只负责注册页面与插件级生命周期。
+
+组件直接从 `vue` 导入响应式与生命周期 API；构建插件将导入映射到页面壳的同一份 Vue，不能从 `@vue/*` 或 `vue/*` 导入另一套运行时。扩展只能在页面壳中运行。不要自行替换模板构建配置或把 CSS 包装成 JavaScript 字符串；样式链接由构建入口注册，通过 `ctx.effect()` 在扩展卸载、加载失败或更新时回收。CSS 相对资源地址以版本化的扩展目录解析。
+
+运行 `pnpm --filter @antarestra/plugin-<名称> dev` 启动 Vite 构建监听；现有 HMR 插件监视产物并替换整个扩展，不保留组件内状态。修改共享构建工具后需重新构建 `@antarestra/webui` 并重启扩展构建监听。
+
+模板页面是公开的示例计数器。访问业务数据时，必须另行注入 RBAC、声明权限并在服务端校验身份和空间；前端页面路由不承担鉴权。

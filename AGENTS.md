@@ -112,3 +112,5 @@ Antarestra/
 网页布局修改需在浏览器检查实际页面，至少关注常规窗口和窄屏布局。不要把演示后端测试称为真实模型集成测试，也不要把内存验证称为数据库验证。
 
 完成任务后查看 `git diff` 与 `git status`，选择性暂存并提交，例如：`git commit -m '初始化插件式云端智能体项目'`。若 Git 身份等外部条件阻塞提交，明确说明，不擅自伪造身份。除非用户要求，不推送、不改写历史。
+
+新增 WebUI 插件必须执行 `pnpm create:webui <名称>` 从 `templates/webui-plugin/` 起步，保留 `@antarestra/webui/vite` 统一构建入口。界面使用 Vue SFC，禁止用 `h()` 堆叠整页或用 JavaScript 字符串维护 CSS；少量注册适配代码可使用 `h()`。详见 `plugins/definitions/webui/README.md`。
