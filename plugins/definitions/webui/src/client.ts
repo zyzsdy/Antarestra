@@ -1,5 +1,11 @@
 import type * as Vue from 'vue'
 
+export interface EntryManifest {
+  id: string
+  url: string
+  config: Readonly<Record<string, unknown>>
+}
+
 export interface Page {
   path: string
   name: string

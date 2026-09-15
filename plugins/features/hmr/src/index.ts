@@ -2,6 +2,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { Hmr, TimerService } from '@antarestra/plugin-sdk/hmr'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { applyWebHmr } from './webui.js'
 
 export interface Config {
   include?: string[]
@@ -61,4 +62,12 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   const resolved = resolveConfig(config, fileURLToPath(new URL('.', baseUrl)))
   await ctx.plugin(TimerService)
   await ctx.plugin(Hmr, resolved)
+  ctx.inject(['webui', 'server'], (web) => {
+    const baseDir = fileURLToPath(new URL('.', baseUrl))
+    applyWebHmr(
+      web,
+      resolved.root!.map((path) => resolve(baseDir, path)),
+      directories(config.exclude, [], 'exclude').map((path) => resolve(baseDir, path)),
+    )
+  })
 }

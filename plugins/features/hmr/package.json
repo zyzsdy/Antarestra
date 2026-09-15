@@ -18,6 +18,13 @@
     "antarestra-plugin"
   ],
   "dependencies": {
-    "@antarestra/plugin-sdk": "workspace:*"
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/webui": "workspace:*",
+    "chokidar": "^5.0.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
   }
 }

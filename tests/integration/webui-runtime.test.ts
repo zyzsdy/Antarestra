@@ -1,0 +1,135 @@
+/// <reference lib="dom" />
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { pages, startExtensions } from '../../plugins/definitions/webui/client/runtime.js'
+import type { EntryManifest } from '@antarestra/webui'
+import type { ClientContext } from '@antarestra/webui/client'
+
+let stop: (() => void) | undefined
+afterEach(() => {
+  stop?.()
+  stop = undefined
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+class Socket {
+  static instances: Socket[] = []
+  onmessage?: (event: { data: string }) => void
+  onclose?: (event: { code: number }) => void
+  close = vi.fn()
+  constructor(readonly url: URL) {
+    Socket.instances.push(this)
+  }
+  entries(entries: EntryManifest[]) {
+    this.onmessage?.({ data: JSON.stringify({ type: 'entries', entries }) })
+  }
+}
+
+function setup(hmr: boolean) {
+  Socket.instances = []
+  vi.stubGlobal('location', { origin: 'https://localhost' })
+  vi.stubGlobal('WebSocket', Socket)
+  const fetcher = vi.fn(
+    async () =>
+      new Response('[]', {
+        headers: hmr ? { 'X-WebUI-HMR': '/webui/hmr' } : {},
+      }),
+  )
+  vi.stubGlobal('fetch', fetcher)
+  return fetcher
+}
+
+function entry(id: string, version = 1): EntryManifest {
+  return { id, url: `/webui/extensions/${id}/${version}/index.js`, config: { id, version } }
+}
+
+describe('浏览器扩展更新', () => {
+  it('未启用 HMR 时只获取一次清单，不创建连接或轮询', async () => {
+    vi.useFakeTimers()
+    const fetcher = setup(false)
+    stop = startExtensions()
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(Socket.instances).toHaveLength(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('推送仅替换受影响的组件并清理副作用；重复快照不重复加载', async () => {
+    const fetcher = setup(true)
+    const disposed: string[] = []
+    const loader = vi.fn(async () => ({
+      default: (ctx: ClientContext) => {
+        const id = String(ctx.config.id)
+        ctx.page({ path: `/${id}/`, name: id, component: { template: String(ctx.config.version) } })
+        ctx.effect(() => () => {
+          disposed.push(id)
+        })
+      },
+    }))
+    stop = startExtensions(loader)
+    await vi.waitFor(() => expect(Socket.instances).toHaveLength(1))
+    const socket = Socket.instances[0]!
+    expect(socket.url.protocol).toBe('wss:')
+    socket.entries([entry('first'), entry('second')])
+    await vi.waitFor(() => expect(pages.size).toBe(2))
+    const unaffected = pages.get('/second/')
+    const original = pages.get('/first/')
+    socket.entries([entry('first', 2), entry('second')])
+    socket.entries([entry('first', 2), entry('second')])
+    await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(3))
+    expect(pages.get('/first/')).not.toBe(original)
+    expect(pages.get('/second/')).toBe(unaffected)
+    expect(disposed).toEqual(['first'])
+    socket.entries([entry('second')])
+    await vi.waitFor(() => expect(pages.has('/first/')).toBe(false))
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    stop()
+    expect(pages.size).toBe(0)
+    expect(socket.close).toHaveBeenCalled()
+    expect(disposed).toEqual(['first', 'first', 'second'])
+  })
+
+  it('异常断线重连，正常停用与页面卸载后停止重连', async () => {
+    vi.useFakeTimers()
+    const fetcher = setup(true)
+    stop = startExtensions()
+    await vi.advanceTimersByTimeAsync(0)
+    Socket.instances[0]!.onclose?.({ code: 1006 })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(Socket.instances).toHaveLength(2)
+    fetcher.mockImplementation(async () => new Response('[]'))
+    Socket.instances[1]!.onclose?.({ code: 1000 })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(Socket.instances).toHaveLength(2)
+    expect(vi.getTimerCount()).toBe(0)
+    Socket.instances[1]!.onclose?.({ code: 1006 })
+    stop()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(Socket.instances).toHaveLength(2)
+  })
+
+  it('扩展仍在异步初始化时卸载页面，也立即回收已注册的页面与副作用', async () => {
+    setup(true)
+    let finish!: () => void
+    const initializing = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    const dispose = vi.fn()
+    stop = startExtensions(async () => ({
+      default: async (ctx: ClientContext) => {
+        ctx.page({ path: '/pending/', name: '等待中', component: {} })
+        ctx.effect(() => dispose)
+        await initializing
+      },
+    }))
+    await vi.waitFor(() => expect(Socket.instances).toHaveLength(1))
+    Socket.instances[0]!.entries([entry('pending')])
+    await vi.waitFor(() => expect(pages.has('/pending/')).toBe(true))
+    stop()
+    expect(pages.size).toBe(0)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    finish()
+    await initializing
+    expect(pages.size).toBe(0)
+  })
+})

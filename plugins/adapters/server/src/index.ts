@@ -6,6 +6,8 @@ import type { RouterMiddleware } from '@koa/router'
 import compose from 'koa-compose'
 import { readFile } from 'node:fs/promises'
 import { createServer, METHODS } from 'node:http'
+import type { IncomingMessage } from 'node:http'
+import type { Duplex } from 'node:stream'
 import { createServer as createSecureServer } from 'node:https'
 import type { AddressInfo, Socket } from 'node:net'
 import { resolve } from 'node:path'
@@ -54,6 +56,10 @@ export class HttpServer extends Service<Config> {
   private dispatch: Middleware = async () => {}
   private listener: ReturnType<typeof createServer> | undefined
   private active = true
+  private readonly upgrades = new Map<
+    string,
+    (request: IncomingMessage, socket: Duplex, head: Buffer) => void
+  >()
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'server')
@@ -64,6 +70,7 @@ export class HttpServer extends Service<Config> {
       this.middleware.clear()
       this.routes.clear()
       this.directories.clear()
+      this.upgrades.clear()
       this.dispatch = async () => {}
     })
   }
@@ -140,6 +147,11 @@ export class HttpServer extends Service<Config> {
         )
       : createServer(app.callback())
     this.listener = listener
+    listener.on('upgrade', (request, socket, head) => {
+      const handler = this.upgrades.get((request.url ?? '').split('?')[0]!)
+      if (handler) handler(request, socket, head)
+      else socket.destroy()
+    })
     const sockets = new Set<Socket>()
     listener.on('connection', (socket) => {
       sockets.add(socket)
@@ -171,6 +183,20 @@ export class HttpServer extends Service<Config> {
     const address = this.address!
     const hostname = address.family === 'IPv6' ? `[${address.address}]` : address.address
     logger.info('服务已监听 %s://%s:%d', https ? 'https' : 'http', hostname, address.port)
+  }
+
+  upgrade(
+    owner: Context,
+    path: string,
+    handler: (request: IncomingMessage, socket: Duplex, head: Buffer) => void,
+  ): Dispose {
+    path = normalizePath(path)
+    if (this.upgrades.has(path)) throw new Error(`升级路径重复：${path}`)
+    return this.register(
+      owner,
+      () => this.upgrades.set(path, handler),
+      () => this.upgrades.delete(path),
+    )
   }
 
   use(owner: Context, middleware: Middleware): Dispose {

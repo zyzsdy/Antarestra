@@ -1,6 +1,5 @@
 import * as vue from 'vue'
-import type { ClientContext, ClientPlugin, Page } from '../src/client.js'
-import type { EntryManifest } from '../src/index.js'
+import type { ClientContext, ClientPlugin, EntryManifest, Page } from '../src/client.js'
 
 export const pages = vue.shallowReactive(new Map<string, Page>())
 export const failures = vue.ref<string[]>([])
@@ -53,19 +52,19 @@ function context(config: EntryManifest['config']) {
   }
 }
 
-export function startExtensions() {
+export function startExtensions(
+  loadPlugin: (url: string) => Promise<{ default: ClientPlugin }> = (url) =>
+    import(/* @vite-ignore */ url),
+) {
   let active = true
   let timer: ReturnType<typeof setTimeout> | undefined
   const controller = new AbortController()
-  async function sync() {
+  let socket: WebSocket | undefined
+  let queue = Promise.resolve()
+  const pendingScopes = new Set<ReturnType<typeof context>>()
+  async function sync(entries: EntryManifest[]) {
     const errors: string[] = []
     try {
-      const response = await fetch('/webui/entries.json', {
-        signal: controller.signal,
-        cache: 'no-store',
-      })
-      if (!response.ok) throw new Error('无法获取页面扩展')
-      const entries = (await response.json()) as EntryManifest[]
       if (!active) return
       const signatures = new Map(entries.map((entry) => [entry.id, JSON.stringify(entry)]))
       for (const [id, entry] of loaded) {
@@ -77,11 +76,12 @@ export function startExtensions() {
       for (const entry of entries) {
         if (loaded.has(entry.id)) continue
         const scope = context(entry.config)
+        pendingScopes.add(scope)
         try {
           const url = new URL(entry.url, location.origin)
           if (url.origin !== location.origin || !url.pathname.startsWith('/webui/extensions/'))
             throw new Error('扩展入口地址无效')
-          const module = (await import(/* @vite-ignore */ url.href)) as { default: ClientPlugin }
+          const module = await loadPlugin(url.href)
           if (!active) {
             scope.dispose()
             return
@@ -96,22 +96,69 @@ export function startExtensions() {
           scope.dispose()
           errors.push(`扩展 ${entry.id} 加载失败`)
           console.error(error)
+        } finally {
+          pendingScopes.delete(scope)
         }
       }
     } catch (error) {
-      if (active) errors.push('页面扩展暂时不可用，正在重试。')
+      if (active) errors.push('页面扩展暂时不可用，请刷新页面重试。')
     } finally {
       if (active) {
         failures.value = errors
-        timer = setTimeout(sync, 3000)
       }
     }
   }
-  void sync()
+  function schedule(entries: EntryManifest[]) {
+    queue = queue.then(() => (active ? sync(entries) : undefined))
+  }
+  function connect(path: string) {
+    if (!active) return
+    const url = new URL(path, location.origin)
+    if (url.origin !== location.origin || url.pathname !== '/webui/hmr') return
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    socket = new WebSocket(url)
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(String(event.data)) as {
+          type?: string
+          entries?: EntryManifest[]
+        }
+        if (message.type === 'entries' && Array.isArray(message.entries)) schedule(message.entries)
+      } catch (error) {
+        console.error('HMR 消息无效', error)
+      }
+    }
+    socket.onclose = () => {
+      if (active) timer = setTimeout(() => void initialize(true), 1000)
+    }
+  }
+  async function initialize(reconnecting = false) {
+    try {
+      const response = await fetch('/webui/entries.json', {
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+      if (!response.ok) throw new Error('无法获取页面扩展')
+      const entries = (await response.json()) as EntryManifest[]
+      if (!active) return
+      schedule(entries)
+      const hmr = response.headers.get('X-WebUI-HMR')
+      if (hmr) connect(hmr)
+    } catch (error) {
+      if (active) {
+        failures.value = ['页面扩展暂时不可用，请刷新页面重试。']
+        if (reconnecting) timer = setTimeout(() => void initialize(true), 1000)
+      }
+    }
+  }
+  void initialize()
   return () => {
     active = false
     controller.abort()
     clearTimeout(timer)
+    socket?.close()
+    for (const scope of pendingScopes) scope.dispose()
+    pendingScopes.clear()
     for (const entry of loaded.values()) entry.dispose()
     loaded.clear()
   }

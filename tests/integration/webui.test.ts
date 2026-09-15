@@ -39,6 +39,7 @@ describe('WebUI 插件', () => {
     ])
       expect((await app.get(path)).status).toBe(404)
     expect((await app.get('/api/health')).status).toBe(200)
+    expect((await app.get('/webui/entries.json')).headers.get('X-WebUI-HMR')).toBeNull()
   })
   it('入口重复拒绝，独立卸载回收清单与资源，旧回收不删除新入口', async () => {
     const app = await setup()
