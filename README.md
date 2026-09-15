@@ -22,7 +22,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-网页与 API 共用 Server，首页位于 <http://localhost:14451/>。`pnpm dev` 先构建静态资源，再启动服务端与前端构建监听。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。前端文件修改后自动重新构建，刷新浏览器查看；后端扩展注册变化由浏览器每 3 秒同步。
+网页与 API 共用 Server，首页位于 <http://localhost:14451/>。`pnpm dev` 先构建静态资源，再启动服务端与前端构建监听。服务端执行一次双实例演示后持续监听 HTTP，健康接口为 <http://127.0.0.1:14451/api/health>。开发时插件源码修改由 [HMR 插件](plugins/features/hmr/README.md) 在原进程中热替换，`packages` / `apps` 源码修改由 `tsx watch` 重启服务。前端文件修改后自动重新构建，刷新浏览器查看；后端扩展注册变化通过 HMR WebSocket 同步。
 
 也可以分别运行：
 
@@ -51,7 +51,7 @@ CI 使用 `node scripts/smoke-server.mjs` 在临时端口启动编译产物，�
 
 ## WebUI 页面插件
 
-`webui` 定义插件提供页面壳和扩展注册能力。后端使用 `ctx.webui.addEntry()` 注册浏览器入口，客户端通过 `ctx.page()` 注册 Vue 页面与导航。接入方式见 [WebUI 说明](plugins/definitions/webui/README.md)。
+`webui` 定义插件提供抽象 Vue 框架和扩展注册能力。后端使用 `ctx.webui.addEntry()` 注册浏览器入口，客户端通过 `ctx.page()` 注册 Vue 页面及 Vue Router 守卫。WebUI 不提供业务页面或自动导航，公共通知与对话框通过前端 Vue inject 获取。接入方式见 [WebUI 说明](plugins/definitions/webui/README.md)。默认首页由 [chat-webui](plugins/features/chat-webui/README.md) 提供，通过 RBAC 的 `web` 请求通道解析用户与个人工作空间，验证 `useChatWebUI` 权限；访客跳转登录。当前只提供界面预览，不发送消息或存储聊天记录。
 
 ## 用户与权限
 

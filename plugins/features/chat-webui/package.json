@@ -1,5 +1,5 @@
 {
-  "name": "@antarestra/webui",
+  "name": "@antarestra/plugin-chat-webui",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,21 +16,15 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "development": "./src/client.ts",
-      "default": "./dist/client.js"
     }
   },
   "dependencies": {
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
-    "vue": "^3.5.42",
-    "vue-router": "^5.3.1"
+    "@antarestra/rbac": "workspace:*",
+    "@antarestra/webui": "workspace:*"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.8",
     "typescript": "6.0.3",
     "vite": "^8.2.2",
     "vue-tsc": "^3.3.11"

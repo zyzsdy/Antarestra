@@ -28,6 +28,21 @@ export interface ProviderHandle {
 export interface Config {
   sessionHours?: number
 }
+export type DefaultRole = 'guest' | 'user' | 'admin'
+export interface RequestIdentity {
+  readonly actorId: string | null
+  readonly workspaceId: string | null
+  readonly roles: readonly DefaultRole[]
+  readonly auth?: AuthContext
+}
+export interface RequestAccess extends RequestIdentity {
+  readonly requestSource: string
+}
+export interface RequestSourceProvider {
+  readonly id: string
+  readonly loginPath?: string
+  resolve(request: unknown): Promise<RequestIdentity | undefined>
+}
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
 const adminPermissions = [
@@ -44,7 +59,11 @@ declare module '@antarestra/plugin-sdk' {
 
 export class RbacService extends Service<Config> {
   private readonly providers = new Map<string, { ready: boolean }>()
-  private readonly permissions = new Map<string, string>()
+  private readonly permissions = new Map<
+    string,
+    { description: string; defaultRoles: readonly DefaultRole[] }
+  >()
+  private readonly sources = new Map<string, Map<string, RequestSourceProvider>>()
   private readonly publicPaths = new Set<string>()
   private readonly requests = new WeakMap<object, AuthContext>()
   private readonly hours: number
@@ -61,7 +80,7 @@ export class RbacService extends Service<Config> {
     if (!Number.isFinite(this.hours) || this.hours <= 0 || this.hours > 720)
       throw new Error('会话有效期必须在 0 到 720 小时之间')
     for (const permission of adminPermissions)
-      this.registerPermission(ctx, permission, '用户与权限管理')
+      this.registerPermission(ctx, permission, '用户与权限管理', ['admin'])
     ctx.server.use(ctx, errors)
     ctx.server.use(ctx, async (http, next) => {
       if ((http.path !== '/api' && !http.path.startsWith('/api/')) || http.path === '/api/health')
@@ -75,6 +94,7 @@ export class RbacService extends Service<Config> {
     ctx.effect(() => () => {
       this.providers.clear()
       this.permissions.clear()
+      this.sources.clear()
       this.publicPaths.clear()
     })
     this.routes(ctx)
@@ -87,16 +107,133 @@ export class RbacService extends Service<Config> {
       : this.ctx.database.scope<Tables>(this.ctx, pluginId)
   }
 
-  registerPermission(owner: Context, permission: string, description: string): () => Promise<void> {
+  registerPermission(
+    owner: Context,
+    permission: string,
+    description: string,
+    defaultRoles: readonly DefaultRole[] = [],
+  ): () => Promise<void> {
     this.ctx.fiber.assertActive()
-    if (!/^[a-z][a-z0-9_.]{0,127}$/.test(permission)) throw new Error('权限标识无效')
+    if (!/^[a-z][a-zA-Z0-9_.]{0,127}$/.test(permission)) throw new Error('权限标识无效')
+    if (
+      !description.trim() ||
+      defaultRoles.some((role) => !['guest', 'user', 'admin'].includes(role))
+    )
+      throw new Error('权限描述或默认角色无效')
     if (this.permissions.has(permission)) throw new Error(`权限重复注册：${permission}`)
+    const declaration = { description, defaultRoles: [...new Set(defaultRoles)] }
     return owner.effect(() => {
-      this.permissions.set(permission, description)
+      this.permissions.set(permission, declaration)
       return () => {
-        this.permissions.delete(permission)
+        if (this.permissions.get(permission) === declaration) this.permissions.delete(permission)
       }
     })
+  }
+
+  registerRequestSource(
+    owner: Context,
+    source: string,
+    provider: RequestSourceProvider,
+  ): () => Promise<void> {
+    this.ctx.fiber.assertActive()
+    if (!source.trim() || !provider.id.trim()) throw new Error('请求通道标识无效')
+    if (
+      provider.loginPath &&
+      (!provider.loginPath.startsWith('/') ||
+        provider.loginPath.startsWith('//') ||
+        /[\\?#]/.test(provider.loginPath))
+    )
+      throw new Error('登录路径无效')
+    const providers = this.sources.get(source) ?? new Map<string, RequestSourceProvider>()
+    if (providers.has(provider.id)) throw new Error('请求通道提供者重复注册')
+    return owner.effect(() => {
+      this.sources.set(source, providers)
+      providers.set(provider.id, provider)
+      return () => {
+        if (providers.get(provider.id) === provider) providers.delete(provider.id)
+        if (!providers.size && this.sources.get(source) === providers) this.sources.delete(source)
+      }
+    })
+  }
+
+  loginPath(source: string, providerId?: string): string | undefined {
+    if (providerId) return this.sources.get(source)?.get(providerId)?.loginPath
+    return [...(this.sources.get(source)?.values() ?? [])].find((provider) => provider.loginPath)
+      ?.loginPath
+  }
+
+  async resolveRequest(source: string, request: unknown): Promise<RequestAccess> {
+    this.ctx.fiber.assertActive()
+    const providers = this.sources.get(source)
+    if (!providers?.size) throw new AuthError(503, '请求通道不可用')
+    let identity: RequestIdentity | undefined
+    for (const provider of providers.values()) {
+      const result = await provider.resolve(request)
+      this.ctx.fiber.assertActive()
+      if (providers.get(provider.id) !== provider) throw new AuthError(503, '请求通道已卸载')
+      if (!result) continue
+      if (identity) throw new AuthError(403, '请求身份存在歧义')
+      identity = result
+    }
+    if (this.sources.get(source) !== providers || !providers.size)
+      throw new AuthError(503, '请求通道已卸载')
+    return Object.freeze({
+      requestSource: source,
+      ...(identity ?? { actorId: null, workspaceId: null, roles: ['guest'] as const }),
+    })
+  }
+
+  async authorizeRequest(
+    source: string,
+    request: unknown,
+    permission: string,
+  ): Promise<RequestAccess> {
+    const identity = await this.resolveRequest(source, request)
+    const declaration = this.permissions.get(permission)
+    if (!declaration) throw new AuthError(403, '权限未注册')
+    const allowed =
+      identity.roles.some((role) => declaration.defaultRoles.includes(role)) ||
+      (identity.auth &&
+        identity.workspaceId &&
+        (await this.can(identity.auth, permission, identity.workspaceId)))
+    if (!allowed)
+      throw new AuthError(
+        identity.actorId ? 403 : 401,
+        identity.actorId ? '没有操作权限' : '请先登录',
+      )
+    return identity
+  }
+
+  async defaultRoles(auth: AuthContext): Promise<readonly DefaultRole[]> {
+    const active = await this.db()
+      .selectFrom('session')
+      .innerJoin('identity', 'identity.id', 'session.identity_id')
+      .innerJoin('principal', 'principal.id', 'identity.principal_id')
+      .innerJoin('provider', 'provider.id', 'identity.provider_id')
+      .select('session.id')
+      .where('session.id', '=', auth.sessionId)
+      .where('identity.id', '=', auth.identityId)
+      .where('principal.id', '=', auth.principalId)
+      .where('provider.id', '=', auth.providerId)
+      .where('session.expires_at', '>', Date.now())
+      .where('principal.status', '=', 'active')
+      .where('identity.status', '=', 'active')
+      .where('provider.status', '=', 'active')
+      .executeTakeFirst()
+    if (!active || !this.providers.get(auth.providerId)?.ready) throw new AuthError(401, '请先登录')
+    const admin = await this.db()
+      .selectFrom('binding')
+      .innerJoin('role', 'role.id', 'binding.role_id')
+      .select('role.id')
+      .where('binding.principal_id', '=', auth.principalId)
+      .where('role.id', '=', 'administrator')
+      .where('role.status', '=', 'active')
+      .where('binding.scope_key', '=', hash('system'))
+      .where((eb) =>
+        eb.or([eb('binding.expires_at', 'is', null), eb('binding.expires_at', '>', Date.now())]),
+      )
+      .executeTakeFirst()
+    return admin ? ['user', 'admin'] : ['user']
   }
 
   publicRoute(owner: Context, method: string, path: string): () => Promise<void> {
@@ -296,6 +433,16 @@ export class RbacService extends Service<Config> {
   async can(auth: AuthContext, permission: string, scope = 'system'): Promise<boolean> {
     if (!this.permissions.has(permission) || !this.providers.get(auth.providerId)?.ready)
       return false
+    if (scope === 'system' && this.permissions.get(permission)!.defaultRoles.length) {
+      try {
+        const roles = await this.defaultRoles(auth)
+        if (roles.some((role) => this.permissions.get(permission)?.defaultRoles.includes(role)))
+          return true
+      } catch (error) {
+        if (error instanceof AuthError && error.status === 401) return false
+        throw error
+      }
+    }
     const db = this.db()
     const row = await db
       .selectFrom('binding')
@@ -455,7 +602,7 @@ export class RbacService extends Service<Config> {
       http.body = {
         roles: await db.selectFrom('role').selectAll().execute(),
         grants: await db.selectFrom('role_permission').selectAll().execute(),
-        permissions: [...this.permissions].map(([key, description]) => ({ key, description })),
+        permissions: [...this.permissions].map(([key, declaration]) => ({ key, ...declaration })),
       }
     })
     ctx.server.route(

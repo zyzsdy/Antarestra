@@ -16,3 +16,4 @@ log/
 
 /plugins/definitions/webui/public/
 /plugins/implementations/auth-local/public/
+/plugins/features/chat-webui/public/

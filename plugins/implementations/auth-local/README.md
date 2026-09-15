@@ -36,3 +36,9 @@ local 通过 database 跨插件事务和 RBAC 服务写入身份，自己只操�
 ## 页面扩展
 
 本插件依赖 webui，通过客户端入口注册 Vue 页面。默认实例页面为 /auth/user/，其他实例为 /auth/user/<providerId>/。前端构建输出到 public/，由 WebUI 注册资源；认证 API 路径保持不变。页面与导航随插件卸载回收。详见 [WebUI 说明](../../definitions/webui/README.md)。
+
+## Web 请求通道
+
+本插件注册 RBAC 的 `web` 请求通道。验证 Cookie 或 Bearer 会话后返回 actorId、稳定个人 workspaceId 和默认角色。普通登录者为 `user`，有效系统管理员绑定额外提供 `admin`。多个本地认证实例仅认领自己的会话。新功能声明的默认权限即时生效，无需手动分配。
+
+从聊天入口跳转的登录页面带有 `returnTo=/`；登录成功返回首页，只接受该固定返回目标。其他请求继续留在账号中心。

@@ -7,6 +7,7 @@ import type { Tables } from './schema.js'
 import { email, emailKey, passwordInput, hashPassword, verifyPassword } from './password.js'
 import '@antarestra/webui'
 import { fileURLToPath } from 'node:url'
+import type { HttpContext } from '@antarestra/plugin-server'
 
 export interface Config {
   providerId?: string
@@ -34,6 +35,21 @@ export default defineDatabasePlugin({
     const providerId = config.providerId ?? 'local'
     const provider = await ctx.rbac.registerProvider(ctx, providerId, pluginId)
     const base = `/auth/local/${providerId}`
+    ctx.rbac.registerRequestSource(ctx, 'web', {
+      id: providerId,
+      loginPath: providerId === 'local' ? '/auth/user/' : `/auth/user/${providerId}/`,
+      async resolve(request) {
+        const http = request as HttpContext
+        const auth = await ctx.rbac.authenticate(ctx.rbac.token(http))
+        if (!auth || auth.providerId !== providerId) return
+        return {
+          actorId: auth.principalId,
+          workspaceId: `personal:${auth.principalId}`,
+          roles: await ctx.rbac.defaultRoles(auth),
+          auth,
+        }
+      },
+    })
     const db = ctx.database.scope<Tables>(ctx, pluginId)
     const lookup = (normalized: string) =>
       db

@@ -69,12 +69,20 @@ try {
             await fetch('http://127.0.0.1:' + port + '/webui/entries.json')
           ).json()
           const entry = entries.find((item) => item.id === 'auth-local-local')
-          healthy = entry?.config.path === '/auth/user/'
+          const chat = entries.find((item) => item.id === 'chat-webui')
+          healthy = entry?.config.path === '/auth/user/' && !!chat
           if (healthy) {
             const resource = await fetch('http://127.0.0.1:' + port + entry.url)
             healthy =
               resource.status === 200 &&
               resource.headers.get('content-type')?.includes('javascript')
+            const access = await fetch(`http://127.0.0.1:${port}/api/chat-webui/session`)
+            const chatResource = await fetch(`http://127.0.0.1:${port}${chat.url}`)
+            healthy =
+              healthy &&
+              access.status === 401 &&
+              (await access.json()).loginPath === '/auth/user/' &&
+              chatResource.status === 200
           }
         }
         if (healthy) break
@@ -85,7 +93,7 @@ try {
     await delay(100)
   }
   if (!healthy) throw new Error('编译产物健康检查失败')
-  console.log('编译产物健康接口、认证页面与未登录拒绝检查通过')
+  console.log('编译产物健康接口、认证与聊天扩展、未登录拒绝检查通过')
   child.kill('SIGTERM')
   await exited
 } finally {

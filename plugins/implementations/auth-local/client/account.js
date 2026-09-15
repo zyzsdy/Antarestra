@@ -57,6 +57,10 @@ export function mountAccount(root, base, signal) {
     await api(base + '/login', values)
     el('login').reset()
     message('登录成功')
+    if (new URLSearchParams(location.search).get('returnTo') === '/') {
+      location.assign('/')
+      return
+    }
     await refresh()
   })
   bindForm('register', async (values) => {

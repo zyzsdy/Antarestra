@@ -1,7 +1,12 @@
 import * as vue from 'vue'
+import { createRouter, createWebHistory, createMemoryHistory } from 'vue-router'
 import type { ClientContext, ClientPlugin, EntryManifest, Page } from '../src/client.js'
 
 export const pages = vue.shallowReactive(new Map<string, Page>())
+export const router = createRouter({
+  history: typeof window === 'undefined' ? createMemoryHistory() : createWebHistory(),
+  routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }],
+})
 export const failures = vue.ref<string[]>([])
 const loaded = new Map<string, { signature: string; dispose: () => void }>()
 
@@ -10,23 +15,31 @@ function context(config: EntryManifest['config']) {
   let active = true
   const ctx: ClientContext = {
     vue,
+    router,
     config,
     page(page) {
       if (!active) throw new Error('客户端扩展已卸载')
       if (
         !/^\/(?:[a-zA-Z0-9_-]+\/)*$/.test(page.path) ||
-        page.path === '/' ||
         page.path.startsWith('/api/') ||
         page.path.startsWith('/webui/')
       )
         throw new Error('页面路径必须为带结尾斜杠的普通路径')
       if (pages.has(page.path)) throw new Error(`页面路径重复：${page.path}`)
       pages.set(page.path, page)
+      const removeRoute = router.addRoute({
+        path: page.path,
+        component: page.component,
+        ...(page.beforeEnter ? { beforeEnter: page.beforeEnter } : {}),
+      })
+      if (typeof window !== 'undefined') void router.replace(router.currentRoute.value.fullPath)
       let registered = true
       const dispose = () => {
         if (!registered) return
         registered = false
+        removeRoute()
         if (pages.get(page.path) === page) pages.delete(page.path)
+        if (typeof window !== 'undefined') void router.replace(router.currentRoute.value.fullPath)
       }
       effects.push(dispose)
       return dispose

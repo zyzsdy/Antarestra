@@ -67,3 +67,13 @@ export function apply(ctx: Context) {
 | PUT  | `/api/rbac/bindings/:principalId` | `authz.binding.manage`，JSON `{roleId, scope, enabled}` |
 
 写接口限定 JSON、最多 16 KiB，并检查 Origin 和跨站 Fetch Metadata。反向代理终止 HTTPS、跨域嵌入、SSO 尚未适配，本版使用 server 直接 HTTPS 或本机开发 HTTP。
+
+## 请求通道与默认角色
+
+权限注册使用 `registerPermission(owner, name, description, defaultRoles)`，默认角色可选 `guest`（未登录）、`user`（已登录）、`admin`（管理员）。默认角色按每次请求解析，不为新功能批量写入角色绑定。管理员不是全权限角色，仍需权限声明包含 `admin` 或已有显式授权。
+
+`registerRequestSource(owner, source, provider)` 注册通道，`source` 是提供方与消费方约定的自由字符串，例如 `web`、`qqgroup`、`telegram_group`。提供者包含唯一 `id`、可选登录路径及异步 `resolve(request)`，负责验证凭据、成员关系并返回可信 `actorId`、`workspaceId` 和角色；不匹配时返回 `undefined`。同通道可以注册不同提供者，多方同时认领身份时拒绝请求。通道卸载后调用失败。
+
+消费方使用 `resolveRequest(source, request)` 解析身份，或 `authorizeRequest(source, request, permission)` 同时鉴权。后者在提供者已验证的空间内应用默认角色，并支持 Web 会话在该空间的显式角色授权。不得把客户端传来的角色和空间直接作为解析结果。无身份时默认角色为 `guest`，无通道时返回 503。
+
+`web` 由 auth-local 提供：Actor 对应现有 principal ID；个人空间稳定映射为 `personal:<actorId>`。其他通道的空间模型由各自可信插件实现。当前没有共享空间切换或成员管理，也没有聊天数据存储。`can` / `require` 在 `system` 范围支持已登录默认角色；空间默认权限应通过 `authorizeRequest` 在经过提供者验证的空间内判定，系统授权不覆盖任意空间。

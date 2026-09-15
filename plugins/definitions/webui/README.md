@@ -1,55 +1,55 @@
-# WebUI 定义与页面扩展
+# WebUI 框架与页面扩展
 
-`@antarestra/webui` 提供 `ctx.webui`、浏览器端页面契约和默认 Vue 页面壳。它依赖 `server`，构建产物位于本包 `public/`，通过 `ctx.server.static(ctx, '/', directory)` 在同一个 HTTP 端口提供首页。项目不再使用独立的 `apps/web`。
+`@antarestra/webui` 只提供 Vue 运行时、Vue Router、扩展生命周期和通用交互组件，不注册首页、业务页面或导航。未注册的路径为空。首页由 `plugin-chat-webui` 注册。
 
 ## 后端注册
 
-消费插件声明 `inject: ['webui']`，通过所属上下文注册客户端入口：
+消费插件依赖 `webui`，调用 `ctx.webui.addEntry(owner, { id, directory, config })` 发布浏览器入口。目录必须包含构建后的 ES 模块 `index.js`；配置和资源均为公开信息，不得包含凭据。扩展清单不代表业务授权。
+
+## 前端注册
+
+浏览器入口默认导出 `ClientPlugin`。通过 `ctx.vue` 共享 Vue，`ctx.router` 使用 Vue Router，`ctx.page({ path, name, component, beforeEnter })` 注册页面和可选异步路由守卫。允许 `/` 和带结尾斜杠的普通路径，保留 `/api/` 与 `/webui/` 前缀。重复路径拒绝注册，卸载时移除路由和组件。
+
+页面使用 Vue 的挂载和卸载钩子回收资源；扩展级副作用使用 `ctx.effect()`。异步初始化失败时自动撤销已注册内容。客户端插件是可信代码，不提供安全沙箱。
+
+## 通用交互
+
+公共服务通过前端 Vue 注入，不挂在后端 Cordis 上下文上：
 
 ```typescript
-ctx.webui.addEntry(ctx, {
-  id: 'example',
-  directory: fileURLToPath(new URL('../public/', import.meta.url)),
-  config: { title: '示例页面' },
-})
-```
-
-目录必须包含构建后的 ES 模块 `index.js`。每次注册分配独立资源 URL，卸载自动回收清单与静态挂载；重复标识拒绝注册。目录只应包含可公开资源，`config` 只允许放入公开客户端配置，不能包含凭据。`/webui/entries.json` 是公开扩展清单，不代表用户已获得业务权限。
-
-## 浏览器注册
-
-浏览器模块默认导出一个接收 `ClientContext` 的函数。后端不传输 Vue 对象。客户端扩展共享页面壳提供的 `ctx.vue`，不会打包第二份 Vue 运行时：
-
-```typescript
+import { feedbackKey } from '@antarestra/webui/client'
 import type { ClientPlugin } from '@antarestra/webui/client'
 
 const apply: ClientPlugin = (ctx) => {
-  const { defineComponent, h } = ctx.vue
   ctx.page({
-    name: '示例页面',
     path: '/example/',
-    component: defineComponent({
-      setup: () => () => h('p', '欢迎使用'),
+    name: '示例',
+    component: ctx.vue.defineComponent({
+      setup() {
+        const feedback = ctx.vue.inject(feedbackKey)!
+        return () =>
+          ctx.vue.h(
+            'button',
+            {
+              onClick: () => feedback.toast('操作完成'),
+            },
+            '显示提示',
+          )
+      },
     }),
-  })
-  ctx.effect(() => {
-    const timer = setInterval(() => {}, 1000)
-    return () => clearInterval(timer)
   })
 }
 export default apply
 ```
 
-页面路径为带结尾斜杠的普通路径，根路径、API 和 WebUI 资源前缀保留；重复页面路径拒绝注册。导航自动生成，支持浏览器前进后退、直达与刷新。页面组件使用 Vue 自身的挂载和卸载钩子管理页面资源，扩展级副作用使用 `ctx.effect()`。入口初始化失败时回收已注册内容并显示错误，其余入口继续加载。
+- `notice(message)`：持续通知，返回关闭函数。
+- `toast(message)`：四秒后关闭，返回提前关闭函数。
+- `modal(title, message)`、`messagebox(message)`：排队显示对话框，返回确认结果；取消和 Escape 返回 `false`。
 
-浏览器首次打开时获取一次清单，不定时轮询。启用 `plugin-hmr` 时，清单响应通过 `X-WebUI-HMR` 声明同源 WebSocket 地址；前端接收清单快照，在扩展卸载或入口版本变化时回收对应页面和副作用，再加载新组件。未变化的扩展保持原实例，不刷新整个页面。断线后重新获取清单并协商开发能力，服务重启后恢复连接；如果 HMR 已停用则停止重连。
-
-未启用 HMR 的正式部署中，安装或卸载插件后，已打开的页面需要用户手动刷新才能看到变化，这是预期行为。前端模块、组件与副作用按扩展整体替换，不迁移受影响组件的本地状态。当前实现页面与生命周期契约；未实现 Slot、前端服务依赖注入或业务 WebSocket 数据服务。所有业务请求仍通过各自 API 及服务端授权检查。客户端插件属于可信代码，生命周期管理不提供安全沙箱。
+通知支持辅助技术播报，对话框使用浏览器原生焦点约束。框架卸载时清理定时器并取消等待中的对话框。
 
 ## 构建与开发
 
-根目录 `pnpm build` 按依赖顺序构建页面壳和认证扩展。`pnpm dev` 先构建，再启动服务端和两个前端构建监听器，统一访问 <http://localhost:14451/>。`pnpm dev:web` 只重新构建和监听前端，不提供额外 HTTP 端口；修改客户端文件后刷新浏览器查看。
+`pnpm build` 按依赖顺序构建框架与客户端扩展。服务端在同一端口提供静态资源和 HTML 回退；API、扩展资源和缺失文件不会回退到 HTML。
 
-WebUI 可配置 `directory` 为另一套页面壳构建目录；默认无需配置。`/api/*`、扩展资源和带扩展名的缺失文件不执行 HTML 回退。页面导航的未知路径显示页面不可用提示。
-
-默认本地认证页面为 `/auth/user/`；其他 `providerId` 使用 `/auth/user/<providerId>/`，可同时提供多实例页面。账号中心以 Vue 组件挂载现有表单控制器，使用 Shadow DOM 隔离样式，组件卸载时中止请求；认证 API 继续位于 `/api/auth/local/<providerId>/*`。
+浏览器首次获取一次清单。启用 `plugin-hmr` 时通过同源 WebSocket 接收扩展更新，替换对应页面并回收副作用；未变化的扩展保留。未启用时需要刷新页面获取新的清单。WebUI 可配置 `directory` 指向其他框架构建目录。

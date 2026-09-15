@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { pages, startExtensions } from '../../plugins/definitions/webui/client/runtime.js'
+import { pages, router, startExtensions } from '../../plugins/definitions/webui/client/runtime.js'
 import type { EntryManifest } from '@antarestra/webui'
 import type { ClientContext } from '@antarestra/webui/client'
 
@@ -44,6 +44,30 @@ function entry(id: string, version = 1): EntryManifest {
 }
 
 describe('浏览器扩展更新', () => {
+  it('首页由扩展注册，异步守卫在进入前执行，卸载后根路由回收', async () => {
+    setup(true)
+    let allowed = false
+    const guard = vi.fn(() => allowed)
+    stop = startExtensions(async () => ({
+      default: (ctx: ClientContext) => {
+        ctx.page({ path: '/', name: '聊天', component: {}, beforeEnter: guard })
+      },
+    }))
+    await vi.waitFor(() => expect(Socket.instances).toHaveLength(1))
+    Socket.instances[0]!.entries([entry('chat')])
+    await vi.waitFor(() => expect(pages.has('/')).toBe(true))
+    await router.push('/other/')
+    await router.push('/')
+    expect(guard).toHaveBeenCalled()
+    expect(router.currentRoute.value.path).toBe('/other/')
+    allowed = true
+    await router.push('/')
+    expect(router.currentRoute.value.path).toBe('/')
+    stop()
+    expect(pages.has('/')).toBe(false)
+    expect(router.getRoutes().some((route) => route.path === '/')).toBe(false)
+  })
+
   it('未启用 HMR 时只获取一次清单，不创建连接或轮询', async () => {
     vi.useFakeTimers()
     const fetcher = setup(false)

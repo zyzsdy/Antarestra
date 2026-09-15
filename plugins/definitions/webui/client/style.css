@@ -1,7 +1,7 @@
 :root {
-  font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  color: #243237;
-  background: #f3f5f2;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  color: #242629;
+  background: #fff;
   font-synthesis: none;
 }
 * {
@@ -10,86 +10,18 @@
 body {
   margin: 0;
 }
+button,
+input,
+textarea {
+  font: inherit;
+}
+button,
 a {
-  color: #264f3d;
+  -webkit-tap-highlight-color: transparent;
 }
-.shell-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px 40px;
-  border-bottom: 1px solid #d8dfd9;
-  background: white;
+button {
+  cursor: pointer;
 }
-.shell-brand {
-  font-size: 22px;
-  font-weight: 750;
-  text-decoration: none;
-}
-.shell-header nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.shell-header nav a {
-  padding: 8px 12px;
-  text-decoration: none;
-  border-radius: 8px;
-}
-.shell-header a[aria-current] {
-  background: #e6eee5;
-}
-.shell-home {
-  max-width: 1040px;
-  margin: auto;
-  padding: 80px 40px;
-}
-.shell-home h1 {
-  font-size: clamp(28px, 5vw, 48px);
-}
-.eyebrow {
-  color: #467660;
-  letter-spacing: 3px;
-  font-size: 13px;
-}
-.shell-home p {
-  line-height: 1.8;
-}
-.shell-cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  margin-top: 40px;
-}
-.shell-cards a {
-  display: grid;
-  gap: 28px;
-  min-width: 240px;
-  padding: 28px;
-  background: white;
-  border: 1px solid #dae1da;
-  border-radius: 14px;
-  text-decoration: none;
-}
-.shell-cards span {
-  font-size: 14px;
-}
-.shell-message {
-  margin: 20px 40px;
-}
-@media (max-width: 600px) {
-  .shell-header {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 20px;
-    gap: 16px;
-  }
-  .shell-home {
-    padding: 40px 20px;
-  }
-  .shell-cards a {
-    width: 100%;
-    min-width: 0;
-  }
+button:disabled {
+  cursor: not-allowed;
 }

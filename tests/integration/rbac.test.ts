@@ -10,6 +10,7 @@ import WebUI from '@antarestra/webui'
 import rbac from '@antarestra/rbac'
 import type { AuthContext } from '@antarestra/rbac'
 import local from '@antarestra/plugin-auth-local'
+import * as chatWebui from '@antarestra/plugin-chat-webui'
 import type { Config } from '@antarestra/plugin-auth-local'
 import type { Tables } from '../../plugins/definitions/rbac/src/schema.js'
 import type { Tables as LocalTables } from '../../plugins/implementations/auth-local/src/schema.js'
@@ -208,6 +209,85 @@ for (const backend of backends)
   })
 
 describe('认证边界与生命周期', () => {
+  it('聊天入口验证 Web 身份、默认角色、稳定个人空间与跨空间隔离', async () => {
+    const app = await setup()
+    const chat = await app.ctx.plugin(chatWebui)
+    const guest = await app.request('/chat-webui/session')
+    expect(guest.status).toBe(401)
+    expect(await guest.json()).toMatchObject({ loginPath: `/auth/user/${app.providerId}/` })
+    await app.register()
+    const cookie = await app.login('member@example.com')
+    const member = await (await app.request('/chat-webui/session', undefined, cookie)).json()
+    expect(member).toMatchObject({ requestSource: 'web', roles: ['user'] })
+    expect(member.workspaceId).toBe(`personal:${member.actorId}`)
+    const adminCookie = await app.login()
+    const admin = await (await app.request('/chat-webui/session', undefined, adminCookie)).json()
+    expect(admin.roles).toEqual(['user', 'admin'])
+    expect(admin.workspaceId).not.toBe(member.workspaceId)
+    expect(
+      (
+        await app.request(
+          `/chat-webui/session?workspaceId=${encodeURIComponent(member.workspaceId)}`,
+          undefined,
+          adminCookie,
+        )
+      ).status,
+    ).toBe(403)
+    const again = await app.login('member@example.com')
+    expect(await (await app.request('/chat-webui/session', undefined, again)).json()).toMatchObject(
+      { actorId: member.actorId, workspaceId: member.workspaceId },
+    )
+    const roles = await (await app.request('/rbac/roles', undefined, adminCookie)).json()
+    expect(roles.permissions).toContainEqual({
+      key: 'useChatWebUI',
+      description: '使用Web聊天界面',
+      defaultRoles: ['user', 'admin'],
+    })
+    await app.implementation.dispose()
+    expect((await app.request('/chat-webui/session', undefined, cookie)).status).toBe(503)
+    await chat.dispose()
+    expect(app.ctx.webui.getEntries()).toEqual([])
+  })
+
+  it('自由请求通道、访客默认权限、权限拒绝与注册回收', async () => {
+    const app = await setup()
+    const owner = await app.ctx.plugin(() => {})
+    const release = app.ctx.rbac.registerPermission(owner.ctx, 'readGroup', '读取群组', ['user'])
+    app.ctx.rbac.registerPermission(owner.ctx, 'readWelcome', '读取欢迎信息', ['guest'])
+    app.ctx.rbac.registerPermission(owner.ctx, 'adminOnly', '管理员功能', ['admin'])
+    const provider = {
+      id: 'groups',
+      async resolve(request: unknown) {
+        if (request !== 'verified-group') return
+        return { actorId: 'group-member', workspaceId: 'group:42', roles: ['user'] as const }
+      },
+    }
+    app.ctx.rbac.registerRequestSource(owner.ctx, 'telegram_group', provider)
+    expect(() => app.ctx.rbac.registerRequestSource(owner.ctx, 'telegram_group', provider)).toThrow(
+      '重复',
+    )
+    expect(
+      await app.ctx.rbac.authorizeRequest('telegram_group', 'verified-group', 'readGroup'),
+    ).toMatchObject({ actorId: 'group-member', workspaceId: 'group:42' })
+    expect(
+      await app.ctx.rbac.authorizeRequest('telegram_group', undefined, 'readWelcome'),
+    ).toMatchObject({ actorId: null, roles: ['guest'] })
+    await expect(
+      app.ctx.rbac.authorizeRequest('telegram_group', undefined, 'readGroup'),
+    ).rejects.toMatchObject({ status: 401 })
+    await expect(
+      app.ctx.rbac.authorizeRequest('telegram_group', 'verified-group', 'adminOnly'),
+    ).rejects.toMatchObject({ status: 403 })
+    await release()
+    await expect(
+      app.ctx.rbac.authorizeRequest('telegram_group', 'verified-group', 'readGroup'),
+    ).rejects.toMatchObject({ status: 403 })
+    await owner.dispose()
+    await expect(
+      app.ctx.rbac.resolveRequest('telegram_group', 'verified-group'),
+    ).rejects.toMatchObject({ status: 503 })
+  })
+
   it('API 根路径不能绕过认证，重复提供者和权限声明被拒绝', async () => {
     const app = await setup()
     app.ctx.server.route(app.ctx, 'GET', '/', (http) => {
