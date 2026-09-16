@@ -31,7 +31,7 @@ function submit() {
       message.value = '账号创建成功，请登录。'
       return
     }
-    const target = new URLSearchParams(location.search).get('returnTo')
+    const target = new URLSearchParams(location.search).get('returnTo') || '/'
     if (target === '/' || (target && /^\/admin(?:\/[a-z0-9-]+)*\/?$/i.test(target))) {
       location.assign(target)
       return
