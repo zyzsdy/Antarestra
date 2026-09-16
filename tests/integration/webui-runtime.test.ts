@@ -157,3 +157,37 @@ describe('浏览器扩展更新', () => {
     expect(pages.size).toBe(0)
   })
 })
+
+it('插槽允许先贡献后消费，拒绝重复注册，失败与卸载回收且旧回收不删除新实例', async () => {
+  setup(true)
+  const contexts = new Map<string, ClientContext>()
+  const cleanup: (() => void)[] = []
+  stop = startExtensions(async () => ({
+    default: (ctx) => {
+      const id = String(ctx.config.id)
+      contexts.set(id, ctx)
+      if (id === 'broken') {
+        ctx.contribute('test.pages', 'broken', {})
+        throw new Error('测试初始化失败')
+      }
+      if (id === 'author') cleanup.push(ctx.contribute('test.pages', 'page', { title: '页面' }))
+    },
+  }))
+  await vi.waitFor(() => expect(Socket.instances).toHaveLength(1))
+  const socket = Socket.instances[0]!
+  socket.entries([entry('author'), entry('host')])
+  await vi.waitFor(() => expect(contexts.has('host')).toBe(true))
+  const pages = contexts.get('host')!.slot<{ title: string }>('test.pages')
+  expect(pages.get('page')).toEqual({ title: '页面' })
+  expect(() => contexts.get('host')!.contribute('test.pages', 'page', {})).toThrow('重复')
+  socket.entries([entry('host'), entry('broken')])
+  await vi.waitFor(() => expect(contexts.has('broken')).toBe(true))
+  expect(pages.size).toBe(0)
+  socket.entries([entry('host'), entry('author', 2)])
+  await vi.waitFor(() => expect(pages.size).toBe(1))
+  cleanup[0]!()
+  expect(pages.size).toBe(1)
+  stop()
+  expect(pages.size).toBe(0)
+  expect(() => contexts.get('author')!.contribute('test.pages', 'late', {})).toThrow('已卸载')
+})

@@ -27,6 +27,9 @@ export interface ClientContext {
   readonly vue: typeof Vue
   readonly router: Router
   readonly config: Readonly<Record<string, unknown>>
+  /** 插槽由页面宿主解释；贡献随所属扩展卸载自动回收。 */
+  slot<T>(name: string): ReadonlyMap<string, T>
+  contribute<T>(slot: string, id: string, value: T): () => void
   page(page: Page): () => void
   effect(setup: () => void | (() => void)): void
 }

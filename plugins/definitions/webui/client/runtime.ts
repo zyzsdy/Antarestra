@@ -15,6 +15,11 @@ export const router = createRouter({
 })
 export const failures = vue.ref<string[]>([])
 const loaded = new Map<string, { signature: string; dispose: () => void }>()
+const slots = new Map<string, Map<string, unknown>>()
+function slot(name: string) {
+  if (!slots.has(name)) slots.set(name, vue.shallowReactive(new Map<string, unknown>()))
+  return slots.get(name)!
+}
 
 function context(config: EntryManifest['config']) {
   const effects: (() => void)[] = []
@@ -23,6 +28,23 @@ function context(config: EntryManifest['config']) {
     vue,
     router,
     config,
+    slot<T>(name: string) {
+      return vue.shallowReadonly(slot(name)) as ReadonlyMap<string, T>
+    },
+    contribute(name, id, value) {
+      if (!active) throw new Error('客户端扩展已卸载')
+      const entries = slot(name)
+      if (entries.has(id)) throw new Error(`插槽标识重复：${name}/${id}`)
+      entries.set(id, value)
+      let registered = true
+      const dispose = () => {
+        if (!registered) return
+        registered = false
+        if (entries.get(id) === value) entries.delete(id)
+      }
+      effects.push(dispose)
+      return dispose
+    },
     page(page) {
       if (!active) throw new Error('客户端扩展已卸载')
       if (

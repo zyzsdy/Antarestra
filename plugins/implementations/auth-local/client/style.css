@@ -1,0 +1,192 @@
+.auth-ui {
+  color: #263047;
+  font-size: 14px;
+}
+.auth-ui .panel {
+  background: white;
+  border: 1px solid #e4e9f1;
+  border-radius: 10px;
+  padding: 26px;
+  margin-bottom: 24px;
+  min-width: 0;
+}
+.auth-ui h2 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.auth-ui .muted {
+  color: #7a879d;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.auth-ui .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.auth-ui .section-heading p {
+  margin-bottom: 0;
+}
+.auth-ui button,
+.auth-ui .actions a {
+  border: 1px solid #dce3ef;
+  border-radius: 6px;
+  padding: 9px 15px;
+  background: white;
+  color: #4c5e7c;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.auth-ui button:hover {
+  background: #f2f5fb;
+}
+.auth-ui button:disabled {
+  opacity: 0.45;
+}
+.auth-ui button.primary {
+  background: #315ed1;
+  border-color: #315ed1;
+  color: white;
+}
+.auth-ui .actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.auth-ui form {
+  margin-top: 24px;
+}
+.auth-ui label {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 20px;
+}
+.auth-ui input:not([type='checkbox']) {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dce3ef;
+  border-radius: 6px;
+  padding: 11px 12px;
+  background: #fff;
+  color: #263047;
+}
+.auth-ui input:focus {
+  outline: 2px solid #99b3fa;
+  outline-offset: 1px;
+}
+.auth-ui .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.auth-ui .table-scroll {
+  overflow-x: auto;
+}
+.auth-ui table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  text-align: left;
+}
+.auth-ui th {
+  background: #f7f9fc;
+  color: #7a879d;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.auth-ui th,
+.auth-ui td {
+  padding: 15px;
+  border-bottom: 1px solid #edf0f6;
+}
+.auth-ui td {
+  font-size: 13px;
+}
+.auth-ui small {
+  display: block;
+  color: #8b96aa;
+  font-size: 12px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+.auth-ui .mono {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+.auth-ui .badge {
+  display: inline-block;
+  color: #238563;
+  background: #eaf7f1;
+  border-radius: 5px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.auth-ui .badge.inactive {
+  background: #fceeee;
+  color: #b75e5e;
+}
+.auth-ui .pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.auth-ui .notice {
+  padding: 14px 18px;
+  background: #edf2ff;
+  color: #355ca6;
+  border: 1px solid #d6e1fa;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.auth-ui .empty {
+  text-align: center;
+  padding: 28px;
+  color: #8b96aa;
+}
+.auth-ui .permission-tag {
+  display: inline-block;
+  background: #f0f3fa;
+  color: #63799f;
+  padding: 4px 8px;
+  margin: 3px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.auth-ui fieldset {
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+  padding: 20px;
+}
+.auth-ui legend {
+  padding: 0 8px;
+  color: #7a879d;
+}
+.auth-ui .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.auth-ui .check input {
+  margin-top: 3px;
+  accent-color: #315ed1;
+}
+@media (max-width: 760px) {
+  .auth-ui .panel {
+    padding: 18px;
+  }
+  .auth-ui .form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .auth-ui .section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

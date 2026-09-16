@@ -39,6 +39,9 @@
     },
     {
       "path": "../../plugins/definitions/webui"
+    },
+    {
+      "path": "../../plugins/features/admin-console"
     }
   ]
 }

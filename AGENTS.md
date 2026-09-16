@@ -72,6 +72,10 @@ Antarestra/
 
 一般选择最新稳定依赖；明确的兼容性限制可锁版本并记录原因。TypeScript 固定为 6.0.3，原因是初始化时 TypeScript 7.0.2 与 vue-tsc 3.3.11 不兼容；根包与网页包需一起升级并验证。`@types/node` 跟随 Node 24。pnpm 的 `allowBuilds` 只显式允许需要的依赖构建脚本，不全局放开。
 
+## 权限命名
+
+所有权限名称统一采用 `分组.资源名.动作`，默认使用小写，例如 `admin.console.view`、`chat.webui.view`。权限复杂、难以区分时，可以增加点 `.` 分隔的层级；新增和修改权限延续此风格。
+
 ## 工程约定
 
 - ESM 模块，2 空格、LF、UTF-8、单引号、无分号，以 Prettier 配置为准。

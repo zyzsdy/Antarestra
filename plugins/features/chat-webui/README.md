@@ -2,7 +2,7 @@
 
 `@antarestra/plugin-chat-webui` 依赖 WebUI、RBAC 与 Server，向 WebUI 注册 `/`，默认随主配置加载。
 
-进入页面前请求 `/api/chat-webui/session`，服务端通过 RBAC 的 `web` 通道解析 actorId 和 workspaceId，并验证 `useChatWebUI`（使用Web聊天界面，默认角色 `user`、`admin`）。未登录返回 401 与认证提供者登录路径，前端跳转登录；已登录无权限返回 403，不渲染聊天布局。未知通道和网络故障不会放行。
+进入页面前请求 `/api/chat-webui/session`，服务端通过 RBAC 的 `web` 通道解析 actorId 和 workspaceId，并验证 `chat.webui.view`（使用Web聊天界面，默认角色 `user`、`admin`）。未登录返回 401 与认证提供者登录路径，前端跳转登录；已登录无权限返回 403，不渲染聊天布局。未知通道和网络故障不会放行。
 
 界面包含历史记录侧栏、个人工作空间、用户入口、欢迎区和禁用的消息输入框。窄屏通过按钮展开侧栏。公共提示通过 Vue inject 获取 WebUI 的交互服务。
 

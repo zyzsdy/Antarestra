@@ -11,6 +11,7 @@ import rbac from '@antarestra/rbac'
 import type { AuthContext } from '@antarestra/rbac'
 import local from '@antarestra/plugin-auth-local'
 import * as chatWebui from '@antarestra/plugin-chat-webui'
+import * as adminConsole from '@antarestra/plugin-admin-console'
 import type { Config } from '@antarestra/plugin-auth-local'
 import type { Tables } from '../../plugins/definitions/rbac/src/schema.js'
 import type { Tables as LocalTables } from '../../plugins/implementations/auth-local/src/schema.js'
@@ -209,6 +210,101 @@ for (const backend of backends)
   })
 
 describe('认证边界与生命周期', () => {
+  it('后台拒绝访客与普通用户，默认授予管理员，按系统范围授权与撤权并独立卸载', async () => {
+    const app = await setup()
+    const consolePlugin = await app.ctx.plugin(adminConsole)
+    const guest = await app.request('/admin-console/session')
+    expect(guest.status).toBe(401)
+    expect(await guest.json()).toMatchObject({ loginPath: '/auth/user/' + app.providerId + '/' })
+    await app.register()
+    const member = await app.login('member@example.com')
+    const admin = await app.login()
+    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(403)
+    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(200)
+    expect(
+      (
+        await app.request(
+          '/admin-console/session?permission=identity.local.manage',
+          undefined,
+          admin,
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (await app.request('/admin-console/session?permission=missing.page.view', undefined, admin))
+        .status,
+    ).toBe(403)
+    const declarations = await (await app.request('/rbac/roles', undefined, admin)).json()
+    expect(declarations.permissions).toContainEqual(
+      expect.objectContaining({ key: 'admin.console.view', defaultRoles: ['admin'] }),
+    )
+    const { auth } = await (await app.request('/auth/me', undefined, member)).json()
+    expect(
+      (
+        await app.request(
+          '/rbac/roles/console-reader',
+          { name: '后台访客', permissions: ['admin.console.view'] },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    const binding = '/rbac/bindings/' + auth.principalId
+    // 直接准备空间绑定；系统管理员本身也不能越过空间授权边界。
+    await app.db
+      .insertInto('binding')
+      .values({
+        principal_id: auth.principalId,
+        role_id: 'console-reader',
+        scope: 'personal:' + auth.principalId,
+        scope_key: key('personal:' + auth.principalId),
+        source: 'test',
+        expires_at: null,
+      })
+      .execute()
+    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(403)
+    expect(
+      (
+        await app.request(
+          binding,
+          { roleId: 'console-reader', scope: 'system', enabled: true },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(200)
+    expect(
+      (
+        await app.request(
+          '/admin-console/session?permission=identity.local.manage',
+          undefined,
+          member,
+        )
+      ).status,
+    ).toBe(403)
+    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(403)
+    expect(
+      (
+        await app.request(
+          binding,
+          { roleId: 'console-reader', scope: 'system', enabled: false },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(403)
+    await consolePlugin.dispose()
+    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(404)
+    const entries = await (await fetch(app.url + '/webui/entries.json')).json()
+    expect(entries.some((entry: { id: string }) => entry.id === 'admin-console')).toBe(false)
+    await app.ctx.plugin(adminConsole)
+    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(200)
+    await app.backend.dispose()
+    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(404)
+  })
+
   it('聊天入口验证 Web 身份、默认角色、稳定个人空间与跨空间隔离', async () => {
     const app = await setup()
     const chat = await app.ctx.plugin(chatWebui)
@@ -239,7 +335,7 @@ describe('认证边界与生命周期', () => {
     )
     const roles = await (await app.request('/rbac/roles', undefined, adminCookie)).json()
     expect(roles.permissions).toContainEqual({
-      key: 'useChatWebUI',
+      key: 'chat.webui.view',
       description: '使用Web聊天界面',
       defaultRoles: ['user', 'admin'],
     })

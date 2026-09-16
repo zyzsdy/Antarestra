@@ -40,6 +40,8 @@ describe('WebUI SFC 构建', () => {
           vue: Reflect.get(globalThis, Symbol.for('antarestra.webui.vue')),
           router,
           config: {},
+          slot: () => new Map(),
+          contribute: () => () => {},
           page: (page) => {
             pages.push(page)
             return () => {}
@@ -66,4 +68,104 @@ describe('WebUI SFC 构建', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   })
+})
+
+it('后台构建产物支持先贡献后挂载、独立卸载与重载，并对深层路由和大小写路径鉴权', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'antarestra-admin-sfc-'))
+  const { pages, startExtensions } =
+    await import('../../plugins/definitions/webui/client/runtime.js')
+  let stop: (() => void) | undefined
+  let socket: { onmessage?: (event: { data: string }) => void } | undefined
+  let authorized = true
+  const requests: string[] = []
+  const links: { remove: () => void }[] = []
+  try {
+    const config = defineWebUIConfig()
+    await build({
+      ...config,
+      configFile: false,
+      root: resolve('plugins/features/admin-console'),
+      logLevel: 'silent',
+      build: { ...config.build, outDir: directory },
+    })
+    const module = (await import(
+      /* @vite-ignore */ pathToFileURL(join(directory, 'index.js')).href
+    )) as { default: ClientPlugin }
+    vi.stubGlobal('document', {
+      createElement: () => ({ remove: vi.fn() }),
+      head: { append: (link: { remove: () => void }) => links.push(link) },
+    })
+    vi.stubGlobal('location', { origin: 'https://localhost' })
+    vi.stubGlobal(
+      'WebSocket',
+      class {
+        onmessage?: (event: { data: string }) => void
+        constructor() {
+          socket = this
+        }
+        close() {}
+      },
+    )
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url === '/webui/entries.json')
+        return new Response('[]', { headers: { 'X-WebUI-HMR': '/webui/hmr' } })
+      requests.push(url)
+      return new Response(
+        JSON.stringify(
+          authorized
+            ? { actorId: 'test', displayName: '测试管理员' }
+            : { loginPath: '/auth/user/' },
+        ),
+        { status: authorized ? 200 : 401 },
+      )
+    })
+    stop = startExtensions(async (url) =>
+      url.includes('/admin/')
+        ? module
+        : {
+            default: (ctx) => {
+              ctx.contribute('admin-console.pages', 'example', {
+                id: 'example',
+                group: '测试插件',
+                title: '测试页面',
+                icon: '◇',
+                permission: 'example.page.view',
+                component: {},
+              })
+            },
+          },
+    )
+    await vi.waitFor(() => expect(socket).toBeDefined())
+    const entry = (id: string) => ({ id, url: `/webui/extensions/${id}/index.js`, config: {} })
+    const sync = (ids: string[]) =>
+      socket!.onmessage!({ data: JSON.stringify({ type: 'entries', entries: ids.map(entry) }) })
+    sync(['author', 'admin'])
+    await vi.waitFor(() => expect(pages.has('/admin/example/')).toBe(true))
+    await router.push('/admin/example/')
+    expect(requests.at(-1)).toBe('/api/admin-console/session?permission=example.page.view')
+    authorized = false
+    await router.push('/other/')
+    await router.push('/ADMIN/EXAMPLE/')
+    expect(requests.at(-1)).toBe('/api/admin-console/session?permission=example.page.view')
+    expect(router.currentRoute.value.path).toBe('/auth/user/')
+    expect(router.currentRoute.value.query.returnTo).toBe('/ADMIN/EXAMPLE/')
+    sync(['author'])
+    await vi.waitFor(() => expect(pages.has('/admin/')).toBe(false))
+    expect(pages.has('/admin/example/')).toBe(false)
+    const before = requests.length
+    await router.push('/admin/example/')
+    expect(requests).toHaveLength(before)
+    sync(['author', 'admin'])
+    await vi.waitFor(() => expect(pages.has('/admin/example/')).toBe(true))
+    sync(['admin'])
+    await vi.waitFor(() => expect(pages.has('/admin/example/')).toBe(false))
+    expect(pages.has('/admin/')).toBe(true)
+    stop()
+    expect(pages.size).toBe(0)
+    for (const link of links) expect(link.remove).toHaveBeenCalledTimes(1)
+  } finally {
+    stop?.()
+    vi.unstubAllGlobals()
+    await rm(directory, { recursive: true, force: true })
+  }
 })

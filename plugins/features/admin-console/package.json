@@ -1,12 +1,14 @@
 {
-  "name": "@antarestra/plugin-auth-local",
+  "name": "@antarestra/plugin-admin-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "keywords": [
     "antarestra-plugin"
   ],
-  "private": true,
   "scripts": {
-    "typecheck": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit",
     "build": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit && vite build",
+    "typecheck": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit",
     "dev": "vite build --watch"
   },
   "exports": {
@@ -14,13 +16,14 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "development": "./src/client.ts",
+      "default": "./dist/client.js"
     }
   },
-  "version": "0.1.0",
-  "type": "module",
   "dependencies": {
-    "@antarestra/database": "workspace:*",
-    "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",

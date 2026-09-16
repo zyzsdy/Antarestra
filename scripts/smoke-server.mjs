@@ -70,7 +70,8 @@ try {
           ).json()
           const entry = entries.find((item) => item.id === 'auth-local-local')
           const chat = entries.find((item) => item.id === 'chat-webui')
-          healthy = entry?.config.path === '/auth/user/' && !!chat
+          const admin = entries.find((item) => item.id === 'admin-console')
+          healthy = entry?.config.path === '/auth/user/' && !!chat && !!admin
           if (healthy) {
             const resource = await fetch('http://127.0.0.1:' + port + entry.url)
             healthy =
@@ -78,11 +79,18 @@ try {
               resource.headers.get('content-type')?.includes('javascript')
             const access = await fetch(`http://127.0.0.1:${port}/api/chat-webui/session`)
             const chatResource = await fetch(`http://127.0.0.1:${port}${chat.url}`)
+            const adminAccess = await fetch(`http://127.0.0.1:${port}/api/admin-console/session`)
+            const adminResource = await fetch(`http://127.0.0.1:${port}${admin.url}`)
+            const adminPage = await fetch(`http://127.0.0.1:${port}/admin`)
             healthy =
               healthy &&
               access.status === 401 &&
               (await access.json()).loginPath === '/auth/user/' &&
-              chatResource.status === 200
+              chatResource.status === 200 &&
+              adminAccess.status === 401 &&
+              (await adminAccess.json()).loginPath === '/auth/user/' &&
+              adminResource.status === 200 &&
+              adminPage.status === 200
           }
         }
         if (healthy) break
@@ -93,7 +101,7 @@ try {
     await delay(100)
   }
   if (!healthy) throw new Error('编译产物健康检查失败')
-  console.log('编译产物健康接口、认证与聊天扩展、未登录拒绝检查通过')
+  console.log('编译产物健康接口、认证、聊天与后台扩展、未登录拒绝检查通过')
   child.kill('SIGTERM')
   await exited
 } finally {

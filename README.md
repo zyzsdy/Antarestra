@@ -46,7 +46,7 @@ CI 使用 `node scripts/smoke-server.mjs` 在临时端口启动编译产物，�
 
 ## WebUI 页面插件
 
-`webui` 定义插件提供抽象 Vue 框架和扩展注册能力。后端使用 `ctx.webui.addEntry()` 注册浏览器入口，客户端通过 `ctx.page()` 注册 Vue 页面及 Vue Router 守卫。WebUI 不提供业务页面或自动导航，公共通知与对话框通过前端 Vue inject 获取。接入方式见 [WebUI 说明](plugins/definitions/webui/README.md)。默认首页由 [chat-webui](plugins/features/chat-webui/README.md) 提供，通过 RBAC 的 `web` 请求通道解析用户与个人工作空间，验证 `useChatWebUI` 权限；访客跳转登录。当前只提供界面预览，不发送消息或存储聊天记录。
+`webui` 定义插件提供抽象 Vue 框架和扩展注册能力。后端使用 `ctx.webui.addEntry()` 注册浏览器入口，客户端通过 `ctx.page()` 注册 Vue 页面及 Vue Router 守卫。WebUI 不提供业务页面或自动导航，公共通知与对话框通过前端 Vue inject 获取。接入方式见 [WebUI 说明](plugins/definitions/webui/README.md)。默认首页由 [chat-webui](plugins/features/chat-webui/README.md) 提供，通过 RBAC 的 `web` 请求通道解析用户与个人工作空间，验证 `chat.webui.view` 权限；访客跳转登录。当前只提供界面预览，不发送消息或存储聊天记录。
 
 ## 用户与权限
 
@@ -322,3 +322,5 @@ Agent 定义与真实适配将在后续实现，需要明确预设快照、工�
 ## 新建 WebUI 插件
 
 必须使用 `pnpm create:webui <名称>` 从标准模板创建。页面在 `client/*.vue` 中编写，模板自带共享 Vue 运行时、scoped CSS、样式卸载与构建监听支持。完整步骤见 [WebUI 插件说明](plugins/definitions/webui/README.md#webui-sfc-插件模板)。
+
+后台由 [admin-console](plugins/features/admin-console/README.md) 提供，入口为 `/admin/`，要求系统范围的 `admin.console.view`（默认授予 `admin`）。后台提供可折叠菜单与插件页面插槽，auth-local 在“用户与权限”分组下提供本地用户、角色与权限、角色分配三个独立页面。

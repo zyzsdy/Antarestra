@@ -16,6 +16,9 @@
     },
     {
       "path": "../../definitions/webui"
+    },
+    {
+      "path": "../../features/admin-console"
     }
   ],
   "compilerOptions": {

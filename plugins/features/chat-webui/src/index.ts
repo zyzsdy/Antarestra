@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url'
 export const name = '@antarestra/plugin-chat-webui'
 export const inject = ['webui', 'rbac', 'server']
 export function apply(ctx: Context) {
-  ctx.rbac.registerPermission(ctx, 'useChatWebUI', '使用Web聊天界面', ['user', 'admin'])
+  ctx.rbac.registerPermission(ctx, 'chat.webui.view', '使用Web聊天界面', ['user', 'admin'])
   ctx.rbac.publicRoute(ctx, 'GET', '/chat-webui/session')
   ctx.server.route(ctx, 'GET', '/chat-webui/session', async (http) => {
     http.set('Cache-Control', 'no-store')
     try {
-      const access = await ctx.rbac.authorizeRequest('web', http, 'useChatWebUI')
+      const access = await ctx.rbac.authorizeRequest('web', http, 'chat.webui.view')
       if (!access.actorId || !access.workspaceId) throw new AuthError(401, '请先登录')
       // 当前只支持认证提供者解析出的个人空间；绝不接受客户端指定其他空间。
       if (http.query.workspaceId !== undefined && http.query.workspaceId !== access.workspaceId)

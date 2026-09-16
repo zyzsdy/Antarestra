@@ -65,3 +65,7 @@ export default apply
 运行 `pnpm --filter @antarestra/plugin-<名称> dev` 启动 Vite 构建监听；现有 HMR 插件监视产物并替换整个扩展，不保留组件内状态。修改共享构建工具后需重新构建 `@antarestra/webui` 并重启扩展构建监听。
 
 模板页面是公开的示例计数器。访问业务数据时，必须另行注入 RBAC、声明权限并在服务端校验身份和空间；前端页面路由不承担鉴权。
+
+## 客户端插槽
+
+`ctx.contribute<T>(slot, id, value)` 向指定插槽注册贡献，返回幂等回收函数，并在扩展卸载或初始化失败时自动回收。同一插槽不允许重复标识。`ctx.slot<T>(slot)` 返回响应式只读 Map，由宿主解释贡献契约；贡献可以先于宿主加载。具体后台页面扩展示例见 [admin-console](../../features/admin-console/README.md)。

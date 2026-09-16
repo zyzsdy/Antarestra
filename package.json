@@ -23,6 +23,7 @@
   "devDependencies": {
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-chat-webui": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
