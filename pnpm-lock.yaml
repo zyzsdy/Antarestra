@@ -176,6 +176,9 @@ importers:
 
   plugins/definitions/rbac:
     dependencies:
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@antarestra/database':
         specifier: workspace:*
         version: link:../database
@@ -188,12 +191,18 @@ importers:
 
   plugins/definitions/webui:
     dependencies:
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@antarestra/plugin-server':
         specifier: workspace:*
         version: link:../../adapters/server
+      '@heroicons/vue':
+        specifier: ^2.2.0
+        version: 2.2.0(vue@3.5.42(typescript@6.0.3))
       vue:
         specifier: ^3.5.42
         version: 3.5.42(typescript@6.0.3)
@@ -558,6 +567,11 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@heroicons/vue@2.2.0':
+    resolution: {integrity: sha512-G3dbSxoeEKqbi/DFalhRxJU4mTXJn7GwZ7ae8NuEQzd1bqdd0jAbdaBZlHPcvPD2xI1iGzNVB4k20Un2AguYPw==}
+    peerDependencies:
+      vue: '>= 3'
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1815,6 +1829,10 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@heroicons/vue@2.2.0(vue@3.5.42(typescript@6.0.3))':
+    dependencies:
+      vue: 3.5.42(typescript@6.0.3)
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

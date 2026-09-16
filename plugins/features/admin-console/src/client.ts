@@ -6,7 +6,7 @@ export interface AdminPage {
   id: string
   title: string
   group: string
-  icon: string
+  icon: Component
   component: Component
   /** 附加的系统范围权限；服务端 API 仍必须独立鉴权。 */
   permission?: string
@@ -15,5 +15,6 @@ export interface AdminPage {
 export const adminPagesSlot = 'admin-console.pages'
 export function registerAdminPage(ctx: ClientContext, page: AdminPage): () => void {
   if (!/^[a-z][a-z0-9-]*$/.test(page.id)) throw new Error('后台页面标识无效')
+  if (page.id === 'access-denied') throw new Error('后台页面标识已保留')
   return ctx.contribute(adminPagesSlot, page.id, page)
 }

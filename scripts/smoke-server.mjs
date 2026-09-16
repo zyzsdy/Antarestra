@@ -79,7 +79,8 @@ try {
               resource.headers.get('content-type')?.includes('javascript')
             const access = await fetch(`http://127.0.0.1:${port}/api/chat-webui/session`)
             const chatResource = await fetch(`http://127.0.0.1:${port}${chat.url}`)
-            const adminAccess = await fetch(`http://127.0.0.1:${port}/api/admin-console/session`)
+            const logo = await fetch(`http://127.0.0.1:${port}/brand/logo.svg`)
+            const favicon = await fetch(`http://127.0.0.1:${port}/favicon.ico`)
             const adminResource = await fetch(`http://127.0.0.1:${port}${admin.url}`)
             const adminPage = await fetch(`http://127.0.0.1:${port}/admin`)
             healthy =
@@ -87,8 +88,9 @@ try {
               access.status === 401 &&
               (await access.json()).loginPath === '/auth/user/' &&
               chatResource.status === 200 &&
-              adminAccess.status === 401 &&
-              (await adminAccess.json()).loginPath === '/auth/user/' &&
+              logo.status === 200 &&
+              logo.headers.get('content-type')?.includes('image/svg+xml') &&
+              favicon.status === 200 &&
               adminResource.status === 200 &&
               adminPage.status === 200
           }

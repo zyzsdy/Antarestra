@@ -1,4 +1,9 @@
 :root {
+  --scrollbar-thumb: #a3adbd;
+  --scrollbar-track: #f4f6fa;
+  --scrollbar-hover: #7e8ca3;
+  --scrollbar-active: #52647f;
+  --focus-ring: #315ed1;
   font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
   color: #242629;
   background: #fff;
@@ -6,6 +11,48 @@
 }
 * {
   box-sizing: border-box;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+html {
+  scrollbar-gutter: stable;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid var(--scrollbar-track);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-active);
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+.ui-icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+@media (forced-colors: active) {
+  * {
+    scrollbar-color: auto;
+  }
+  :root {
+    --focus-ring: Highlight;
+  }
 }
 body {
   margin: 0;

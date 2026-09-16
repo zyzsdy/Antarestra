@@ -8,7 +8,7 @@ interface User {
   principal_id: string
   principal?: { display_name: string; status: string }
 }
-const { api, run, message, busy } = useApi()
+const { api, run, message, busy, session } = useApi()
 const users = ref<User[]>([])
 const offset = ref(0)
 const actorId = ref('')
@@ -19,8 +19,7 @@ async function load(next = offset.value) {
 }
 onMounted(() =>
   run(async () => {
-    const me = await api<{ auth: { principalId: string } }>('/auth/me')
-    actorId.value = me.auth.principalId
+    actorId.value = session.read()?.actorId ?? ''
     await load()
   }),
 )

@@ -12,6 +12,12 @@
     "dev": "vite build --watch"
   },
   "exports": {
+    "./components": "./client/components.ts",
+    "./icons": {
+      "types": "./dist/icons.d.ts",
+      "development": "./src/icons.ts",
+      "default": "./dist/icons.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
@@ -29,8 +35,10 @@
     }
   },
   "dependencies": {
+    "@antarestra/contracts": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
+    "@heroicons/vue": "^2.2.0",
     "vue": "^3.5.42",
     "vue-router": "^5.3.1"
   },

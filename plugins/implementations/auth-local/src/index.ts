@@ -140,8 +140,12 @@ export default defineDatabasePlugin({
             const valid = await verifyPassword(password, account?.password_hash ?? dummyHash)
             if (!account || !valid) throw new AuthError(401, '邮箱或密码错误')
             const session = await provider.issue(account.id)
+            const auth = await ctx.rbac.authenticate(session.token)
+            if (!auth) throw new AuthError(401, '账号不可用')
+            const snapshot = await ctx.rbac.sessionSnapshot(auth)
             ctx.rbac.setSession(http, session)
-            http.body = { ok: true, expiresAt: session.expiresAt }
+            http.set('Cache-Control', 'no-store')
+            http.body = { ok: true, expiresAt: session.expiresAt, session: snapshot }
           }
         } finally {
           hashing--

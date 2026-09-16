@@ -44,6 +44,35 @@ function entry(id: string, version = 1): EntryManifest {
 }
 
 describe('浏览器扩展更新', () => {
+  it('批量注册只重新匹配受影响的当前路径，无关路由变化不重复触发守卫', async () => {
+    setup(true)
+    await router.push('/target/')
+    vi.stubGlobal('window', new EventTarget())
+    const guard = vi.fn(() => true)
+    const removeGuard = router.beforeEach(guard)
+    try {
+      stop = startExtensions(async () => ({
+        default: (ctx: ClientContext) => {
+          const id = String(ctx.config.id)
+          for (const path of id === 'target' ? ['/target/', '/extra/'] : ['/unrelated/'])
+            ctx.page({ path, name: path, component: {} })
+        },
+      }))
+      await vi.waitFor(() => expect(Socket.instances).toHaveLength(1))
+      Socket.instances[0]!.entries([entry('target')])
+      await vi.waitFor(() => expect(router.currentRoute.value.matched[0]?.path).toBe('/target/'))
+      expect(guard).toHaveBeenCalledTimes(1)
+      Socket.instances[0]!.entries([entry('target'), entry('other')])
+      await vi.waitFor(() => expect(pages.has('/unrelated/')).toBe(true))
+      expect(guard).toHaveBeenCalledTimes(1)
+      Socket.instances[0]!.entries([entry('target')])
+      await vi.waitFor(() => expect(pages.has('/unrelated/')).toBe(false))
+      expect(guard).toHaveBeenCalledTimes(1)
+    } finally {
+      removeGuard()
+    }
+  })
+
   it('首页由扩展注册，异步守卫在进入前执行，卸载后根路由回收', async () => {
     setup(true)
     let allowed = false

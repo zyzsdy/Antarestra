@@ -14,6 +14,26 @@
 
 ## 通用交互
 
+### 品牌与图标
+
+Logo 与 favicon 的源文件位于 `assets/brand/logo.svg` 和 `assets/favicon.ico`，由页面壳构建并统一托管；插件不要复制资源或使用字符占位。Vue 组件与图标使用独立客户端入口，不引入后端依赖：
+
+```vue
+<script setup lang="ts">
+import { AntarestraLogo } from '@antarestra/webui/components'
+import { PlusIcon } from '@antarestra/webui/icons'
+</script>
+
+<template>
+  <AntarestraLogo :size="48" />
+  <button><PlusIcon class="ui-icon" aria-hidden="true" /> 新建</button>
+</template>
+```
+
+`AntarestraLogo` 保持原始宽高比，`size` 为宽度（默认 36px）；旁边已有品牌文字时传入 `decorative`，避免重复播报。`components` 入口供统一 Vite 构建的 Vue 客户端使用。图标由 WebUI 唯一依赖的 [Heroicons](https://github.com/tailwindlabs/heroicons) 提供，`icons` 导出全部 24px 线性图标，具名导入会按需裁剪，无需插件重复安装。页面壳提供 20px 的 `ui-icon` 样式，图标按钮还需有中文 `aria-label`。
+
+登录与账号资料响应中的 `session` 通过 `ctx.session.set()` 保存；Vue 组件可注入 `sessionKey` 获取同一个服务。`read()` 检查过期，`clear()` 在退出或 401 时清除内存与 localStorage。多个标签页自动同步；浏览器禁止持久化时退回内存。只保存公开展示字段，不保存 Cookie 或令牌。403 由业务界面报错，前端快照从不作为真实 API 的授权依据。组件可注入 `routerKey` 使用页面壳共享路由，无需自行捆绑 Vue Router。
+
 公共服务通过前端 Vue 注入，不挂在后端 Cordis 上下文上：
 
 ```typescript

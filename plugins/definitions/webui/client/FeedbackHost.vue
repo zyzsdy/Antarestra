@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, provide, ref } from 'vue'
 import { feedbackKey } from '../src/client.js'
+import { XMarkIcon } from '../src/icons.js'
 const messages = ref<{ id: number; text: string }[]>([])
 const dialog = ref<HTMLDialogElement>()
 const current = ref<{ title: string; message: string }>()
@@ -64,7 +65,7 @@ onUnmounted(() => {
         aria-label="关闭通知"
         @click="messages = messages.filter((value) => value.id !== item.id)"
       >
-        ×
+        <XMarkIcon class="ui-icon" aria-hidden="true" />
       </button>
     </div>
   </div>

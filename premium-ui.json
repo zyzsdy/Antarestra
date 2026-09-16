@@ -1,0 +1,13 @@
+{
+  "profile": "product-admin",
+  "locale": "zh-CN",
+  "sourceRoots": [
+    "plugins/definitions/webui/client",
+    "plugins/features/admin-console/client",
+    "plugins/features/chat-webui/client"
+  ],
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Scrollbar", "Toast"],
+  "requiredCommands": ["check"],
+  "commands": { "check": "pnpm check" }
+}

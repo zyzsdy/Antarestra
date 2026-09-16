@@ -18,6 +18,7 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
+    "@antarestra/contracts": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*"

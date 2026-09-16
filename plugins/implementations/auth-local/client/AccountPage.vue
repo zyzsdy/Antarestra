@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useApi } from './api.js'
+import { AntarestraLogo } from '@antarestra/webui/components'
+import type { SessionSnapshot } from '@antarestra/webui/client'
 const props = defineProps<{ base: string; allowRegistration: boolean }>()
-const { api, run, message, busy } = useApi()
-const account = ref<{ principal: { display_name: string }; auth: { principalId: string } }>()
+const { api, run, message, busy, session, router } = useApi()
+const account = ref<{
+  principal: { display_name: string }
+  auth: { principalId: string }
+  session: SessionSnapshot
+}>()
 const mode = ref('login')
 const email = ref('')
 const password = ref('')
@@ -12,6 +18,13 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     account.value = await api('/auth/me')
+    session.set(account.value!.session)
+    const returnTo = router.currentRoute.value.query.returnTo
+    if (
+      typeof returnTo === 'string' &&
+      (returnTo === '/' || /^\/admin(?:\/[a-z0-9-]+)*\/?$/i.test(returnTo))
+    )
+      void router.replace(returnTo)
   } catch {
     /* 未登录时显示登录表单。 */
   } finally {
@@ -20,7 +33,7 @@ onMounted(async () => {
 })
 function submit() {
   void run(async () => {
-    await api(props.base + '/' + mode.value, {
+    const result = await api<{ session?: SessionSnapshot }>(props.base + '/' + mode.value, {
       email: email.value,
       password: password.value,
       displayName: displayName.value,
@@ -31,17 +44,23 @@ function submit() {
       message.value = '账号创建成功，请登录。'
       return
     }
-    const target = new URLSearchParams(location.search).get('returnTo') || '/'
-    if (target === '/' || (target && /^\/admin(?:\/[a-z0-9-]+)*\/?$/i.test(target))) {
-      location.assign(target)
+    if (result.session) session.set(result.session)
+    const target = router.currentRoute.value.query.returnTo || '/'
+    if (
+      typeof target === 'string' &&
+      (target === '/' || /^\/admin(?:\/[a-z0-9-]+)*\/?$/i.test(target))
+    ) {
+      void router.push(target)
       return
     }
     account.value = await api('/auth/me')
+    session.set(account.value!.session)
   })
 }
 function logout() {
   void run(async () => {
     await api('/auth/logout', {})
+    session.clear()
     account.value = undefined
     message.value = '已退出登录'
   })
@@ -49,6 +68,7 @@ function logout() {
 </script>
 <template>
   <main class="auth-account auth-ui">
+    <a href="/" aria-label="Antarestra 首页"><AntarestraLogo /></a>
     <p class="eyebrow">ANTARESTRA / ACCOUNT</p>
     <h1>从你的账号开始。</h1>
     <p class="muted">登录 Antarestra，访问你的工作空间。</p>
@@ -58,7 +78,9 @@ function logout() {
       <h2>{{ account.principal.display_name }}</h2>
       <p class="muted">主体：{{ account.auth.principalId }}</p>
       <div class="actions">
-        <a href="/">进入聊天</a><a href="/admin/">管理控制台</a
+        <a href="/">进入聊天</a
+        ><a v-if="session.snapshot.value?.permissions.includes('admin.console.view')" href="/admin/"
+          >管理控制台</a
         ><button :disabled="busy" @click="logout">退出登录</button>
       </div>
     </section>

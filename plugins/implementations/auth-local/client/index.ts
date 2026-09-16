@@ -1,5 +1,6 @@
 import { defineComponent, h } from 'vue'
 import type { ClientPlugin } from '@antarestra/webui/client'
+import { UsersIcon, ShieldCheckIcon, UserGroupIcon } from '@antarestra/webui/icons'
 import { registerAdminPage } from '@antarestra/plugin-admin-console/client'
 import AccountPage from './AccountPage.vue'
 import UsersPage from './UsersPage.vue'
@@ -24,7 +25,7 @@ const apply: ClientPlugin = (ctx) => {
       id: 'users',
       order: 100,
       title: '本地用户',
-      icon: '◎',
+      icon: UsersIcon,
       permission: 'identity.local.manage',
       component: defineComponent(() => () => h(UsersPage, { base })),
     },
@@ -32,7 +33,7 @@ const apply: ClientPlugin = (ctx) => {
       id: 'roles',
       order: 110,
       title: '角色与权限',
-      icon: '◇',
+      icon: ShieldCheckIcon,
       permission: 'authz.role.manage',
       component: RolesPage,
     },
@@ -40,7 +41,7 @@ const apply: ClientPlugin = (ctx) => {
       id: 'bindings',
       order: 120,
       title: '角色分配',
-      icon: '♧',
+      icon: UserGroupIcon,
       permission: 'authz.binding.manage',
       component: BindingsPage,
     },

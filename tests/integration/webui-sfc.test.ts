@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { build } from 'vite'
 import { describe, expect, it, vi } from 'vitest'
 import { defineWebUIConfig } from '@antarestra/webui/vite'
-import { router } from '../../plugins/definitions/webui/client/runtime.js'
+import { router, session } from '../../plugins/definitions/webui/client/runtime.js'
 import type { ClientContext, ClientPlugin, Page } from '@antarestra/webui/client'
 
 describe('WebUI SFC 构建', () => {
@@ -39,6 +39,7 @@ describe('WebUI SFC 构建', () => {
         const ctx: ClientContext = {
           vue: Reflect.get(globalThis, Symbol.for('antarestra.webui.vue')),
           router,
+          session,
           config: {},
           slot: () => new Map(),
           contribute: () => () => {},
@@ -76,7 +77,6 @@ it('后台构建产物支持先贡献后挂载、独立卸载与重载，并对�
     await import('../../plugins/definitions/webui/client/runtime.js')
   let stop: (() => void) | undefined
   let socket: { onmessage?: (event: { data: string }) => void } | undefined
-  let authorized = true
   const requests: string[] = []
   const links: { remove: () => void }[] = []
   try {
@@ -110,14 +110,14 @@ it('后台构建产物支持先贡献后挂载、独立卸载与重载，并对�
       if (url === '/webui/entries.json')
         return new Response('[]', { headers: { 'X-WebUI-HMR': '/webui/hmr' } })
       requests.push(url)
-      return new Response(
-        JSON.stringify(
-          authorized
-            ? { actorId: 'test', displayName: '测试管理员' }
-            : { loginPath: '/auth/user/' },
-        ),
-        { status: authorized ? 200 : 401 },
-      )
+      throw new Error('路由守卫不得请求鉴权 API')
+    })
+    session.set({
+      actorId: 'test',
+      displayName: '测试管理员',
+      accountPath: '/auth/user/',
+      expiresAt: Date.now() + 60_000,
+      permissions: ['admin.console.view', 'example.page.view'],
     })
     stop = startExtensions(async (url) =>
       url.includes('/admin/')
@@ -128,7 +128,7 @@ it('后台构建产物支持先贡献后挂载、独立卸载与重载，并对�
                 id: 'example',
                 group: '测试插件',
                 title: '测试页面',
-                icon: '◇',
+                icon: {},
                 permission: 'example.page.view',
                 component: {},
               })
@@ -142,11 +142,20 @@ it('后台构建产物支持先贡献后挂载、独立卸载与重载，并对�
     sync(['author', 'admin'])
     await vi.waitFor(() => expect(pages.has('/admin/example/')).toBe(true))
     await router.push('/admin/example/')
-    expect(requests.at(-1)).toBe('/api/admin-console/session?permission=example.page.view')
-    authorized = false
+    expect(requests).toHaveLength(0)
+    const sessionRequests = requests.length
+    await router.push('/admin/')
+    await router.push('/admin/example/')
+    expect(requests).toHaveLength(sessionRequests)
+    expect(pages.get('/admin/')!.component).toBe(pages.get('/admin/example/')!.component)
+    session.set({ ...session.read()!, permissions: ['admin.console.view'] })
+    await router.push('/admin/')
+    await router.push('/admin/example/')
+    expect(router.currentRoute.value.path).toBe('/admin/access-denied/')
+    session.clear()
     await router.push('/other/')
     await router.push('/ADMIN/EXAMPLE/')
-    expect(requests.at(-1)).toBe('/api/admin-console/session?permission=example.page.view')
+    expect(requests).toHaveLength(0)
     expect(router.currentRoute.value.path).toBe('/auth/user/')
     expect(router.currentRoute.value.query.returnTo).toBe('/ADMIN/EXAMPLE/')
     sync(['author'])
@@ -165,6 +174,7 @@ it('后台构建产物支持先贡献后挂载、独立卸载与重载，并对�
     for (const link of links) expect(link.remove).toHaveBeenCalledTimes(1)
   } finally {
     stop?.()
+    session.clear()
     vi.unstubAllGlobals()
     await rm(directory, { recursive: true, force: true })
   }

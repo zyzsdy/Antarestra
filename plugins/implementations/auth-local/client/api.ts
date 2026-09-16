@@ -1,5 +1,8 @@
-import { onUnmounted, ref } from 'vue'
+import { inject, onUnmounted, ref } from 'vue'
+import { sessionKey, routerKey } from '@antarestra/webui/client'
 export function useApi() {
+  const session = inject(sessionKey)!
+  const router = inject(routerKey)!
   const message = ref('')
   const busy = ref(false)
   const controller = new AbortController()
@@ -14,6 +17,15 @@ export function useApi() {
         : {}),
     })
     const data = await response.json()
+    if (response.status === 401) {
+      const accountPath = session.read()?.accountPath ?? '/auth/user/'
+      session.clear()
+      if (!path.endsWith('/login') && path !== '/auth/me')
+        void router.push({
+          path: accountPath,
+          query: { returnTo: router.currentRoute.value.fullPath },
+        })
+    }
     if (!response.ok) throw new Error(data.error || '请求失败')
     return data as T
   }
@@ -30,5 +42,5 @@ export function useApi() {
       busy.value = false
     }
   }
-  return { api, run, message, busy }
+  return { api, run, message, busy, session, router }
 }

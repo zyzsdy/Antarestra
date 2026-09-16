@@ -4,6 +4,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { defineDatabasePlugin } from '@antarestra/database'
 import type { DatabaseTransaction, Queries } from '@antarestra/database'
 import type { HttpContext, Middleware } from '@antarestra/plugin-server'
+import type { SessionSnapshot } from '@antarestra/contracts'
 import { migrations, pluginId } from './schema.js'
 import type { Principal, Tables } from './schema.js'
 import { AuthError, errors, readJson, textField } from './http.js'
@@ -486,6 +487,27 @@ export class RbacService extends Service<Config> {
     return this.db().selectFrom('principal').selectAll().where('id', '=', id).executeTakeFirst()
   }
 
+  /** 登录和账号资料响应附带的系统权限快照；真实 API 继续使用 require/can。 */
+  async sessionSnapshot(auth: AuthContext): Promise<SessionSnapshot> {
+    const session = await this.db()
+      .selectFrom('session')
+      .select('expires_at')
+      .where('id', '=', auth.sessionId)
+      .executeTakeFirst()
+    if (!session || session.expires_at <= Date.now()) throw new AuthError(401, '请先登录')
+    const permissions: string[] = []
+    for (const permission of this.permissions.keys()) {
+      if (await this.can(auth, permission)) permissions.push(permission)
+    }
+    return {
+      actorId: auth.principalId,
+      displayName: (await this.principal(auth.principalId))?.display_name ?? '用户',
+      accountPath: this.loginPath('web', auth.providerId) ?? '/auth/user/',
+      expiresAt: session.expires_at,
+      permissions,
+    }
+  }
+
   /** 可信插件在已校验业务空间后调用；公开入口应使用 require 并校验授予者权限。 */
   async grantRole(
     transaction: DatabaseTransaction,
@@ -589,7 +611,12 @@ export class RbacService extends Service<Config> {
   private routes(ctx: Context): void {
     ctx.server.route(ctx, 'GET', '/auth/me', async (http) => {
       const auth = this.auth(http)
-      http.body = { auth, principal: await this.principal(auth.principalId) }
+      http.set('Cache-Control', 'no-store')
+      http.body = {
+        auth,
+        principal: await this.principal(auth.principalId),
+        session: await this.sessionSnapshot(auth),
+      }
     })
     ctx.server.route(ctx, 'POST', '/auth/logout', async (http) => {
       await readJson(http)

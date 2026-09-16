@@ -210,47 +210,42 @@ for (const backend of backends)
   })
 
 describe('认证边界与生命周期', () => {
-  it('后台拒绝访客与普通用户，默认授予管理员，按系统范围授权与撤权并独立卸载', async () => {
+  it('登录附带系统权限快照，空间授权不混入菜单权限，旧快照不能绕过真实 API', async () => {
     const app = await setup()
     const consolePlugin = await app.ctx.plugin(adminConsole)
-    const guest = await app.request('/admin-console/session')
-    expect(guest.status).toBe(401)
-    expect(await guest.json()).toMatchObject({ loginPath: '/auth/user/' + app.providerId + '/' })
     await app.register()
     const member = await app.login('member@example.com')
-    const admin = await app.login()
-    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(403)
-    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(200)
-    expect(
-      (
-        await app.request(
-          '/admin-console/session?permission=identity.local.manage',
-          undefined,
-          admin,
-        )
-      ).status,
-    ).toBe(200)
-    expect(
-      (await app.request('/admin-console/session?permission=missing.page.view', undefined, admin))
-        .status,
-    ).toBe(403)
-    const declarations = await (await app.request('/rbac/roles', undefined, admin)).json()
-    expect(declarations.permissions).toContainEqual(
-      expect.objectContaining({ key: 'admin.console.view', defaultRoles: ['admin'] }),
+    const response = await app.request(`${app.base}/login`, {
+      email: 'admin@example.com',
+      password,
+    })
+    const login = await response.json()
+    const admin = response.headers.get('set-cookie')!.split(';')[0]!
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(login.session.permissions).toEqual(
+      expect.arrayContaining(['admin.console.view', 'identity.local.manage']),
     )
-    const { auth } = await (await app.request('/auth/me', undefined, member)).json()
+    expect(login.session).not.toHaveProperty('token')
+    expect(login.session).not.toHaveProperty('sessionId')
+    expect(login.session.expiresAt).toBe(login.expiresAt)
+    const me = async (cookie: string) => (await app.request('/auth/me', undefined, cookie)).json()
+    expect((await me(admin)).session).toEqual(login.session)
+    expect((await me(member)).session.permissions).not.toContain('admin.console.view')
+    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(404)
+    const { auth } = await me(member)
     expect(
       (
         await app.request(
           '/rbac/roles/console-reader',
-          { name: '后台访客', permissions: ['admin.console.view'] },
+          {
+            name: '后台访客',
+            permissions: ['admin.console.view', 'identity.local.manage'],
+          },
           admin,
           'PUT',
         )
       ).status,
     ).toBe(200)
-    const binding = '/rbac/bindings/' + auth.principalId
-    // 直接准备空间绑定；系统管理员本身也不能越过空间授权边界。
     await app.db
       .insertInto('binding')
       .values({
@@ -262,7 +257,9 @@ describe('认证边界与生命周期', () => {
         expires_at: null,
       })
       .execute()
-    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(403)
+    expect((await me(member)).session.permissions).not.toContain('admin.console.view')
+    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(403)
+    const binding = '/rbac/bindings/' + auth.principalId
     expect(
       (
         await app.request(
@@ -273,17 +270,11 @@ describe('认证边界与生命周期', () => {
         )
       ).status,
     ).toBe(200)
-    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(200)
-    expect(
-      (
-        await app.request(
-          '/admin-console/session?permission=identity.local.manage',
-          undefined,
-          member,
-        )
-      ).status,
-    ).toBe(403)
-    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(403)
+    const oldSnapshot = (await me(member)).session
+    expect(oldSnapshot.permissions).toEqual(
+      expect.arrayContaining(['admin.console.view', 'identity.local.manage']),
+    )
+    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(200)
     expect(
       (
         await app.request(
@@ -294,17 +285,17 @@ describe('认证边界与生命周期', () => {
         )
       ).status,
     ).toBe(200)
-    expect((await app.request('/admin-console/session', undefined, member)).status).toBe(403)
+    expect(oldSnapshot.permissions).toContain('identity.local.manage')
+    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(403)
+    expect((await me(member)).session.permissions).not.toContain('identity.local.manage')
     await consolePlugin.dispose()
-    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(404)
-    const entries = await (await fetch(app.url + '/webui/entries.json')).json()
-    expect(entries.some((entry: { id: string }) => entry.id === 'admin-console')).toBe(false)
+    expect((await me(admin)).session.permissions).not.toContain('admin.console.view')
+    expect(app.ctx.webui.getEntries().some((entry) => entry.id === 'admin-console')).toBe(false)
     await app.ctx.plugin(adminConsole)
-    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(200)
-    await app.backend.dispose()
-    expect((await app.request('/admin-console/session', undefined, admin)).status).toBe(404)
+    expect((await me(admin)).session.permissions).toContain('admin.console.view')
+    expect((await app.request('/auth/logout', {}, admin)).status).toBe(200)
+    expect((await app.request(app.base + '/users', undefined, admin)).status).toBe(401)
   })
-
   it('聊天入口验证 Web 身份、默认角色、稳定个人空间与跨空间隔离', async () => {
     const app = await setup()
     const chat = await app.ctx.plugin(chatWebui)

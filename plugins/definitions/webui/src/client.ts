@@ -1,5 +1,7 @@
 import type * as Vue from 'vue'
 import type { Router, NavigationGuard } from 'vue-router'
+import type { SessionSnapshot } from '@antarestra/contracts'
+export type { SessionSnapshot } from '@antarestra/contracts'
 
 export interface Feedback {
   notice(message: string): () => void
@@ -9,6 +11,15 @@ export interface Feedback {
 }
 /** 扩展通过 ctx.vue.inject(feedbackKey) 获取公共交互服务。 */
 export const feedbackKey = Symbol.for('antarestra.webui.feedback') as Vue.InjectionKey<Feedback>
+
+export interface ClientSession {
+  readonly snapshot: Readonly<Vue.ShallowRef<SessionSnapshot | null>>
+  read(): SessionSnapshot | null
+  set(value: SessionSnapshot): void
+  clear(): void
+}
+export const sessionKey = Symbol.for('antarestra.webui.session') as Vue.InjectionKey<ClientSession>
+export const routerKey = Symbol.for('antarestra.webui.router') as Vue.InjectionKey<Router>
 
 export interface EntryManifest {
   id: string
@@ -27,6 +38,7 @@ export interface ClientContext {
   readonly vue: typeof Vue
   readonly router: Router
   readonly config: Readonly<Record<string, unknown>>
+  readonly session: ClientSession
   /** 插槽由页面宿主解释；贡献随所属扩展卸载自动回收。 */
   slot<T>(name: string): ReadonlyMap<string, T>
   contribute<T>(slot: string, id: string, value: T): () => void

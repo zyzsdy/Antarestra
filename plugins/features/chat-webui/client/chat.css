@@ -31,10 +31,6 @@
   padding: 0 10px 32px;
   letter-spacing: -0.7px;
 }
-.chat-logo {
-  font-size: 32px;
-  color: #527560;
-}
 .chat-new {
   display: flex;
   gap: 12px;
@@ -73,8 +69,7 @@
   padding: 16px 10px;
   border-bottom: 1px solid #e3e5de;
 }
-.chat-workspace > span {
-  font-size: 23px;
+.chat-workspace > svg {
   color: #67866d;
 }
 .chat-workspace strong,
@@ -140,8 +135,8 @@
   text-align: center;
 }
 .chat-spark {
-  font-size: 52px;
-  color: #60846d;
+  width: 72px;
+  height: 60px;
   margin-bottom: 24px;
 }
 .chat-eyebrow {
@@ -227,6 +222,8 @@
   color: #a0a397;
 }
 .chat-composer button {
+  display: grid;
+  place-items: center;
   background: #e8ece3;
   border: 0;
   border-radius: 50%;

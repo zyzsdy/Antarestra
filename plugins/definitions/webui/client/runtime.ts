@@ -1,6 +1,15 @@
 import * as vue from 'vue'
 import { createRouter, createWebHistory, createMemoryHistory } from 'vue-router'
 import type { ClientContext, ClientPlugin, EntryManifest, Page } from '../src/client.js'
+import { createClientSession, sessionStorageKey } from './session.js'
+
+let storage: Storage | undefined
+try {
+  storage = typeof localStorage === 'undefined' ? undefined : localStorage
+} catch {
+  /* 隐私模式使用内存。 */
+}
+export const session = createClientSession(storage)
 
 // 扩展的编译产物通过统一构建插件读取此共享运行时。
 Object.defineProperty(globalThis, Symbol.for('antarestra.webui.vue'), {
@@ -14,8 +23,33 @@ export const router = createRouter({
   routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }],
 })
 export const failures = vue.ref<string[]>([])
+router.afterEach((to, _from, failure) => {
+  if (failure || typeof document === 'undefined') return
+  const page = [...pages.values()].find(
+    (page) =>
+      page.path.toLowerCase().replace(/\/$/, '') === to.path.toLowerCase().replace(/\/$/, ''),
+  )
+  document.title = page ? `${page.name} · Antarestra` : 'Antarestra'
+})
 const loaded = new Map<string, { signature: string; dispose: () => void }>()
 const slots = new Map<string, Map<string, unknown>>()
+let syncing = 0
+let rematchQueued = false
+function rematchCurrentRoute() {
+  if (typeof window === 'undefined' || syncing || rematchQueued) return
+  rematchQueued = true
+  queueMicrotask(() => {
+    rematchQueued = false
+    if (syncing) return
+    const current = router.currentRoute.value
+    const matched = router.resolve(current.fullPath).matched
+    if (
+      matched.length !== current.matched.length ||
+      matched.some((route, i) => route !== current.matched[i])
+    )
+      void router.replace(current.fullPath)
+  })
+}
 function slot(name: string) {
   if (!slots.has(name)) slots.set(name, vue.shallowReactive(new Map<string, unknown>()))
   return slots.get(name)!
@@ -28,6 +62,7 @@ function context(config: EntryManifest['config']) {
     vue,
     router,
     config,
+    session,
     slot<T>(name: string) {
       return vue.shallowReadonly(slot(name)) as ReadonlyMap<string, T>
     },
@@ -60,14 +95,14 @@ function context(config: EntryManifest['config']) {
         component: page.component,
         ...(page.beforeEnter ? { beforeEnter: page.beforeEnter } : {}),
       })
-      if (typeof window !== 'undefined') void router.replace(router.currentRoute.value.fullPath)
+      rematchCurrentRoute()
       let registered = true
       const dispose = () => {
         if (!registered) return
         registered = false
         removeRoute()
         if (pages.get(page.path) === page) pages.delete(page.path)
-        if (typeof window !== 'undefined') void router.replace(router.currentRoute.value.fullPath)
+        rematchCurrentRoute()
       }
       effects.push(dispose)
       return dispose
@@ -98,6 +133,10 @@ export function startExtensions(
     import(/* @vite-ignore */ url),
 ) {
   let active = true
+  const syncSession = (event: StorageEvent) => {
+    if (event.key === sessionStorageKey || event.key === null) session.restore()
+  }
+  if (typeof window !== 'undefined') window.addEventListener('storage', syncSession)
   let timer: ReturnType<typeof setTimeout> | undefined
   const controller = new AbortController()
   let socket: WebSocket | undefined
@@ -105,6 +144,7 @@ export function startExtensions(
   const pendingScopes = new Set<ReturnType<typeof context>>()
   async function sync(entries: EntryManifest[]) {
     const errors: string[] = []
+    syncing++
     try {
       if (!active) return
       const signatures = new Map(entries.map((entry) => [entry.id, JSON.stringify(entry)]))
@@ -144,6 +184,8 @@ export function startExtensions(
     } catch (error) {
       if (active) errors.push('页面扩展暂时不可用，请刷新页面重试。')
     } finally {
+      syncing--
+      rematchCurrentRoute()
       if (active) {
         failures.value = errors
       }
@@ -195,6 +237,7 @@ export function startExtensions(
   void initialize()
   return () => {
     active = false
+    if (typeof window !== 'undefined') window.removeEventListener('storage', syncSession)
     controller.abort()
     clearTimeout(timer)
     socket?.close()

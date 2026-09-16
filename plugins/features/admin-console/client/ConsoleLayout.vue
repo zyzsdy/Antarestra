@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { AntarestraLogo } from '@antarestra/webui/components'
+import {
+  ArrowTopRightOnSquareIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+} from '@antarestra/webui/icons'
 import type { ClientContext } from '@antarestra/webui/client'
 import type { AdminPage } from '../src/client.js'
 const props = defineProps<{
+  actorId: string
   displayName: string
   accountPath: string
   failure: string
@@ -12,27 +19,34 @@ const props = defineProps<{
   items: AdminPage[]
   router: ClientContext['router']
 }>()
-defineEmits<{ toggle: [] }>()
+const emit = defineEmits<{ toggle: [] }>()
 const groups = computed(() => [...new Set(props.items.map((item) => item.group))])
 function go(id: string) {
   void props.router.push(`/admin/${id}/`)
+  if (!props.collapsed && matchMedia('(max-width: 760px)').matches) emit('toggle')
 }
 </script>
 
 <template>
   <div v-if="!ready" class="access-state" role="status">
-    <span class="brand-mark">A</span>
+    <AntarestraLogo class="brand-mark" />
     <h1>管理控制台</h1>
-    <p>{{ failure || '正在验证访问权限…' }}</p>
-    <a href="/auth/user/?returnTo=/admin/">前往登录</a>
+    <p>{{ failure }}</p>
+    <a :href="`${accountPath}?returnTo=${encodeURIComponent(router.currentRoute.value.fullPath)}`"
+      >前往登录</a
+    >
     <a href="/admin/">返回控制台</a>
     <a href="/">返回首页</a>
   </div>
   <div v-else class="console" :class="{ collapsed }">
     <aside class="sidebar">
-      <a class="brand" href="/admin/" aria-label="Antarestra 管理控制台"
-        ><span class="brand-mark">A</span
-        ><span class="nav-label">Antarestra<small>管理控制台</small></span></a
+      <a
+        class="brand"
+        href="/admin/"
+        aria-label="Antarestra 管理控制台"
+        @click.prevent="router.push('/admin/')"
+        ><AntarestraLogo class="brand-mark" decorative />
+        <span class="nav-label">Antarestra<small>管理控制台</small></span></a
       >
       <nav aria-label="后台导航">
         <section v-for="group in groups" :key="group" class="nav-group">
@@ -47,15 +61,15 @@ function go(id: string) {
             :class="['nav-item', { selected: page.id === item.id }]"
             @click.prevent="go(item.id)"
           >
-            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span
-            ><span class="nav-label">{{ item.title }}</span>
+            <component :is="item.icon" class="nav-icon" aria-hidden="true" />
+            <span class="nav-label">{{ item.title }}</span>
           </a>
         </section>
       </nav>
       <div class="sidebar-bottom">
         <a class="nav-item" href="/" title="返回聊天" aria-label="返回聊天"
-          ><span class="nav-icon" aria-hidden="true">↗</span
-          ><span class="nav-label">返回聊天</span></a
+          ><ArrowTopRightOnSquareIcon class="nav-icon" aria-hidden="true" />
+          <span class="nav-label">返回聊天</span></a
         >
         <button
           class="collapse-button"
@@ -64,8 +78,12 @@ function go(id: string) {
           :title="collapsed ? '展开菜单' : '折叠菜单'"
           @click="$emit('toggle')"
         >
-          <span class="nav-icon" aria-hidden="true">{{ collapsed ? '»' : '«' }}</span
-          ><span class="nav-label">折叠菜单</span>
+          <component
+            :is="collapsed ? ChevronDoubleRightIcon : ChevronDoubleLeftIcon"
+            class="nav-icon"
+            aria-hidden="true"
+          />
+          <span class="nav-label">折叠菜单</span>
         </button>
       </div>
     </aside>
@@ -83,7 +101,12 @@ function go(id: string) {
           <p>ANTARESTRA / ADMIN</p>
           <h1>{{ page.title }}</h1>
         </div>
-        <component :is="page.component" :key="page.id" />
+        <section v-if="failure" class="page-error" role="alert">
+          <h2>暂时无法打开此页面</h2>
+          <p>{{ failure }}</p>
+          <a :href="accountPath">前往账号中心</a>
+        </section>
+        <component v-else :is="page.component" :key="`${actorId}/${page.id}`" />
       </main>
       <footer>Antarestra · 管理控制台</footer>
     </div>
@@ -128,16 +151,9 @@ a {
   white-space: nowrap;
 }
 .brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 32px;
-  height: 36px;
+  width: 36px;
+  height: 30px;
   flex-shrink: 0;
-  background: #5278ef;
-  color: white;
-  border-radius: 9px;
-  font-size: 21px;
-  font-weight: 700;
 }
 .brand small {
   display: block;
@@ -182,6 +198,7 @@ a {
   display: inline-grid;
   place-items: center;
   width: 20px;
+  height: 20px;
   flex-shrink: 0;
   font-size: 20px;
 }
@@ -273,6 +290,17 @@ footer {
   margin: 12vh auto;
   padding: 32px;
   text-align: center;
+}
+.page-error {
+  padding: 24px;
+  border: 1px solid #e6eaf1;
+  background: white;
+  border-radius: 10px;
+}
+.page-error a {
+  display: inline-block;
+  padding-block: 8px;
+  color: #315ed1;
 }
 .access-state h1 {
   margin-top: 22px;

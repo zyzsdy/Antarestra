@@ -57,14 +57,14 @@ export function apply(ctx: Context) {
 
 ## HTTP 接口
 
-| 方法 | 路径                              | 要求                                                    |
-| ---- | --------------------------------- | ------------------------------------------------------- |
-| GET  | `/api/auth/me`                    | 已登录，返回主体与会话上下文                            |
-| POST | `/api/auth/logout`                | 已登录，JSON `{}`                                       |
-| GET  | `/api/rbac/roles`                 | `authz.role.manage`，包含可用权限声明                   |
-| PUT  | `/api/rbac/roles/:id`             | `authz.role.manage`，JSON `{name, permissions}`         |
-| GET  | `/api/rbac/bindings/:principalId` | `authz.binding.manage`                                  |
-| PUT  | `/api/rbac/bindings/:principalId` | `authz.binding.manage`，JSON `{roleId, scope, enabled}` |
+| 方法 | 路径                              | 要求                                                       |
+| ---- | --------------------------------- | ---------------------------------------------------------- |
+| GET  | `/api/auth/me`                    | 已登录，返回主体、会话上下文和用于客户端展示的系统权限快照 |
+| POST | `/api/auth/logout`                | 已登录，JSON `{}`                                          |
+| GET  | `/api/rbac/roles`                 | `authz.role.manage`，包含可用权限声明                      |
+| PUT  | `/api/rbac/roles/:id`             | `authz.role.manage`，JSON `{name, permissions}`            |
+| GET  | `/api/rbac/bindings/:principalId` | `authz.binding.manage`                                     |
+| PUT  | `/api/rbac/bindings/:principalId` | `authz.binding.manage`，JSON `{roleId, scope, enabled}`    |
 
 写接口限定 JSON、最多 16 KiB，并检查 Origin 和跨站 Fetch Metadata。反向代理终止 HTTPS、跨域嵌入、SSO 尚未适配，本版使用 server 直接 HTTPS 或本机开发 HTTP。
 
