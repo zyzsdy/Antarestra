@@ -46,6 +46,16 @@ function go(id: string) {
   if (!props.collapsed && matchMedia('(max-width: 760px)').matches) emit('toggle')
 }
 
+function returnToChat() {
+  closeAccount()
+  void props.router.push('/')
+}
+
+function openAccount() {
+  closeAccount()
+  void props.router.push(props.accountPath)
+}
+
 function toggleAccount() {
   accountOpen.value = !accountOpen.value
   accountError.value = ''
@@ -75,6 +85,12 @@ function onMenuKeydown(event: KeyboardEvent) {
     closeAccount(true)
     return
   }
+  if (event.key === 'Tab') {
+    void nextTick(() => {
+      if (!accountMenu.value?.contains(document.activeElement)) closeAccount()
+    })
+    return
+  }
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
   const entries = [...(accountMenu.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])]
   if (!entries.length) return
@@ -89,14 +105,6 @@ function onMenuKeydown(event: KeyboardEvent) {
           ? (current + 1) % entries.length
           : (current - 1 + entries.length) % entries.length
   entries[index]?.focus()
-}
-
-function onMenuFocusout() {
-  void nextTick(() => {
-    const active = document.activeElement
-    if (!accountMenu.value?.contains(active) && !accountButton.value?.contains(active))
-      closeAccount()
-  })
 }
 
 async function logout() {
@@ -218,14 +226,13 @@ onUnmounted(() => document.removeEventListener('pointerdown', onDocumentPointerD
           role="menu"
           aria-label="账号菜单"
           @keydown="onMenuKeydown"
-          @focusout="onMenuFocusout"
         >
           <p v-if="accountError" class="account-error" role="alert">{{ accountError }}</p>
-          <a :href="accountPath" role="menuitem" @click="closeAccount()">
+          <a :href="accountPath" role="menuitem" @click.prevent="openAccount">
             <UserCircleIcon class="menu-icon" aria-hidden="true" />
             用户中心
           </a>
-          <a href="/" role="menuitem" @click="closeAccount()">
+          <a href="/" role="menuitem" @click.prevent="returnToChat">
             <ArrowTopRightOnSquareIcon class="menu-icon" aria-hidden="true" />
             返回聊天
           </a>
