@@ -79,6 +79,23 @@ export class HttpServer extends Service<Config> {
     return this.config.publicUrl
   }
 
+  /** 供插件生成可交付给用户的站内链接。未配置 publicUrl 时使用可访问的本机地址。 */
+  url(path = '/'): string {
+    const trailingSlash = path.length > 1 && path.endsWith('/')
+    path = normalizePath(path)
+    const configured = this.config.publicUrl.trim()
+    const relative = path.replace(/^\//, '') + (trailingSlash ? '/' : '')
+    if (configured) return new URL(relative, configured.replace(/\/?$/, '/')).href
+    const port = this.address?.port ?? this.config.port
+    const wildcard = ['0.0.0.0', '::', '[::]'].includes(this.config.host)
+    const host = wildcard ? '127.0.0.1' : this.config.host
+    const hostname = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host
+    return new URL(
+      path + (trailingSlash ? '/' : ''),
+      `${this.config.https ? 'https' : 'http'}://${hostname}:${port}`,
+    ).href
+  }
+
   get address(): Readonly<AddressInfo> | undefined {
     const address = this.listener?.address()
     return address && typeof address !== 'string' ? Object.freeze({ ...address }) : undefined

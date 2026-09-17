@@ -8,6 +8,7 @@ export interface Tables {
     email: string
     email_key: string
     password_hash: string
+    password_change_required: number
     identity_id: string
     principal_id: string
     created_at: number
@@ -44,6 +45,16 @@ export const migrations = [
         name: 'account_identity',
         columns: ['identity_id'],
         unique: true,
+      },
+    ],
+  }),
+  defineMigration({
+    id: '002_password_change_required',
+    steps: [
+      {
+        kind: 'addColumn',
+        table: 'account',
+        column: { name: 'password_change_required', type: 'boolean', notNull: true, default: 0 },
       },
     ],
   }),

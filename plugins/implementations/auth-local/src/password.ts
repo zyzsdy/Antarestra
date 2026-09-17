@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from 'node:crypto'
 import { AuthError } from '@antarestra/rbac'
 
 const options = { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 }
@@ -9,14 +9,11 @@ const derive = (password: string, salt: Buffer): Promise<Buffer> =>
     )
   })
 
-export function email(value: unknown): string {
-  if (typeof value !== 'string') throw new AuthError(400, '邮箱格式无效')
+export function loginName(value: unknown): string {
+  if (typeof value !== 'string') throw new AuthError(400, '登录名格式无效')
   const normalized = value.trim().normalize('NFKC').toLowerCase()
-  if (
-    normalized.length > 254 ||
-    !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/.test(normalized)
-  )
-    throw new AuthError(400, '邮箱格式无效')
+  if (!normalized || normalized.length > 254 || /[\s\x00-\x1f\x7f]/.test(normalized))
+    throw new AuthError(400, '登录名必须为 1–254 个不含空白的字符')
   return normalized
 }
 
@@ -27,6 +24,22 @@ export function passwordInput(value: unknown): string {
 }
 
 export const emailKey = (value: string): string => createHash('sha256').update(value).digest('hex')
+
+const lower = 'abcdefghjklmnpqrstuvwxyz'
+const digits = '23456789'
+const symbols = '~@#$%^&*:+-=<>?/\\'
+const pick = (characters: string): string => characters[randomInt(characters.length)]!
+
+export function generateInitialPassword(): string {
+  const characters = [pick(lower), pick(digits), pick(symbols)]
+  const all = lower + digits + symbols
+  while (characters.length < 16) characters.push(pick(all))
+  for (let index = characters.length - 1; index > 0; index--) {
+    const target = randomInt(index + 1)
+    ;[characters[index], characters[target]] = [characters[target]!, characters[index]!]
+  }
+  return characters.join('')
+}
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16)
   return `scrypt:32768:8:3:${salt.toString('hex')}:${(await derive(password, salt)).toString('hex')}`

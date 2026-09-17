@@ -4,7 +4,14 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { AuthError, readJson, textField } from '@antarestra/rbac'
 import { pluginId, migrations } from './schema.js'
 import type { Tables } from './schema.js'
-import { email, emailKey, passwordInput, hashPassword, verifyPassword } from './password.js'
+import {
+  emailKey,
+  generateInitialPassword,
+  hashPassword,
+  loginName,
+  passwordInput,
+  verifyPassword,
+} from './password.js'
 import '@antarestra/webui'
 import { fileURLToPath } from 'node:url'
 import type { HttpContext } from '@antarestra/plugin-server'
@@ -35,9 +42,11 @@ export default defineDatabasePlugin({
     const providerId = config.providerId ?? 'local'
     const provider = await ctx.rbac.registerProvider(ctx, providerId, pluginId)
     const base = `/auth/local/${providerId}`
+    const accountPath = providerId === 'local' ? '/auth/user/' : `/auth/user/${providerId}/`
+    const changePasswordPath = accountPath + 'change-password/'
     ctx.rbac.registerRequestSource(ctx, 'web', {
       id: providerId,
-      loginPath: providerId === 'local' ? '/auth/user/' : `/auth/user/${providerId}/`,
+      loginPath: accountPath,
       async resolve(request) {
         const http = request as HttpContext
         const auth = await ctx.rbac.authenticate(ctx.rbac.token(http))
@@ -63,6 +72,8 @@ export default defineDatabasePlugin({
       password: string,
       name: string,
       administrator = false,
+      passwordChangeRequired = false,
+      initialRole = 'user',
     ) => {
       const passwordHash = await hashPassword(password)
       const id = randomUUID()
@@ -77,18 +88,26 @@ export default defineDatabasePlugin({
             email: normalized,
             email_key: emailKey(normalized),
             password_hash: passwordHash,
+            password_change_required: passwordChangeRequired ? 1 : 0,
             identity_id: identity.identityId,
             principal_id: identity.principalId,
             created_at: Date.now(),
           })
           .execute()
         if (administrator) await ctx.rbac.bootstrap(transaction, identity.principalId)
+        else if (initialRole !== 'user')
+          await ctx.rbac.grantRole(transaction, {
+            principalId: identity.principalId,
+            roleId: initialRole,
+            scope: 'system',
+            source: 'manual',
+          })
         return id
       })
     }
 
     if (config.bootstrapEmail !== undefined || config.bootstrapPassword !== undefined) {
-      const normalized = email(config.bootstrapEmail)
+      const normalized = loginName(config.bootstrapEmail)
       const password = passwordInput(config.bootstrapPassword)
       // 只创建新账号，绝不按同名邮箱提升公开注册账号，也不覆盖既有密码。
       if (!(await lookup(normalized))) {
@@ -101,6 +120,27 @@ export default defineDatabasePlugin({
     let hashing = 0
     ctx.effect(() => () => {
       attempts.clear()
+    })
+    const accountForPrincipal = (principalId: string) =>
+      db
+        .selectFrom('account')
+        .selectAll()
+        .where('instance_id', '=', providerId)
+        .where('principal_id', '=', principalId)
+        .executeTakeFirst()
+    ctx.server.use(ctx, async (http, next) => {
+      if (!http.path.startsWith('/api/')) return next()
+      const auth = await ctx.rbac.authenticate(ctx.rbac.token(http))
+      if (!auth || auth.providerId !== providerId) return next()
+      const account = await accountForPrincipal(auth.principalId)
+      if (
+        !account?.password_change_required ||
+        [`${base}/account`, `${base}/password`, '/auth/me', '/auth/logout'].some(
+          (path) => http.path === `/api${path}`,
+        )
+      )
+        return next()
+      throw new AuthError(403, '请先修改初始密码')
     })
     const limit = (ip: string) => {
       const now = Date.now()
@@ -118,7 +158,7 @@ export default defineDatabasePlugin({
       ctx.server.route(ctx, 'POST', path, async (http) => {
         limit(http.ip)
         const body = await readJson(http)
-        const normalized = email(body.email)
+        const normalized = loginName(body.loginName ?? body.email)
         const password = passwordInput(body.password)
         if (hashing >= 2) throw new AuthError(429, '请求过于频繁，请稍后再试')
         hashing++
@@ -138,11 +178,14 @@ export default defineDatabasePlugin({
           } else {
             const account = await lookup(normalized)
             const valid = await verifyPassword(password, account?.password_hash ?? dummyHash)
-            if (!account || !valid) throw new AuthError(401, '邮箱或密码错误')
+            if (!account || !valid) throw new AuthError(401, '登录名或密码错误')
             const session = await provider.issue(account.id)
             const auth = await ctx.rbac.authenticate(session.token)
             if (!auth) throw new AuthError(401, '账号不可用')
-            const snapshot = await ctx.rbac.sessionSnapshot(auth)
+            const snapshot = {
+              ...(await ctx.rbac.sessionSnapshot(auth)),
+              ...(account.password_change_required === 1 ? { passwordChangeRequired: true } : {}),
+            }
             ctx.rbac.setSession(http, session)
             http.set('Cache-Control', 'no-store')
             http.body = { ok: true, expiresAt: session.expiresAt, session: snapshot }
@@ -152,6 +195,107 @@ export default defineDatabasePlugin({
         }
       })
     }
+    ctx.server.route(ctx, 'GET', `${base}/account`, async (http) => {
+      const auth = ctx.rbac.auth(http)
+      const account = await accountForPrincipal(auth.principalId)
+      if (!account) throw new AuthError(404, '本地账号不存在')
+      http.body = {
+        loginName: account.email,
+        passwordChangeRequired: account.password_change_required === 1,
+        changePasswordPath,
+      }
+    })
+    ctx.server.route(ctx, 'POST', `${base}/password`, async (http) => {
+      const auth = ctx.rbac.auth(http)
+      const body = await readJson(http)
+      const currentPassword = passwordInput(body.currentPassword)
+      const nextPassword = passwordInput(body.newPassword)
+      const account = await accountForPrincipal(auth.principalId)
+      if (!account || !(await verifyPassword(currentPassword, account.password_hash)))
+        throw new AuthError(400, '原密码错误')
+      if (currentPassword === nextPassword) throw new AuthError(400, '新密码不能与原密码相同')
+      const passwordHash = await hashPassword(nextPassword)
+      await ctx.database.transaction(ctx, async (transaction) => {
+        const scoped = transaction.scope<Tables>(ctx, pluginId)
+        await scoped
+          .updateTable('account')
+          .set({ password_hash: passwordHash, password_change_required: 0 })
+          .where('id', '=', account.id)
+          .execute()
+        await ctx.rbac.revokeSessions(transaction, account.principal_id, auth.sessionId)
+      })
+      const snapshot = {
+        ...(await ctx.rbac.sessionSnapshot(auth)),
+        passwordChangeRequired: false,
+      }
+      http.body = { ok: true, session: snapshot }
+    })
+    ctx.server.route(
+      ctx,
+      'POST',
+      `${base}/users`,
+      ctx.rbac.require('identity.local.manage'),
+      ctx.rbac.require('authz.binding.manage'),
+      async (http) => {
+        const body = await readJson(http)
+        const normalized = loginName(body.loginName)
+        const displayName = textField(body.displayName, '用户名')
+        const roleId = textField(body.roleId, '初始角色', 64)
+        if (!/^[a-z][a-z0-9_-]{0,63}$/.test(roleId)) throw new AuthError(400, '初始角色无效')
+        if ((await ctx.rbac.role(roleId))?.status !== 'active')
+          throw new AuthError(400, '请选择可用的初始角色')
+        if (await lookup(normalized)) throw new AuthError(409, '登录名已存在')
+        const password = generateInitialPassword()
+        try {
+          await create(normalized, password, displayName, false, true, roleId)
+        } catch (error) {
+          if (await lookup(normalized)) throw new AuthError(409, '登录名已存在')
+          throw error
+        }
+        http.status = 201
+        http.body = {
+          loginName: normalized,
+          displayName,
+          initialPassword: password,
+          loginUrl: ctx.server.url(accountPath),
+        }
+      },
+    )
+    ctx.server.route(
+      ctx,
+      'POST',
+      `${base}/users/:id/reset-password`,
+      ctx.rbac.require('identity.local.manage'),
+      async (http) => {
+        const id = textField(http.params.id, '账号标识')
+        const account = await db
+          .selectFrom('account')
+          .selectAll()
+          .where('instance_id', '=', providerId)
+          .where('id', '=', id)
+          .executeTakeFirst()
+        if (!account) throw new AuthError(404, '账号不存在')
+        const principal = await ctx.rbac.principal(account.principal_id)
+        if (!principal) throw new AuthError(404, '用户不存在')
+        const password = generateInitialPassword()
+        const passwordHash = await hashPassword(password)
+        await ctx.database.transaction(ctx, async (transaction) => {
+          await transaction
+            .scope<Tables>(ctx, pluginId)
+            .updateTable('account')
+            .set({ password_hash: passwordHash, password_change_required: 1 })
+            .where('id', '=', account.id)
+            .execute()
+          await ctx.rbac.revokeSessions(transaction, account.principal_id)
+        })
+        http.body = {
+          loginName: account.email,
+          displayName: principal.display_name,
+          initialPassword: password,
+          loginUrl: ctx.server.url(accountPath),
+        }
+      },
+    )
     ctx.server.route(
       ctx,
       'GET',
@@ -221,7 +365,8 @@ export default defineDatabasePlugin({
       config: {
         base,
         allowRegistration: !!config.allowRegistration,
-        path: providerId === 'local' ? '/auth/user/' : '/auth/user/' + providerId + '/',
+        path: accountPath,
+        changePasswordPath,
         title: providerId === 'local' ? '账号中心' : '账号中心 · ' + providerId,
       },
     })

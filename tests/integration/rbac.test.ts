@@ -419,7 +419,7 @@ describe('认证边界与生命周期', () => {
         password: 'wrong-password-42',
       })
       expect(response.status).toBe(401)
-      expect(await response.json()).toEqual({ error: '邮箱或密码错误' })
+      expect(await response.json()).toEqual({ error: '登录名或密码错误' })
       expect(response.headers.get('set-cookie')).toBeNull()
     }
     for (let attempt = 0; attempt < 18; attempt++)
@@ -576,6 +576,7 @@ describe('认证边界与生命周期', () => {
             email: 'rollback@example.com',
             email_key: key('rollback@example.com'),
             password_hash: 'not-a-real-password',
+            password_change_required: 0,
             identity_id: 'rollback',
             principal_id: 'rollback',
             created_at: Date.now(),
@@ -612,6 +613,17 @@ describe('认证边界与生命周期', () => {
       ).status,
     ).toBe(403)
     await closed.dispose()
+    const defaultClosed = await app.ctx.plugin(local, { providerId: 'default-closed' })
+    expect(
+      (
+        await app.request('/auth/local/default-closed/register', {
+          loginName: 'a@example.com',
+          password,
+          displayName: '默认关闭注册',
+        })
+      ).status,
+    ).toBe(403)
+    await defaultClosed.dispose()
   })
 
   it('数据库依赖卸载后认证路由与服务撤销', async () => {
@@ -626,6 +638,77 @@ describe('认证边界与生命周期', () => {
 })
 
 describe('用户管理改版', () => {
+  it('管理员创建和重置用户时生成初始密码，并强制用户修改后再访问其他 API', async () => {
+    const app = await setup()
+    const admin = await app.login()
+    const created = await app.request(
+      `${app.base}/users`,
+      { loginName: 'new-user', displayName: '新用户', roleId: 'user' },
+      admin,
+    )
+    expect(created.status).toBe(201)
+    const credentials = await created.json()
+    expect(credentials).toMatchObject({
+      loginName: 'new-user',
+      displayName: '新用户',
+      loginUrl: `${app.url}/auth/user/${app.providerId}/`,
+    })
+    expect(credentials.initialPassword).toHaveLength(16)
+    expect(credentials.initialPassword).toMatch(/[a-hj-np-z]/)
+    expect(credentials.initialPassword).toMatch(/[2-9]/)
+    expect(credentials.initialPassword).toMatch(/[~@#$%^&*:+\-=<>?/\\]/)
+    expect(credentials.initialPassword).not.toMatch(/[oi10!A-Z]/)
+
+    const login = await app.request(`${app.base}/login`, {
+      loginName: 'NEW-USER',
+      password: credentials.initialPassword,
+    })
+    expect(login.status).toBe(200)
+    expect((await login.clone().json()).session.passwordChangeRequired).toBe(true)
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!
+    expect((await app.request('/auth/me', undefined, cookie)).status).toBe(200)
+    expect((await app.request('/health', undefined, cookie)).status).toBe(403)
+    expect(
+      (
+        await app.request(
+          `${app.base}/password`,
+          { currentPassword: credentials.initialPassword, newPassword: 'new-secure-password-42' },
+          cookie,
+        )
+      ).status,
+    ).toBe(200)
+    expect((await app.request('/auth/me', undefined, cookie)).status).toBe(200)
+    expect((await app.request('/health', undefined, cookie)).status).toBe(200)
+
+    const account = await app.accounts
+      .selectFrom('account')
+      .selectAll()
+      .where('email', '=', 'new-user')
+      .executeTakeFirstOrThrow()
+    expect(account.password_change_required).toBe(0)
+    const reset = await app.request(`${app.base}/users/${account.id}/reset-password`, {}, admin)
+    expect(reset.status).toBe(200)
+    const resetCredentials = await reset.json()
+    expect(resetCredentials.initialPassword).not.toBe(credentials.initialPassword)
+    expect((await app.request('/auth/me', undefined, cookie)).status).toBe(401)
+    expect(
+      (
+        await app.request(`${app.base}/login`, {
+          loginName: 'new-user',
+          password: 'new-secure-password-42',
+        })
+      ).status,
+    ).toBe(401)
+    expect(
+      (
+        await app.request(`${app.base}/login`, {
+          loginName: 'new-user',
+          password: resetCredentials.initialPassword,
+        })
+      ).status,
+    ).toBe(200)
+  })
+
   it('内置角色和默认权限可见，默认授权不落库，额外权限即时生效', async () => {
     const app = await setup()
     const admin = await app.login()
@@ -638,7 +721,7 @@ describe('用户管理改版', () => {
     expect(data.grants).toEqual([])
     expect(data.permissions).toContainEqual({
       key: 'identity.local.manage',
-      description: '查询用户列表、启用或禁用本地账号',
+      description: '查询、创建、重置密码、启用或禁用本地账号',
       defaultRoles: ['admin'],
     })
     expect(

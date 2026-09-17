@@ -14,7 +14,7 @@ plugins:
   rbac: {}
   plugin-auth-local:
     providerId: local
-    allowRegistration: true
+    allowRegistration: false
     # 首次创建管理员时取消以下注释，并在环境变量中设置密码。
     # bootstrapEmail: admin@ikp.yt
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD

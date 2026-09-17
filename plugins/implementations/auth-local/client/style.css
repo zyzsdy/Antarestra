@@ -39,7 +39,7 @@
   text-decoration: none;
   white-space: nowrap;
 }
-.auth-ui button:hover {
+.auth-ui button:not(:disabled):hover {
   background: #f2f5fb;
 }
 .auth-ui button:disabled {
@@ -72,6 +72,14 @@
   padding: 11px 12px;
   background: #fff;
   color: #263047;
+}
+.auth-ui .password-field {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.auth-ui .password-field input {
+  flex: 1;
 }
 .auth-ui input:focus {
   outline: 2px solid #99b3fa;
@@ -224,6 +232,10 @@
   gap: 16px;
   margin: 22px 0 12px;
   color: #637089;
+  flex-wrap: wrap;
+}
+.auth-ui .list-summary > span:first-child {
+  white-space: nowrap;
 }
 .auth-ui .list-summary button {
   margin-left: auto;
@@ -271,6 +283,40 @@
   padding: 12px 0;
   border-bottom: 1px solid #e4e9f1;
 }
+.auth-ui .assignment-field {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+.auth-ui .credentials {
+  display: grid;
+  gap: 0;
+  margin: 20px 0;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+}
+.auth-ui .credentials div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf0f6;
+}
+.auth-ui .credentials div:last-child {
+  border-bottom: 0;
+}
+.auth-ui .credentials dt {
+  color: #637089;
+}
+.auth-ui .credentials dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.auth-ui .credentials code {
+  font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
 .auth-ui button:not(:disabled),
 .auth-ui select,
 .auth-ui .check:has(input:not(:disabled)) {
@@ -296,5 +342,9 @@
   }
   .auth-ui .ui-editor-dialog {
     padding: 18px;
+  }
+  .auth-ui .credentials div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }

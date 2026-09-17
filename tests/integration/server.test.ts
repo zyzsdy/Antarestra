@@ -139,6 +139,7 @@ describe('HTTP 服务与路由', () => {
   it('监听就绪后返回健康状态、UTC 时间和实际地址', async () => {
     const { ctx, url } = await start()
     expect(ctx.server.publicUrl).toBe('')
+    expect(ctx.server.url('/auth/user/')).toBe(`${url}/auth/user/`)
     expect(ctx.server.address?.address).toBe('127.0.0.1')
     const before = Date.now()
     const response = await request(url, '/api/health')
@@ -156,6 +157,7 @@ describe('HTTP 服务与路由', () => {
   it('路由参数、多处理函数、HEAD、OPTIONS 和 405', async () => {
     const { ctx, url } = await start({ publicUrl: 'https://example.com/base/' })
     expect(ctx.server.publicUrl).toBe('https://example.com/base/')
+    expect(ctx.server.url('/auth/user/')).toBe('https://example.com/base/auth/user/')
     ctx.server.route(
       ctx,
       'GET',

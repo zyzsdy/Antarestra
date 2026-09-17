@@ -5,19 +5,48 @@ import { registerAdminPage } from '@antarestra/plugin-admin-console/client'
 import AccountPage from './AccountPage.vue'
 import UsersPage from './UsersPage.vue'
 import RolesPage from './RolesPage.vue'
+import ChangePasswordPage from './ChangePasswordPage.vue'
 import './style.css'
 
 const apply: ClientPlugin = (ctx) => {
   const base = String(ctx.config.base)
   const providerId = base.split('/').at(-1)!
+  const accountPath = String(ctx.config.path)
+  const changePasswordPath = String(ctx.config.changePasswordPath)
   ctx.page({
-    path: String(ctx.config.path),
+    path: accountPath,
     name: String(ctx.config.title),
     component: defineComponent(
       () => () =>
-        h(AccountPage, { base, allowRegistration: ctx.config.allowRegistration === true }),
+        h(AccountPage, {
+          base,
+          allowRegistration: ctx.config.allowRegistration === true,
+          changePasswordPath,
+        }),
     ),
   })
+  ctx.page({
+    path: changePasswordPath,
+    name: '修改密码',
+    component: defineComponent(() => () => h(ChangePasswordPage, { base, accountPath })),
+  })
+  const removeGuard = ctx.router.beforeEach((to) => {
+    const snapshot = ctx.session.read()
+    if (
+      !snapshot?.passwordChangeRequired ||
+      snapshot.accountPath !== accountPath ||
+      to.path === changePasswordPath
+    )
+      return true
+    return changePasswordPath
+  })
+  ctx.effect(() => removeGuard)
+  if (
+    ctx.session.read()?.passwordChangeRequired &&
+    ctx.session.read()?.accountPath === accountPath &&
+    ctx.router.currentRoute.value.path !== changePasswordPath
+  )
+    void ctx.router.replace(changePasswordPath)
   const group = providerId === 'local' ? '用户与权限' : `用户与权限 · ${providerId}`
   for (const page of [
     {

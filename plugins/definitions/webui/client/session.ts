@@ -26,6 +26,7 @@ function parse(value: unknown): SessionSnapshot | null {
     accountPath: item.accountPath,
     expiresAt: item.expiresAt,
     permissions: [...new Set(item.permissions as string[])],
+    ...(item.passwordChangeRequired === true ? { passwordChangeRequired: true } : {}),
   }
 }
 

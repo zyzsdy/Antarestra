@@ -13,6 +13,8 @@ export interface SessionSnapshot {
   expiresAt: number
   /** 仅包含当前账号有效的系统范围权限；不可推断工作空间授权。 */
   permissions: string[]
+  /** 本地认证要求先修改初始密码时为 true；仅用于客户端导航提示。 */
+  passwordChangeRequired?: boolean
 }
 
 export interface AgentPreset {

@@ -3,6 +3,9 @@ import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from './api.js'
 import RoleAssignment from './RoleAssignment.vue'
+import UserCreateDialog from './UserCreateDialog.vue'
+import InitialPasswordDialog from './InitialPasswordDialog.vue'
+import type { InitialCredentials } from './types.js'
 import type { User } from './types.js'
 const props = defineProps<{ base: string }>()
 const { api, run, message, busy, session, router } = useApi()
@@ -15,8 +18,13 @@ const status = ref(String(router.currentRoute.value.query.status ?? ''))
 const role = ref(String(router.currentRoute.value.query.role ?? ''))
 const searchInput = ref<HTMLInputElement>()
 const selected = ref<User>()
+const creating = ref(false)
+const credentials = ref<InitialCredentials>()
 const canAssign = computed(() =>
   session.snapshot.value?.permissions.includes('authz.binding.manage'),
+)
+const canCreate = computed(
+  () => canAssign.value && session.snapshot.value?.permissions.includes('identity.local.manage'),
 )
 async function load(next = offset.value) {
   next = Number.isSafeInteger(next) && next >= 0 ? Math.floor(next / 50) * 50 : 0
@@ -82,6 +90,26 @@ function clearSearch() {
   void run(() => load(0))
   searchInput.value?.focus()
 }
+async function created(value: InitialCredentials) {
+  creating.value = false
+  credentials.value = value
+  await run(() => load(0))
+}
+async function resetPassword(user: User) {
+  if (
+    !(await feedback.modal(
+      '重置密码',
+      `为「${user.principal.display_name}」生成新的初始密码？该用户的现有会话将退出。`,
+    ))
+  )
+    return
+  void run(async () => {
+    credentials.value = await api<InitialCredentials>(
+      `${props.base}/users/${encodeURIComponent(user.id)}/reset-password`,
+      {},
+    )
+  })
+}
 </script>
 <template>
   <div class="auth-ui">
@@ -97,7 +125,7 @@ function clearSearch() {
               v-model="query"
               :disabled="busy"
               maxlength="128"
-              placeholder="用户名、邮箱或主体标识"
+              placeholder="用户名、登录名或主体标识"
             /><button
               v-if="query"
               type="button"
@@ -126,6 +154,8 @@ function clearSearch() {
       </form>
       <div class="list-summary">
         <span>共 {{ total }} 位用户</span><span v-if="busy" role="status">正在加载…</span
+        ><button v-if="canCreate" class="primary" :disabled="busy" @click="creating = true">
+          新建用户</button
         ><button :disabled="busy" @click="run(() => load())">刷新列表</button>
       </div>
       <div class="table-scroll">
@@ -162,6 +192,7 @@ function clearSearch() {
               <td>
                 <div class="actions">
                   <button v-if="canAssign" :disabled="busy" @click="open(user)">分配角色</button
+                  ><button :disabled="busy" @click="resetPassword(user)">重置密码</button
                   ><button
                     :disabled="
                       busy ||
@@ -203,6 +234,12 @@ function clearSearch() {
       :user="selected"
       @close="selected = undefined"
       @saved="assigned"
+    />
+    <UserCreateDialog v-if="creating" :base="base" @close="creating = false" @created="created" />
+    <InitialPasswordDialog
+      v-if="credentials"
+      :credentials="credentials"
+      @close="credentials = undefined"
     />
   </div>
 </template>

@@ -47,7 +47,7 @@ export interface RequestSourceProvider {
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
 const adminPermissions = {
-  'identity.local.manage': '查询用户列表、启用或禁用本地账号',
+  'identity.local.manage': '查询、创建、重置密码、启用或禁用本地账号',
   'authz.role.manage': '查询角色与权限、创建角色及修改角色权限',
   'authz.binding.manage': '查询用户角色、分配或撤销用户的手动角色绑定',
 } as const
@@ -645,6 +645,10 @@ export class RbacService extends Service<Config> {
     return this.db().selectFrom('principal').selectAll().where('id', '=', id).executeTakeFirst()
   }
 
+  async role(id: string): Promise<{ id: string; name: string; status: string } | undefined> {
+    return this.db().selectFrom('role').selectAll().where('id', '=', id).executeTakeFirst()
+  }
+
   /** 登录和账号资料响应附带的系统权限快照；真实 API 继续使用 require/can。 */
   async sessionSnapshot(auth: AuthContext): Promise<SessionSnapshot> {
     const session = await this.db()
@@ -736,6 +740,24 @@ export class RbacService extends Service<Config> {
           )
           .execute()
     })
+  }
+
+  /** 可信认证插件在密码变更或重置后撤销主体会话。 */
+  async revokeSessions(
+    transaction: DatabaseTransaction,
+    principalId: string,
+    exceptSessionId?: string,
+  ): Promise<void> {
+    const db = this.db(transaction)
+    let query = db
+      .deleteFrom('session')
+      .where(
+        'identity_id',
+        'in',
+        db.selectFrom('identity').select('id').where('principal_id', '=', principalId),
+      )
+    if (exceptSessionId) query = query.where('id', '!=', exceptSessionId)
+    await query.execute()
   }
 
   /** 仅供启动装配调用；认证插件不得将此能力暴露为公开接口。 */

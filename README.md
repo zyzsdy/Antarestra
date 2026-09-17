@@ -192,7 +192,7 @@ plugins:
 
 `port` 支持 0–65535，0 表示自动分配端口。HTTPS 开启时，`cert`、`key` 必须指向 PEM 证书和私钥文件；加密私钥可通过 `passphraseFile` 读取密码。文件路径相对于进程工作目录（使用 `pnpm start` 时为 `apps/server`），建议使用绝对路径。密码只去掉末尾换行，保留其他空白；关闭 HTTPS 时不读取这些文件。HTTP 与 HTTPS 二选一，不同时开启两个监听端口。证书无效、文件读取失败或端口占用都会使启动失败。
 
-`publicUrl` 是可选的无凭据 HTTP/HTTPS 外网地址，按配置原样保留；为空时不从请求头推断。插件提供只读 `ctx.server.publicUrl` 和 `ctx.server.address`，后者在监听成功后包含实际地址与端口，关闭后为 `undefined`。
+`publicUrl` 是可选的无凭据 HTTP/HTTPS 外网地址，按配置原样保留；为空时不从请求头推断。插件提供只读 `ctx.server.publicUrl` 和 `ctx.server.address`，后者在监听成功后包含实际地址与端口，关闭后为 `undefined`。其他插件通过 `ctx.server.url(path)` 生成交付给用户的完整站内链接：优先使用 `publicUrl`，未配置时将通配监听地址换成本机 `127.0.0.1` 并使用实际监听端口。
 
 消费插件安装 `@antarestra/plugin-server` 工作区依赖并声明 `inject: ['server']`，使用 Koa 的 `ctx/next` 接口：
 

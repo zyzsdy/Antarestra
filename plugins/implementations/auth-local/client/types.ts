@@ -12,6 +12,12 @@ export interface User {
   principal: { display_name: string; status: string }
   roles: UserRole[]
 }
+export interface InitialCredentials {
+  loginName: string
+  displayName: string
+  initialPassword: string
+  loginUrl: string
+}
 export interface Roles {
   roles: { id: string; name: string }[]
   grants: { role_id: string; permission: string }[]

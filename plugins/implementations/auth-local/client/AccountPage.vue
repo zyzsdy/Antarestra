@@ -3,7 +3,12 @@ import { onMounted, ref } from 'vue'
 import { useApi } from './api.js'
 import { AntarestraLogo } from '@antarestra/webui/components'
 import type { SessionSnapshot } from '@antarestra/webui/client'
-const props = defineProps<{ base: string; allowRegistration: boolean }>()
+import PasswordField from './PasswordField.vue'
+const props = defineProps<{
+  base: string
+  allowRegistration: boolean
+  changePasswordPath: string
+}>()
 const { api, run, message, busy, session, router } = useApi()
 const account = ref<{
   principal: { display_name: string }
@@ -11,8 +16,9 @@ const account = ref<{
   session: SessionSnapshot
 }>()
 const mode = ref('login')
-const email = ref('')
+const loginName = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const displayName = ref('')
 const loading = ref(true)
 const form = ref<HTMLFormElement>()
@@ -20,7 +26,13 @@ const invalid = ref('')
 onMounted(async () => {
   try {
     account.value = await api('/auth/me')
+    const local = await api<{ passwordChangeRequired: boolean }>(props.base + '/account')
+    account.value!.session.passwordChangeRequired = local.passwordChangeRequired
     session.set(account.value!.session)
+    if (local.passwordChangeRequired) {
+      void router.replace(props.changePasswordPath)
+      return
+    }
     const returnTo = router.currentRoute.value.query.returnTo
     if (
       typeof returnTo === 'string' &&
@@ -38,33 +50,42 @@ function submit() {
     invalid.value =
       mode.value === 'register' && !displayName.value.trim()
         ? 'displayName'
-        : !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)
-          ? 'email'
+        : !loginName.value.trim() || /\s/.test(loginName.value)
+          ? 'loginName'
           : password.value.length < 8 || password.value.length > 128
             ? 'password'
-            : ''
+            : mode.value === 'register' && password.value !== confirmPassword.value
+              ? 'confirmPassword'
+              : ''
     if (invalid.value) {
       form.value?.querySelector<HTMLInputElement>(`[name="${invalid.value}"]`)?.focus()
       throw new Error(
         invalid.value === 'displayName'
           ? '请填写显示名称。'
-          : invalid.value === 'email'
-            ? '请填写有效邮箱。'
-            : '密码长度必须为 8–128 位。',
+          : invalid.value === 'loginName'
+            ? '请填写不含空白的登录名。'
+            : invalid.value === 'confirmPassword'
+              ? '两次输入的密码不一致。'
+              : '密码长度必须为 8–128 位。',
       )
     }
     const result = await api<{ session?: SessionSnapshot }>(props.base + '/' + mode.value, {
-      email: email.value,
+      loginName: loginName.value,
       password: password.value,
       displayName: displayName.value,
     })
     password.value = ''
+    confirmPassword.value = ''
     if (mode.value === 'register') {
       mode.value = 'login'
       message.value = '账号创建成功，请登录。'
       return
     }
     if (result.session) session.set(result.session)
+    if (result.session?.passwordChangeRequired) {
+      void router.replace(props.changePasswordPath)
+      return
+    }
     const target = router.currentRoute.value.query.returnTo || '/'
     if (
       typeof target === 'string' &&
@@ -101,6 +122,7 @@ function logout() {
         <a href="/">进入聊天</a
         ><a v-if="session.snapshot.value?.permissions.includes('admin.console.view')" href="/admin/"
           >管理控制台</a
+        ><a :href="changePasswordPath">修改密码</a
         ><button :disabled="busy" @click="logout">退出登录</button>
       </div>
     </section>
@@ -127,27 +149,34 @@ function logout() {
             required
             maxlength="128" /></label
         ><label
-          >邮箱<input
-            v-model="email"
-            name="email"
-            :aria-invalid="invalid === 'email'"
+          >登录名<input
+            v-model="loginName"
+            name="loginName"
+            :aria-invalid="invalid === 'loginName'"
             :aria-describedby="message ? 'account-message' : undefined"
-            type="email"
             autocomplete="username"
             required
             maxlength="254" /></label
-        ><label
-          >密码<input
-            v-model="password"
-            name="password"
-            :aria-invalid="invalid === 'password'"
-            :aria-describedby="message ? 'account-message' : undefined"
-            type="password"
-            :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-            required
-            minlength="8"
-            maxlength="128" /></label
-        ><button class="primary" :disabled="busy">
+        ><PasswordField
+          v-model="password"
+          label="密码"
+          name="password"
+          :invalid="invalid === 'password'"
+          :describedby="message ? 'account-message' : undefined"
+          :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+          :disabled="busy"
+        />
+        <PasswordField
+          v-if="mode === 'register'"
+          v-model="confirmPassword"
+          label="重复密码"
+          name="confirmPassword"
+          :invalid="invalid === 'confirmPassword'"
+          :describedby="message ? 'account-message' : undefined"
+          autocomplete="new-password"
+          :disabled="busy"
+        />
+        <button class="primary" :disabled="busy">
           {{ busy ? '处理中…' : mode === 'login' ? '登录' : '创建账号' }}
         </button>
       </form>
