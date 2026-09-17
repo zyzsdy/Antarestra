@@ -23,6 +23,20 @@ const apply: ClientPlugin = (ctx) => {
   const state = reactive({
     collapsed: typeof matchMedia !== 'undefined' && matchMedia('(max-width: 760px)').matches,
   })
+  async function logout() {
+    const accountPath = ctx.session.read()?.accountPath ?? loginPath
+    const response = await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    const data = (await response.json().catch(() => ({}))) as { error?: string }
+    if (!response.ok) throw new Error(data.error || '退出登录失败，请重试。')
+    ctx.session.clear()
+    await ctx.router.push(accountPath)
+  }
   const removers = new Map<string, { page: AdminPage; dispose: () => void }>()
   let stopWatch: (() => void) | undefined
   const stopGuard = ctx.router.beforeEach((to) => {
@@ -52,8 +66,8 @@ const apply: ClientPlugin = (ctx) => {
   })
   const component = defineComponent(() => () => {
     const path = ctx.router.currentRoute.value.path.toLowerCase().replace(/\/$/, '')
-    const page =
-      items.value.find((item) => path === `/admin/${item.id}`) ?? entries.get('overview')!
+    const page = items.value.find((item) => path === `/admin/${item.id}`) ?? entries.get('overview')
+    if (!page) return h('p', { class: 'access-state', role: 'status' }, '管理控制台正在更新…')
     const session = ctx.session.snapshot.value
     const allowed =
       path !== '/admin/access-denied' &&
@@ -73,6 +87,7 @@ const apply: ClientPlugin = (ctx) => {
       page,
       items: visibleItems.value,
       router: ctx.router,
+      logout,
       onToggle: () => {
         state.collapsed = !state.collapsed
       },
