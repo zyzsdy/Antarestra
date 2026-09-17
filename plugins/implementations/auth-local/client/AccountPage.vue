@@ -15,6 +15,8 @@ const email = ref('')
 const password = ref('')
 const displayName = ref('')
 const loading = ref(true)
+const form = ref<HTMLFormElement>()
+const invalid = ref('')
 onMounted(async () => {
   try {
     account.value = await api('/auth/me')
@@ -33,6 +35,24 @@ onMounted(async () => {
 })
 function submit() {
   void run(async () => {
+    invalid.value =
+      mode.value === 'register' && !displayName.value.trim()
+        ? 'displayName'
+        : !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)
+          ? 'email'
+          : password.value.length < 8 || password.value.length > 128
+            ? 'password'
+            : ''
+    if (invalid.value) {
+      form.value?.querySelector<HTMLInputElement>(`[name="${invalid.value}"]`)?.focus()
+      throw new Error(
+        invalid.value === 'displayName'
+          ? '请填写显示名称。'
+          : invalid.value === 'email'
+            ? '请填写有效邮箱。'
+            : '密码长度必须为 8–128 位。',
+      )
+    }
     const result = await api<{ session?: SessionSnapshot }>(props.base + '/' + mode.value, {
       email: email.value,
       password: password.value,
@@ -72,7 +92,7 @@ function logout() {
     <p class="eyebrow">ANTARESTRA / ACCOUNT</p>
     <h1>从你的账号开始。</h1>
     <p class="muted">登录 Antarestra，访问你的工作空间。</p>
-    <p v-if="message" class="notice" role="status">{{ message }}</p>
+    <p v-if="message" id="account-message" class="notice" role="status">{{ message }}</p>
     <p v-if="loading">正在加载账号…</p>
     <section v-else-if="account" class="panel">
       <h2>{{ account.principal.display_name }}</h2>
@@ -95,17 +115,23 @@ function logout() {
           创建账号
         </button>
       </nav>
-      <form @submit.prevent="submit">
+      <form ref="form" novalidate @submit.prevent="submit">
         <h2>{{ mode === 'login' ? '欢迎回来' : '创建你的账号' }}</h2>
         <label v-if="mode === 'register'"
           >显示名称<input
             v-model="displayName"
+            name="displayName"
+            :aria-invalid="invalid === 'displayName'"
+            :aria-describedby="message ? 'account-message' : undefined"
             autocomplete="nickname"
             required
             maxlength="128" /></label
         ><label
           >邮箱<input
             v-model="email"
+            name="email"
+            :aria-invalid="invalid === 'email'"
+            :aria-describedby="message ? 'account-message' : undefined"
             type="email"
             autocomplete="username"
             required
@@ -113,6 +139,9 @@ function logout() {
         ><label
           >密码<input
             v-model="password"
+            name="password"
+            :aria-invalid="invalid === 'password'"
+            :aria-describedby="message ? 'account-message' : undefined"
             type="password"
             :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
             required

@@ -15,10 +15,14 @@
 
 下表列名与能力标识为自动审计协议，具体约定使用中文。
 
-| Capability | Canonical owner           | Source of truth | Allowed variants           | Verification         |
-| ---------- | ------------------------- | --------------- | -------------------------- | -------------------- |
-| Scrollbar  | WebUI 的 client/style.css | DESIGN.md       | 表格可局部滚动             | 浏览器计算样式及窄屏 |
-| Toast      | WebUI 的 FeedbackHost.vue | WebUI README    | 持续通知、短提示、确认弹窗 | 浏览器关闭与键盘操作 |
+| Capability     | Canonical owner                                  | Source of truth | Allowed variants                               | Verification           |
+| -------------- | ------------------------------------------------ | --------------- | ---------------------------------------------- | ---------------------- |
+| Scrollbar      | WebUI 的 client/style.css                        | DESIGN.md       | 表格可局部滚动                                 | 浏览器计算样式及窄屏   |
+| Toast          | WebUI 的 FeedbackHost.vue                        | WebUI README    | 持续通知、短提示、确认弹窗                     | 浏览器关闭与键盘操作   |
+| Select/Listbox | WebUI EditableSelect.vue（Reka UI）及原生 select | 本节            | 角色选择复用组件弹层；状态选择接受平台弹层几何 | 浏览器键盘和展开状态   |
+| Form           | auth-local 的 useApi 与页面校验                  | RBAC HTTP 契约  | 显式提交、错误保留输入                         | 类型与浏览器验证       |
+| CRUD           | auth-local 的用户列表及角色编辑器                | RBAC HTTP 契约  | 保存后停留，刷新对应数据                       | 集成测试               |
+| Dialog         | WebUI EditorDialog.vue                           | 本节            | 角色分配表单；确认仍使用 FeedbackHost          | Escape、焦点恢复、窄屏 |
 
 ## 导航与异步状态
 
@@ -34,8 +38,16 @@
 - 通知与弹窗继续归 WebUI 所有，不引入页面私有替代实现。
 - 控制台和聊天复用品牌组件，图片预留尺寸，导航切换不改变外壳宽度。
 - 表格溢出在表格容器内处理，长表单保持自然高度；窄屏折叠导航仍可识别每个菜单。
-- 本次不改变既有账号/角色表单的校验策略、提交后停留位置或数据分页规则；这些工作流应另行完整迁移，不能仅修改标记而失去现有校验。
+- 账号登录维持原有提交与导航，校验错误统一为内联中文提示；用户管理与角色编辑遵循下文的独立工作流约定。
 
 ## 验证
 
 运行 `pnpm check`；权限快照持久化、过期、多标签页与存储异常见 `tests/integration/client-session.test.ts`，服务端边界见 `rbac.test.ts`，动态路由与扩展重载见 `webui-runtime.test.ts` 和 `webui-sfc.test.ts`。浏览器比较概览、用户、角色、分配和聊天页，覆盖常规窗口、窄屏、登录与退出路径。临时预览使用隔离内存数据库，不称为真实数据库或模型集成验证。
+
+## 用户管理与角色编辑约定
+
+依据：本次用户要求、RBAC 服务端 `can` / `require`、角色与绑定写接口。用户列表筛选在服务端分页之前执行，每页 50 条；查询按钮提交条件并重置页码，URL 保存已提交条件。搜索按显式提交执行，不采用逐字远程查询。角色列表每页 20 条，权限筛选只改变可见项，保持完整勾选集合。
+
+角色建议列表按 ID 与名称筛选，允许输入未出现的 ID，保存时创建无额外权限的角色。分配弹窗显示范围与来源，只撤销手动绑定。默认 user 表示已登录身份；访客来自未登录请求。默认权限锁定并从保存载荷中排除，服务端再次过滤。旧 administrator 数据在事务中迁移至 admin。
+
+角色表单切换或离开时提示未保存修改；角色分配关闭前同样提示。错误保留为页面或弹窗内联信息，成功复用 FeedbackHost 提示。权限配置保持在下方面板，保存后不跳转。所有界面使用简体中文。

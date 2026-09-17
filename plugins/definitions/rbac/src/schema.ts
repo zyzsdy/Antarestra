@@ -22,6 +22,7 @@ export interface Tables {
   session: { id: string; identity_id: string; token_hash: string; expires_at: number }
   role: { id: string; name: string; status: string }
   role_permission: { role_id: string; permission: string }
+  role_migration: { id: string }
   binding: {
     principal_id: string
     role_id: string
@@ -89,5 +90,9 @@ export const migrations = [
         { name: 'expires_at', type: 'timestamp' },
       ]),
     ],
+  }),
+  defineMigration({
+    id: '002_builtin_roles',
+    steps: [table('role_migration', [key('id')])],
   }),
 ]

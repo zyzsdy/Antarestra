@@ -160,21 +160,41 @@ export default defineDatabasePlugin({
       async (http) => {
         const offset = Number(http.query.offset ?? 0)
         if (!Number.isSafeInteger(offset) || offset < 0) throw new AuthError(400, '分页参数无效')
+        const search = String(http.query.q ?? '')
+          .trim()
+          .toLocaleLowerCase()
+        const status = String(http.query.status ?? '')
+        const role = String(http.query.role ?? '').trim()
+        if (search.length > 128 || role.length > 64 || !['', 'active', 'disabled'].includes(status))
+          throw new AuthError(400, '筛选条件无效')
+        const principals = new Map(
+          (await ctx.rbac.userDirectory(status)).map((entry) => [entry.principal.id, entry]),
+        )
+        // 通过定义服务组合跨插件数据，筛选发生在分页之前。
         const accounts = await db
           .selectFrom('account')
           .select(['id', 'email', 'principal_id', 'created_at'])
           .where('instance_id', '=', providerId)
           .orderBy('created_at')
           .orderBy('id')
-          .limit(50)
-          .offset(offset)
           .execute()
-        http.body = await Promise.all(
-          accounts.map(async (account) => ({
-            ...account,
-            principal: await ctx.rbac.principal(account.principal_id),
-          })),
-        )
+        const matching = []
+        for (const account of accounts) {
+          const entry = principals.get(account.principal_id)
+          const principal = entry?.principal
+          if (
+            !principal ||
+            (search &&
+              ![account.email, principal.display_name, principal.id].some((value) =>
+                value.toLocaleLowerCase().includes(search),
+              ))
+          )
+            continue
+          const roles = entry!.roles
+          if (role && !roles.some((item) => item.id === role)) continue
+          matching.push({ ...account, principal, roles })
+        }
+        http.body = { users: matching.slice(offset, offset + 50), total: matching.length }
       },
     )
     ctx.server.route(

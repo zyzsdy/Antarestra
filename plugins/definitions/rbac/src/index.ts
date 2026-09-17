@@ -46,11 +46,11 @@ export interface RequestSourceProvider {
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
-const adminPermissions = [
-  'identity.local.manage',
-  'authz.role.manage',
-  'authz.binding.manage',
-] as const
+const adminPermissions = {
+  'identity.local.manage': '查询用户列表、启用或禁用本地账号',
+  'authz.role.manage': '查询角色与权限、创建角色及修改角色权限',
+  'authz.binding.manage': '查询用户角色、分配或撤销用户的手动角色绑定',
+} as const
 
 declare module '@antarestra/plugin-sdk' {
   interface Context {
@@ -80,8 +80,8 @@ export class RbacService extends Service<Config> {
     this.hours = config.sessionHours ?? 24
     if (!Number.isFinite(this.hours) || this.hours <= 0 || this.hours > 720)
       throw new Error('会话有效期必须在 0 到 720 小时之间')
-    for (const permission of adminPermissions)
-      this.registerPermission(ctx, permission, '用户与权限管理', ['admin'])
+    for (const [permission, description] of Object.entries(adminPermissions))
+      this.registerPermission(ctx, permission, description, ['admin'])
     ctx.server.use(ctx, errors)
     ctx.server.use(ctx, async (http, next) => {
       if ((http.path !== '/api' && !http.path.startsWith('/api/')) || http.path === '/api/health')
@@ -106,6 +106,162 @@ export class RbacService extends Service<Config> {
     return transaction
       ? transaction.scope<Tables>(this.ctx, pluginId)
       : this.ctx.database.scope<Tables>(this.ctx, pluginId)
+  }
+
+  /** 在事务中初始化内置角色，并迁移旧管理员的绑定与额外权限。 */
+  async initializeRoles(): Promise<void> {
+    await this.ctx.database.transaction(this.ctx, async (transaction) => {
+      const db = this.db(transaction)
+      const initialized = await db
+        .selectFrom('role_migration')
+        .select('id')
+        .where('id', '=', 'builtin-v1')
+        .executeTakeFirst()
+      if (!initialized) {
+        // 旧版本允许创建同名自定义角色，先迁出，避免其成员意外获得默认权限。
+        for (const id of ['admin', 'user', 'guest']) {
+          const existing = await db
+            .selectFrom('role')
+            .selectAll()
+            .where('id', '=', id)
+            .executeTakeFirst()
+          if (!existing) continue
+          const replacement = `legacy-${id}-${randomUUID()}`
+          await db
+            .insertInto('role')
+            .values({ ...existing, id: replacement })
+            .execute()
+          await db
+            .updateTable('binding')
+            .set({ role_id: replacement })
+            .where('role_id', '=', id)
+            .execute()
+          await db
+            .updateTable('role_permission')
+            .set({ role_id: replacement })
+            .where('role_id', '=', id)
+            .execute()
+          await db.deleteFrom('role').where('id', '=', id).execute()
+        }
+        await db.insertInto('role_migration').values({ id: 'builtin-v1' }).execute()
+      }
+      for (const [id, name] of [
+        ['admin', '系统管理员'],
+        ['user', '普通用户'],
+        ['guest', '访客'],
+      ] as const) {
+        if (!(await db.selectFrom('role').select('id').where('id', '=', id).executeTakeFirst()))
+          await db.insertInto('role').values({ id, name, status: 'active' }).execute()
+      }
+      const bindings = await db
+        .selectFrom('binding')
+        .selectAll()
+        .where('role_id', '=', 'administrator')
+        .execute()
+      for (const binding of bindings) {
+        const existing = await db
+          .selectFrom('binding')
+          .select('role_id')
+          .where('principal_id', '=', binding.principal_id)
+          .where('role_id', '=', 'admin')
+          .where('scope_key', '=', binding.scope_key)
+          .where('source', '=', binding.source)
+          .executeTakeFirst()
+        if (!existing)
+          await db
+            .insertInto('binding')
+            .values({ ...binding, role_id: 'admin' })
+            .execute()
+      }
+      const grants = await db
+        .selectFrom('role_permission')
+        .selectAll()
+        .where('role_id', '=', 'administrator')
+        .execute()
+      for (const grant of grants) {
+        const existing = await db
+          .selectFrom('role_permission')
+          .select('permission')
+          .where('role_id', '=', 'admin')
+          .where('permission', '=', grant.permission)
+          .executeTakeFirst()
+        if (!existing)
+          await db
+            .insertInto('role_permission')
+            .values({ ...grant, role_id: 'admin' })
+            .execute()
+      }
+      await db.deleteFrom('binding').where('role_id', '=', 'administrator').execute()
+      await db.deleteFrom('role_permission').where('role_id', '=', 'administrator').execute()
+      await db.deleteFrom('role').where('id', '=', 'administrator').execute()
+      for (const [permission, declaration] of this.permissions)
+        for (const role of declaration.defaultRoles)
+          await db
+            .deleteFrom('role_permission')
+            .where('role_id', '=', role)
+            .where('permission', '=', permission)
+            .execute()
+    })
+  }
+
+  /** 一次读取主体和角色，避免用户列表按账号逐个查询角色。 */
+  async userDirectory(status: string) {
+    const db = this.db()
+    let query = db.selectFrom('principal').selectAll()
+    if (status) query = query.where('status', '=', status as Principal['status'])
+    const principals = await query.execute()
+    const bindings = await db
+      .selectFrom('binding')
+      .innerJoin('role', 'role.id', 'binding.role_id')
+      .select([
+        'binding.principal_id',
+        'role.id',
+        'role.name',
+        'binding.scope',
+        'binding.source',
+        'binding.expires_at',
+      ])
+      .where('role.status', '=', 'active')
+      .where((eb) =>
+        eb.or([eb('binding.expires_at', 'is', null), eb('binding.expires_at', '>', Date.now())]),
+      )
+      .execute()
+    const userRole = await db
+      .selectFrom('role')
+      .select('name')
+      .where('id', '=', 'user')
+      .executeTakeFirst()
+    const byPrincipal = new Map<string, Omit<(typeof bindings)[number], 'principal_id'>[]>()
+    for (const { principal_id, ...binding } of bindings) {
+      const rows = byPrincipal.get(principal_id) ?? []
+      rows.push(binding)
+      byPrincipal.set(principal_id, rows)
+    }
+    return principals.map((principal) => ({
+      principal,
+      roles: [
+        {
+          id: 'user',
+          name: userRole?.name ?? '普通用户',
+          scope: 'system',
+          source: 'default',
+          expires_at: null,
+        },
+        ...(byPrincipal.get(principal.id) ?? []),
+      ],
+    }))
+  }
+
+  private async roleAllows(roles: readonly DefaultRole[], permission: string): Promise<boolean> {
+    if (!roles.length) return false
+    return !!(await this.db()
+      .selectFrom('role_permission')
+      .innerJoin('role', 'role.id', 'role_permission.role_id')
+      .select('permission')
+      .where('role_id', 'in', roles)
+      .where('role.status', '=', 'active')
+      .where('permission', '=', permission)
+      .executeTakeFirst())
   }
 
   registerPermission(
@@ -194,6 +350,7 @@ export class RbacService extends Service<Config> {
     if (!declaration) throw new AuthError(403, '权限未注册')
     const allowed =
       identity.roles.some((role) => declaration.defaultRoles.includes(role)) ||
+      (await this.roleAllows(identity.roles, permission)) ||
       (identity.auth &&
         identity.workspaceId &&
         (await this.can(identity.auth, permission, identity.workspaceId)))
@@ -227,7 +384,7 @@ export class RbacService extends Service<Config> {
       .innerJoin('role', 'role.id', 'binding.role_id')
       .select('role.id')
       .where('binding.principal_id', '=', auth.principalId)
-      .where('role.id', '=', 'administrator')
+      .where('role.id', '=', 'admin')
       .where('role.status', '=', 'active')
       .where('binding.scope_key', '=', hash('system'))
       .where((eb) =>
@@ -434,11 +591,12 @@ export class RbacService extends Service<Config> {
   async can(auth: AuthContext, permission: string, scope = 'system'): Promise<boolean> {
     if (!this.permissions.has(permission) || !this.providers.get(auth.providerId)?.ready)
       return false
-    if (scope === 'system' && this.permissions.get(permission)!.defaultRoles.length) {
+    if (scope === 'system') {
       try {
         const roles = await this.defaultRoles(auth)
         if (roles.some((role) => this.permissions.get(permission)?.defaultRoles.includes(role)))
           return true
+        if (await this.roleAllows(roles, permission)) return true
       } catch (error) {
         if (error instanceof AuthError && error.status === 401) return false
         throw error
@@ -562,7 +720,7 @@ export class RbacService extends Service<Config> {
       .selectFrom('binding')
       .select('role_id')
       .where('principal_id', '=', principalId)
-      .where('role_id', '=', 'administrator')
+      .where('role_id', '=', 'admin')
       .executeTakeFirst()
     if (privileged) throw new AuthError(403, '不能通过本地用户管理禁用系统管理员')
     await this.ctx.database.transaction(this.ctx, async (transaction) => {
@@ -582,33 +740,29 @@ export class RbacService extends Service<Config> {
 
   /** 仅供启动装配调用；认证插件不得将此能力暴露为公开接口。 */
   async bootstrap(transaction: DatabaseTransaction, principalId: string): Promise<void> {
-    const db = this.db(transaction)
-    if (
-      !(await db
-        .selectFrom('role')
-        .select('id')
-        .where('id', '=', 'administrator')
-        .executeTakeFirst())
-    ) {
-      await db
-        .insertInto('role')
-        .values({ id: 'administrator', name: '系统管理员', status: 'active' })
-        .execute()
-      for (const permission of adminPermissions)
-        await db
-          .insertInto('role_permission')
-          .values({ role_id: 'administrator', permission })
-          .execute()
-    }
     await this.grantRole(transaction, {
       principalId,
-      roleId: 'administrator',
+      roleId: 'admin',
       scope: 'system',
       source: 'bootstrap',
     })
   }
 
   private routes(ctx: Context): void {
+    ctx.server.route(
+      ctx,
+      'GET',
+      '/rbac/role-options',
+      this.require('authz.binding.manage'),
+      async (http) => {
+        http.body = await this.db()
+          .selectFrom('role')
+          .select(['id', 'name'])
+          .where('status', '=', 'active')
+          .orderBy('id')
+          .execute()
+      },
+    )
     ctx.server.route(ctx, 'GET', '/auth/me', async (http) => {
       const auth = this.auth(http)
       http.set('Cache-Control', 'no-store')
@@ -642,7 +796,7 @@ export class RbacService extends Service<Config> {
         const id = textField(http.params.id, '角色标识')
         if (!/^[a-z][a-z0-9_-]{0,63}$/.test(id))
           throw new AuthError(400, '角色标识必须使用小写字母、数字、下划线或连字符')
-        if (id === 'administrator') throw new AuthError(403, '内置管理员角色不能修改')
+        if (id === 'administrator') throw new AuthError(403, '旧管理员标识已停用，请使用 admin')
         const name = textField(body.name, '角色名称')
         if (
           !Array.isArray(body.permissions) ||
@@ -650,7 +804,10 @@ export class RbacService extends Service<Config> {
           body.permissions.some((p) => typeof p !== 'string' || !this.permissions.has(p))
         )
           throw new AuthError(400, '包含未声明的权限')
-        const permissions = [...new Set(body.permissions as string[])]
+        const permissions = [...new Set(body.permissions as string[])].filter(
+          (permission) =>
+            !this.permissions.get(permission)?.defaultRoles.some((role) => role === id),
+        )
         for (const permission of permissions)
           if (!(await this.can(this.auth(http), permission)))
             throw new AuthError(403, '不能授予自己没有的权限')
@@ -692,21 +849,28 @@ export class RbacService extends Service<Config> {
         const body = await readJson(http)
         const principalId = textField(http.params.id, '主体标识')
         const roleId = textField(body.roleId, '角色标识')
+        if (!/^[a-z][a-z0-9_-]{0,63}$/.test(roleId) || roleId === 'administrator')
+          throw new AuthError(
+            400,
+            '角色标识必须以小写字母开头，仅含小写字母、数字、下划线或连字符，最多 64 位',
+          )
         const scope = textField(body.scope, '授权范围')
         if (typeof body.enabled !== 'boolean') throw new AuthError(400, 'enabled 必须是布尔值')
         const db = this.db()
-        if (
-          !(await this.principal(principalId)) ||
-          !(await db.selectFrom('role').select('id').where('id', '=', roleId).executeTakeFirst())
-        )
-          throw new AuthError(404, '主体或角色不存在')
+        if (!(await this.principal(principalId))) throw new AuthError(404, '主体不存在')
         const grants = await db
           .selectFrom('role_permission')
           .select('permission')
           .where('role_id', '=', roleId)
           .execute()
-        for (const grant of grants)
-          if (!(await this.can(this.auth(http), grant.permission, scope)))
+        const effective = new Set([
+          ...grants.map((grant) => grant.permission),
+          ...[...this.permissions]
+            .filter(([, value]) => value.defaultRoles.some((role) => role === roleId))
+            .map(([permission]) => permission),
+        ])
+        for (const permission of effective)
+          if (!(await this.can(this.auth(http), permission, scope)))
             throw new AuthError(403, '不能管理超出自己权限的角色')
         await ctx.database.transaction(ctx, async (transaction) => {
           const db = this.db(transaction)
@@ -717,6 +881,14 @@ export class RbacService extends Service<Config> {
             .where('scope_key', '=', hash(scope))
             .where('source', '=', 'manual')
             .execute()
+          if (
+            body.enabled &&
+            !(await db.selectFrom('role').select('id').where('id', '=', roleId).executeTakeFirst())
+          )
+            await db
+              .insertInto('role')
+              .values({ id: roleId, name: roleId, status: 'active' })
+              .execute()
           if (body.enabled)
             await this.grantRole(transaction, { principalId, roleId, scope, source: 'manual' })
         })
@@ -732,5 +904,11 @@ export default defineDatabasePlugin({
   inject: ['server'],
   async apply(ctx: Context, config: Config = {}) {
     await ctx.plugin(RbacService, config)
+    await ctx.plugin({
+      inject: ['rbac'],
+      async apply(ctx: Context) {
+        await ctx.rbac.initializeRoles()
+      },
+    })
   },
 })

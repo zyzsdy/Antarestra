@@ -4,10 +4,16 @@
   "sourceRoots": [
     "plugins/definitions/webui/client",
     "plugins/features/admin-console/client",
-    "plugins/features/chat-webui/client"
+    "plugins/features/chat-webui/client",
+    "plugins/implementations/auth-local/client"
   ],
   "canonicalMap": "UX-CONTRACT.md",
-  "requiredCapabilities": ["Scrollbar", "Toast"],
+  "requiredCapabilities": ["Scrollbar", "Toast", "Select/Listbox", "Form", "CRUD"],
   "requiredCommands": ["check"],
-  "commands": { "check": "pnpm check" }
+  "commands": {
+    "check": "pnpm check"
+  },
+  "ownership": {
+    "Select/Listbox": "native"
+  }
 }

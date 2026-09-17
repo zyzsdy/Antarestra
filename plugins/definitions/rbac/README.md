@@ -38,14 +38,14 @@ export function apply(ctx: Context) {
 
 ## 数据与权限
 
-- RBAC 私有表：`principal`、`provider`、`identity`、`session`、`role`、`role_permission`、`binding`。database 负责物理表名前缀和迁移历史。
+- RBAC 私有表：`principal`、`provider`、`identity`、`session`、`role`、`role_permission`、`binding`、`role_migration`。database 负责物理表名前缀和迁移历史。
 - 身份按提供者实例与稳定 subject 唯一定位。local 使用账号 UUID，不按邮箱跨实例合并主体。
 - 多角色权限取并集，绑定包含准确范围、来源和可选失效时间。角色或绑定修改立即影响后续请求；首版无权限缓存、角色继承、通配符或显式拒绝。
 - 权限声明通过 `registerPermission(owner, key, description)` 绑定插件生命周期，重复注册拒绝。声明保存在运行期，角色授权持久保存；插件卸载后，其未声明的权限无法使用。
 - `grantRole(transaction, input)` 是可信插件的内部装配能力，创建绑定前验证主体和角色存在。业务应先完成空间鉴权，不应直接将此接口暴露给客户端。
 - database 当前迁移协议不提供外键，本版通过服务接口、唯一索引与跨插件事务维护关联，消费插件不得直接写 RBAC 私有表。
 
-内置 `administrator` 角色包含 `identity.local.manage`、`authz.role.manage`、`authz.binding.manage`，无隐式超级权限。管理接口不能授予操作者自己没有的权限，也不能修改内置管理员角色、禁用自己或通过本地管理禁用内置管理员。手动撤销只影响 `manual` 来源，不覆盖初始化或其他插件的绑定。
+内置 `admin` 角色默认包含 `identity.local.manage`、`authz.role.manage`、`authz.binding.manage`，无隐式超级权限。管理接口不能授予操作者自己没有的权限，也不能取消默认权限、禁用自己或通过本地管理禁用内置管理员。手动撤销只影响 `manual` 来源，不覆盖初始化或其他插件的绑定。
 
 ## 接入认证实现
 
@@ -77,3 +77,11 @@ export function apply(ctx: Context) {
 消费方使用 `resolveRequest(source, request)` 解析身份，或 `authorizeRequest(source, request, permission)` 同时鉴权。后者在提供者已验证的空间内应用默认角色，并支持 Web 会话在该空间的显式角色授权。不得把客户端传来的角色和空间直接作为解析结果。无身份时默认角色为 `guest`，无通道时返回 503。
 
 `web` 由 auth-local 提供：Actor 对应现有 principal ID；个人空间稳定映射为 `personal:<actorId>`。其他通道的空间模型由各自可信插件实现。当前没有共享空间切换或成员管理，也没有聊天数据存储。`can` / `require` 在 `system` 范围支持已登录默认角色；空间默认权限应通过 `authorizeRequest` 在经过提供者验证的空间内判定，系统授权不覆盖任意空间。
+
+内置角色统一为 `admin`、`user`、`guest`。启动时事务迁移旧 `administrator` 的绑定及额外授权，默认权限不写入数据库。内置角色可以编辑名称和额外权限，默认权限不能取消。三个管理权限的默认角色均为 admin，其描述分别明确用户查询及启停、角色权限配置、用户角色绑定用途。
+
+`GET /api/rbac/role-options` 供拥有 `authz.binding.manage` 的操作者选择角色，返回 ID 与名称。绑定写接口允许创建新的合法角色 ID（初始无额外权限），同时校验目标角色的默认权限及额外权限，防止通过绑定默认角色越权。撤销只影响 manual 来源。
+
+迁移首次执行时，旧版本已存在的 admin、user、guest 自定义角色会改名为 legacy-原ID-随机UUID，保留其名称、绑定及额外授权，避免同名角色意外升级为默认角色。迁移标记与数据变更同事务保存。
+
+默认角色的额外授权在已验证的请求通道内与默认声明取并集；system 范围的 can/require 对已登录默认角色应用同样规则。自定义角色仍只在绑定的准确范围内生效。匿名请求不会获得 user 或 admin。用户目录批量读取主体与角色以避免逐账号查询，当前在服务端组合过滤后分页，适用于现阶段的本地用户管理。

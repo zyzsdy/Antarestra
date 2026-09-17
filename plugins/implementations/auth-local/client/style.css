@@ -190,3 +190,111 @@
     flex-wrap: wrap;
   }
 }
+.auth-ui select {
+  width: 100%;
+  border: 1px solid #dce3ef;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: white;
+  color: #263047;
+  min-height: 42px;
+}
+.auth-ui .filter-bar {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) minmax(120px, 1fr) minmax(120px, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+  margin: 0;
+}
+.auth-ui .filter-bar label {
+  margin: 0;
+}
+.auth-ui .search-field {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+.auth-ui .search-field input {
+  flex: 1;
+}
+.auth-ui .list-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 22px 0 12px;
+  color: #637089;
+}
+.auth-ui .list-summary button {
+  margin-left: auto;
+}
+.auth-ui .user-cell {
+  min-width: 230px;
+}
+.auth-ui small,
+.auth-ui .muted,
+.auth-ui th {
+  color: #637089;
+}
+.auth-ui .selected-row {
+  background: #edf2ff;
+}
+.auth-ui .role-editor {
+  border-top: 3px solid #315ed1;
+}
+.auth-ui .permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-height: 480px;
+  overflow: auto;
+}
+.auth-ui .permissions-grid .check {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #e4e9f1;
+  border-radius: 7px;
+}
+.auth-ui .default-permission {
+  background: #f4f6fa;
+}
+.auth-ui .binding-list {
+  max-height: 240px;
+  overflow: auto;
+  margin-top: 20px;
+}
+.auth-ui .binding-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e4e9f1;
+}
+.auth-ui button:not(:disabled),
+.auth-ui select,
+.auth-ui .check:has(input:not(:disabled)) {
+  cursor: pointer;
+}
+.auth-ui button:disabled {
+  cursor: not-allowed;
+}
+.auth-ui button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+@media (max-width: 1000px) {
+  .auth-ui .filter-bar {
+    grid-template-columns: 1fr 1fr;
+  }
+  .auth-ui .permissions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 540px) {
+  .auth-ui .filter-bar {
+    grid-template-columns: 1fr;
+  }
+  .auth-ui .ui-editor-dialog {
+    padding: 18px;
+  }
+}

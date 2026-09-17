@@ -1,11 +1,10 @@
 import { defineComponent, h } from 'vue'
 import type { ClientPlugin } from '@antarestra/webui/client'
-import { UsersIcon, ShieldCheckIcon, UserGroupIcon } from '@antarestra/webui/icons'
+import { UsersIcon, ShieldCheckIcon } from '@antarestra/webui/icons'
 import { registerAdminPage } from '@antarestra/plugin-admin-console/client'
 import AccountPage from './AccountPage.vue'
 import UsersPage from './UsersPage.vue'
 import RolesPage from './RolesPage.vue'
-import BindingsPage from './BindingsPage.vue'
 import './style.css'
 
 const apply: ClientPlugin = (ctx) => {
@@ -36,14 +35,6 @@ const apply: ClientPlugin = (ctx) => {
       icon: ShieldCheckIcon,
       permission: 'authz.role.manage',
       component: RolesPage,
-    },
-    {
-      id: 'bindings',
-      order: 120,
-      title: '角色分配',
-      icon: UserGroupIcon,
-      permission: 'authz.binding.manage',
-      component: BindingsPage,
     },
   ])
     registerAdminPage(ctx, { ...page, id: `auth-${providerId}-${page.id}`, group })

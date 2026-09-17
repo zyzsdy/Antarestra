@@ -624,3 +624,231 @@ describe('认证边界与生命周期', () => {
     expect(await (await fetch(`${app.url}/webui/entries.json`)).json()).toEqual([])
   })
 })
+
+describe('用户管理改版', () => {
+  it('内置角色和默认权限可见，默认授权不落库，额外权限即时生效', async () => {
+    const app = await setup()
+    const admin = await app.login()
+    const data = await (await app.request('/rbac/roles', undefined, admin)).json()
+    expect(data.roles.map((role: { id: string }) => role.id).sort()).toEqual([
+      'admin',
+      'guest',
+      'user',
+    ])
+    expect(data.grants).toEqual([])
+    expect(data.permissions).toContainEqual({
+      key: 'identity.local.manage',
+      description: '查询用户列表、启用或禁用本地账号',
+      defaultRoles: ['admin'],
+    })
+    expect(
+      (
+        await app.request(
+          '/rbac/roles/admin',
+          { name: '系统管理员', permissions: ['identity.local.manage', 'authz.role.manage'] },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect(await app.db.selectFrom('role_permission').selectAll().execute()).toEqual([])
+    await app.register()
+    const member = await app.login('member@example.com')
+    expect(
+      (
+        await app.request(
+          '/rbac/roles/user',
+          { name: '普通用户', permissions: ['identity.local.manage'] },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(200)
+    expect(
+      (await app.request('/rbac/roles/user', { name: '普通用户', permissions: [] }, admin, 'PUT'))
+        .status,
+    ).toBe(200)
+    expect((await app.request(app.base + '/users', undefined, member)).status).toBe(403)
+  })
+
+  it('筛选先于分页，角色分配支持新 ID 并拒绝通过默认角色提权', async () => {
+    const app = await setup()
+    await app.register()
+    const admin = await app.login()
+    const member = await app.login('member@example.com')
+    const account = await app.accounts
+      .selectFrom('account')
+      .selectAll()
+      .where('email', '=', 'member@example.com')
+      .executeTakeFirstOrThrow()
+    const binding = `/rbac/bindings/${account.principal_id}`
+    expect(
+      (
+        await app.request(
+          binding,
+          { roleId: 'operator', scope: 'system', enabled: true },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await app.request(
+          '/rbac/roles/operator',
+          { name: '运营人员', permissions: ['authz.binding.manage'] },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await app.request(
+          binding,
+          { roleId: 'admin', scope: 'system', enabled: true },
+          member,
+          'PUT',
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await app.request(
+          binding,
+          { roleId: 'admin', scope: 'other-space', enabled: true },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(403)
+    const filtered = await (
+      await app.request(
+        app.base + '/users?q=' + encodeURIComponent('测试成员') + '&role=operator&status=active',
+        undefined,
+        admin,
+      )
+    ).json()
+    expect(filtered.total).toBe(1)
+    expect(filtered.users[0].roles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'user', source: 'default' }),
+        expect.objectContaining({ id: 'operator', source: 'manual' }),
+      ]),
+    )
+    expect(
+      (await (await app.request(app.base + '/users?q=missing', undefined, admin)).json()).total,
+    ).toBe(0)
+    expect(
+      (await (await app.request(app.base + '/users?offset=50', undefined, admin)).json()).users,
+    ).toEqual([])
+    expect((await app.request(app.base + '/users?status=invalid', undefined, admin)).status).toBe(
+      400,
+    )
+    expect(
+      (
+        await app.request(
+          binding,
+          { roleId: 'operator', scope: 'system', enabled: false },
+          admin,
+          'PUT',
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (await (await app.request(app.base + '/users?role=operator', undefined, admin)).json()).total,
+    ).toBe(0)
+  })
+
+  it('旧管理员绑定与额外授权事务迁移且可重复执行', async () => {
+    const app = await setup()
+    const admin = await app.login()
+    const me = await (await app.request('/auth/me', undefined, admin)).json()
+    await app.db
+      .insertInto('role')
+      .values({ id: 'administrator', name: '旧管理员', status: 'active' })
+      .execute()
+    await app.db
+      .updateTable('binding')
+      .set({ role_id: 'administrator' })
+      .where('principal_id', '=', me.auth.principalId)
+      .execute()
+    await app.db
+      .insertInto('role_permission')
+      .values([
+        { role_id: 'administrator', permission: 'identity.local.manage' },
+        { role_id: 'administrator', permission: 'custom.audit.view' },
+      ])
+      .execute()
+    await app.ctx.rbac.initializeRoles()
+    await app.ctx.rbac.initializeRoles()
+    expect(
+      await app.db.selectFrom('role').selectAll().where('id', '=', 'administrator').execute(),
+    ).toEqual([])
+    expect(await app.db.selectFrom('role_permission').selectAll().execute()).toEqual([
+      { role_id: 'admin', permission: 'custom.audit.view' },
+    ])
+    expect(await app.ctx.rbac.defaultRoles(me.auth)).toEqual(['user', 'admin'])
+  })
+})
+
+it('迁移同名旧自定义角色不会扩大已有成员权限', async () => {
+  const app = await setup()
+  await app.register()
+  const member = await app.login('member@example.com')
+  const me = await (await app.request('/auth/me', undefined, member)).json()
+  await app.db.deleteFrom('role_migration').execute()
+  await app.ctx.database.transaction(app.ctx, (transaction) =>
+    app.ctx.rbac.grantRole(transaction, {
+      principalId: me.auth.principalId,
+      roleId: 'admin',
+      scope: 'system',
+      source: 'manual',
+    }),
+  )
+  await app.ctx.rbac.initializeRoles()
+  expect(await app.ctx.rbac.defaultRoles(me.auth)).toEqual(['user'])
+  const bindings = await app.db
+    .selectFrom('binding')
+    .selectAll()
+    .where('principal_id', '=', me.auth.principalId)
+    .execute()
+  expect(bindings[0]?.role_id).toMatch(/^legacy-admin-/)
+  expect((await app.request(app.base + '/users', undefined, member)).status).toBe(403)
+})
+
+it('访客额外权限应用到可信请求通道，撤销后立即拒绝', async () => {
+  const app = await setup()
+  app.ctx.rbac.registerPermission(app.ctx, 'public.catalog.view', '查看公开目录', ['admin'])
+  app.ctx.rbac.registerRequestSource(app.ctx, 'public-test', {
+    id: 'anonymous',
+    async resolve() {
+      return undefined
+    },
+  })
+  const admin = await app.login()
+  await expect(
+    app.ctx.rbac.authorizeRequest('public-test', {}, 'public.catalog.view'),
+  ).rejects.toThrow('请先登录')
+  expect(
+    (
+      await app.request(
+        '/rbac/roles/guest',
+        { name: '访客', permissions: ['public.catalog.view'] },
+        admin,
+        'PUT',
+      )
+    ).status,
+  ).toBe(200)
+  await expect(
+    app.ctx.rbac.authorizeRequest('public-test', {}, 'public.catalog.view'),
+  ).resolves.toMatchObject({ roles: ['guest'] })
+  expect(
+    (await app.request('/rbac/roles/guest', { name: '访客', permissions: [] }, admin, 'PUT'))
+      .status,
+  ).toBe(200)
+  await expect(
+    app.ctx.rbac.authorizeRequest('public-test', {}, 'public.catalog.view'),
+  ).rejects.toThrow('请先登录')
+})
