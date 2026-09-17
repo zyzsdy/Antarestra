@@ -41,6 +41,8 @@
 }
 .auth-ui button:not(:disabled):hover {
   background: #f2f5fb;
+  border-color: #cbd6e8;
+  color: #263f6b;
 }
 .auth-ui button:disabled {
   opacity: 0.45;
@@ -49,6 +51,15 @@
   background: #315ed1;
   border-color: #315ed1;
   color: white;
+}
+.auth-ui button.primary:not(:disabled):hover {
+  background: #264eae;
+  border-color: #264eae;
+  color: white;
+}
+.auth-ui button.primary:not(:disabled):active {
+  background: #22479f;
+  border-color: #22479f;
 }
 .auth-ui .actions {
   display: flex;
@@ -73,13 +84,41 @@
   background: #fff;
   color: #263047;
 }
+.auth-ui .form-field {
+  margin-bottom: 20px;
+}
+.auth-ui .form-field > label {
+  margin-bottom: 9px;
+}
 .auth-ui .password-field {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
+  position: relative;
+  display: block;
 }
 .auth-ui .password-field input {
-  flex: 1;
+  padding-right: 48px;
+}
+.auth-ui .password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: inline-flex;
+  width: 36px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #637089;
+  transform: translateY(-50%);
+}
+.auth-ui .password-toggle:not(:disabled):hover {
+  border-color: transparent;
+  background: #edf2ff;
+  color: #315ed1;
+}
+.auth-ui .password-toggle:active:not(:disabled) {
+  transform: translateY(-50%);
 }
 .auth-ui input:focus {
   outline: 2px solid #99b3fa;
@@ -237,8 +276,46 @@
 .auth-ui .list-summary > span:first-child {
   white-space: nowrap;
 }
-.auth-ui .list-summary button {
+.auth-ui .list-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
+}
+.auth-ui .icon-button {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.auth-ui .auth-tabs {
+  display: flex;
+  gap: 24px;
+  margin: -6px 0 24px;
+  border-bottom: 1px solid #dce3ef;
+}
+.auth-ui .auth-tabs button {
+  position: relative;
+  margin-bottom: -1px;
+  padding: 10px 2px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #637089;
+}
+.auth-ui .auth-tabs button:not(:disabled):hover {
+  border-color: transparent;
+  border-bottom-color: #9eb3e8;
+  background: transparent;
+  color: #315ed1;
+}
+.auth-ui .auth-tabs button.active {
+  border-bottom-color: #315ed1;
+  color: #244da9;
+  font-weight: 600;
 }
 .auth-ui .user-cell {
   min-width: 230px;

@@ -15,7 +15,7 @@ const account = ref<{
   auth: { principalId: string }
   session: SessionSnapshot
 }>()
-const mode = ref('login')
+const mode = ref<'login' | 'register'>('login')
 const loginName = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -23,6 +23,30 @@ const displayName = ref('')
 const loading = ref(true)
 const form = ref<HTMLFormElement>()
 const invalid = ref('')
+function setMode(next: 'login' | 'register') {
+  mode.value = next
+  invalid.value = ''
+  message.value = ''
+}
+function moveTab(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  const tabs = Array.from(
+    (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>(
+      '[role="tab"]',
+    ) ?? [],
+  )
+  if (!tabs.length) return
+  event.preventDefault()
+  const current = tabs.indexOf(event.currentTarget as HTMLButtonElement)
+  const next =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+  tabs[next]?.focus()
+  tabs[next]?.click()
+}
 onMounted(async () => {
   try {
     account.value = await api('/auth/me')
@@ -127,17 +151,42 @@ function logout() {
       </div>
     </section>
     <section v-else class="panel">
-      <nav class="actions">
-        <button :class="{ primary: mode === 'login' }" @click="mode = 'login'">登录</button
+      <nav class="auth-tabs" aria-label="账号操作" role="tablist">
+        <button
+          type="button"
+          id="account-login-tab"
+          role="tab"
+          aria-controls="account-form-panel"
+          :aria-selected="mode === 'login'"
+          :tabindex="mode === 'login' ? 0 : -1"
+          :class="{ active: mode === 'login' }"
+          @click="setMode('login')"
+          @keydown="moveTab"
+        >
+          登录</button
         ><button
           v-if="allowRegistration"
-          :class="{ primary: mode === 'register' }"
-          @click="mode = 'register'"
+          type="button"
+          id="account-register-tab"
+          role="tab"
+          aria-controls="account-form-panel"
+          :aria-selected="mode === 'register'"
+          :tabindex="mode === 'register' ? 0 : -1"
+          :class="{ active: mode === 'register' }"
+          @click="setMode('register')"
+          @keydown="moveTab"
         >
           创建账号
         </button>
       </nav>
-      <form ref="form" novalidate @submit.prevent="submit">
+      <form
+        id="account-form-panel"
+        ref="form"
+        role="tabpanel"
+        :aria-labelledby="`account-${mode}-tab`"
+        novalidate
+        @submit.prevent="submit"
+      >
         <h2>{{ mode === 'login' ? '欢迎回来' : '创建你的账号' }}</h2>
         <label v-if="mode === 'register'"
           >显示名称<input

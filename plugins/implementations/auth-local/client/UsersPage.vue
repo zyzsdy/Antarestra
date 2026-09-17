@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
+import { ArrowPathIcon } from '@antarestra/webui/icons'
 import { useApi } from './api.js'
 import RoleAssignment from './RoleAssignment.vue'
 import UserCreateDialog from './UserCreateDialog.vue'
@@ -153,10 +154,22 @@ async function resetPassword(user: User) {
         </div>
       </form>
       <div class="list-summary">
-        <span>共 {{ total }} 位用户</span><span v-if="busy" role="status">正在加载…</span
-        ><button v-if="canCreate" class="primary" :disabled="busy" @click="creating = true">
-          新建用户</button
-        ><button :disabled="busy" @click="run(() => load())">刷新列表</button>
+        <span>共 {{ total }} 位用户</span><span v-if="busy" role="status">正在加载…</span>
+        <div class="list-actions">
+          <button v-if="canCreate" class="primary" :disabled="busy" @click="creating = true">
+            新建用户
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            :disabled="busy"
+            aria-label="刷新用户列表"
+            title="刷新用户列表"
+            @click="run(() => load())"
+          >
+            <ArrowPathIcon class="ui-icon" aria-hidden="true" />
+          </button>
+        </div>
       </div>
       <div class="table-scroll">
         <table>
