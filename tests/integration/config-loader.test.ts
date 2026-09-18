@@ -147,6 +147,12 @@ describe('主配置查找与解析', () => {
 describe('配置驱动的插件生命周期', () => {
   it('加载两份独立配置，禁用条目不解析模块，独立卸载后保留另一实例', async () => {
     const ctx = createContext()
+    const logs: unknown[][] = []
+    ctx.logger.exporter({
+      export: (message) => {
+        if (message.name === 'config-loader' && message.type === 'info') logs.push(message.args)
+      },
+    })
     const entries = loader.parseConfig(`plugins:
   test-registry: {}
   test-registration:1234abcd: { id: first, value: '甲：' }
@@ -161,12 +167,19 @@ describe('配置驱动的插件生命周期', () => {
       'test-registration',
     ])
     expect(ctx.testRegistry.entries.list()).toEqual(['first', 'second'])
+    expect(logs).toEqual([
+      ['插件已加载：%s', 'test-registry'],
+      ['插件已加载：%s', 'test-registration:1234abcd'],
+      ['插件已加载：%s', 'test-registration:5678efab'],
+    ])
     await instances.get('test-registration:1234abcd')!.dispose()
+    expect(logs.at(-1)).toEqual(['正在卸载插件：%s', 'test-registration:1234abcd'])
     expect(ctx.testRegistry.entries.list()).toEqual(['second'])
     expect(ctx.testRegistry.entries.get('second')).toBe('乙：')
     const registry = ctx.testRegistry.entries
     await ctx.fiber.dispose()
     expect(registry.list()).toEqual([])
+    expect(logs.filter(([message]) => message === '正在卸载插件：%s')).toHaveLength(3)
   })
 
   it('独立加载器插件从文件读取，卸载时等待子插件的异步清理', async () => {
@@ -182,13 +195,24 @@ describe('配置驱动的插件生命周期', () => {
         cleaned()
       })
     }
-    const instance = await createContext().plugin(loader, {
+    const ctx = createContext()
+    const logs: unknown[][] = []
+    ctx.logger.exporter({
+      export: (message) => {
+        if (message.name === 'config-loader' && message.type === 'info') logs.push(message.args)
+      },
+    })
+    const instance = await ctx.plugin(loader, {
       filename,
       resolvePlugin: async () => plugin,
     })
     expect(cleaned).not.toHaveBeenCalled()
     await instance.dispose()
     expect(cleaned).toHaveBeenCalledOnce()
+    expect(logs).toEqual([
+      ['插件已加载：%s', 'resource'],
+      ['正在卸载插件：%s', 'resource'],
+    ])
   })
 
   it.each(['import', 'apply', 'dependency'])('发生 %s 失败时回收之前的资源', async (failure) => {
@@ -220,6 +244,12 @@ describe('配置驱动的插件生命周期', () => {
 
   it('支持后声明的依赖，并在服务卸载及恢复时重新激活实例', async () => {
     const ctx = createContext()
+    const logs: unknown[][] = []
+    ctx.logger.exporter({
+      export: (message) => {
+        if (message.name === 'config-loader') logs.push(message.args)
+      },
+    })
     const instances = await loader.loadPlugins(
       ctx,
       loader.parseConfig(`plugins:
@@ -235,6 +265,11 @@ describe('配置驱动的插件生命周期', () => {
     await ctx.plugin(TestRegistry)
     await instances.get('test-registration')!.await()
     expect(ctx.testRegistry.entries.list()).toEqual(['demo'])
+    expect(logs.filter(([, id]) => id === 'test-registration')).toEqual([
+      ['插件已加载：%s', 'test-registration'],
+      ['正在卸载插件：%s', 'test-registration'],
+      ['插件已加载：%s', 'test-registration'],
+    ])
   })
 
   it('完整包名与别名均可解析，拒绝非插件模块', async () => {

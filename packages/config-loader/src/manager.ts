@@ -19,6 +19,7 @@ import {
 } from './document.js'
 import type { LoaderSettings, PanelLayout } from './document.js'
 import type { Config } from './index.js'
+import { logPluginLifecycle } from './logging.js'
 
 export type InstanceState = 'disabled' | 'waiting' | 'loading' | 'active' | 'failed' | 'unloading'
 interface Instance {
@@ -47,6 +48,7 @@ declare module '@antarestra/plugin-sdk' {
 }
 export class ConfigManager extends Service<ManagerConfig> {
   private readonly owner: Context
+  private readonly track: ReturnType<typeof logPluginLifecycle>
   readonly generation = randomUUID()
   readonly instances = new Map<string, Instance>()
   private readonly operations = new Map<string, Operation>()
@@ -64,6 +66,7 @@ export class ConfigManager extends Service<ManagerConfig> {
   ) {
     super(ctx, 'configManager')
     this.owner = ctx
+    this.track = logPluginLifecycle(ctx)
     ctx.logger.exporter({
       export: (message) => {
         if (message.type !== 'error') return
@@ -88,6 +91,7 @@ export class ConfigManager extends Service<ManagerConfig> {
         fiber.parent.fiber === this.owner.fiber
       ) {
         item.fiber = fiber
+        this.track(fiber, item.entry)
         item.starting = Date.now()
       }
     })
@@ -175,6 +179,7 @@ export class ConfigManager extends Service<ManagerConfig> {
         item.tracked = tracked
       }
       item.fiber = owner.plugin(plugin, structuredClone(config)).ctx.fiber
+      this.track(item.fiber, item.entry)
       if (item.tracked) item.tracked.fiber = item.fiber
       void item.fiber.await().catch(() => {})
     } catch (error) {

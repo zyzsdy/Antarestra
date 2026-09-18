@@ -3,6 +3,7 @@ import { Entry, Loader } from '@antarestra/plugin-sdk/loader'
 import { readConfig } from './config.js'
 import type { PluginEntry } from './config.js'
 import { ConfigManager } from './manager.js'
+import { logPluginLifecycle } from './logging.js'
 export { ConfigManager } from './manager.js'
 export type { Operation, InstanceState } from './manager.js'
 export { readDocument, ManagementError, loaderSchema } from './document.js'
@@ -61,6 +62,7 @@ async function loadEntries(
   resolvePlugin: PluginResolver,
 ): Promise<ReadonlyMap<string, Fiber>> {
   const instances = new Map<string, Fiber>()
+  const track = logPluginLifecycle(ctx)
   if (resolvePlugin.resolveUrl) {
     const store = ctx.loader.store
     ctx.on('internal/plugin', (fiber) => {
@@ -68,6 +70,8 @@ async function loadEntries(
       const id = entry?.options.id
       if (fiber.uid && id && fiber.parent.fiber === ctx.fiber && store[id] === entry) {
         instances.set(id, fiber)
+        const configured = entries.find((entry) => entry.instanceId === id)
+        if (configured) track(fiber, configured)
       }
     })
   }
@@ -98,6 +102,7 @@ async function loadEntries(
           fiber = owner.plugin(plugin, structuredClone(entry.config))
         }
         instances.set(entry.instanceId, fiber)
+        track(fiber, entry)
         await fiber
       } catch {
         throw new Error(`插件加载失败：${entry.instanceId}，请检查模块、配置及依赖`)
