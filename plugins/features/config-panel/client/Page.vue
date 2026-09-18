@@ -476,7 +476,12 @@ onUnmounted(() => {
           <h2>选择一个插件</h2>
           <p>查看运行状态，编辑配置并单独加载。</p>
         </div>
-        <form v-else-if="selected === '$loader'" novalidate @submit.prevent="save">
+        <form
+          v-else-if="selected === '$loader'"
+          autocomplete="off"
+          novalidate
+          @submit.prevent="save"
+        >
           <h2>加载器设置</h2>
           <p>加载器是系统固定入口，不能停用或删除。修改仅在下次重启后生效。</p>
           <label for="init-timeout">初始化超时（毫秒）</label
@@ -515,7 +520,7 @@ onUnmounted(() => {
             <button type="submit" class="primary" :disabled="busy">保存加载器设置</button>
           </div>
         </form>
-        <form v-else-if="detail" novalidate @submit.prevent="save">
+        <form v-else-if="detail" autocomplete="off" novalidate @submit.prevent="save">
           <header class="detail-heading">
             <div>
               <h2>{{ alias || detail.entry.pluginId }}</h2>

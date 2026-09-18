@@ -30,6 +30,7 @@ const props = withDefaults(
     editable?: boolean
     disabled?: boolean
     maxlength?: number
+    autocomplete?: string
     emptyText?: string
   }>(),
   { placeholder: '请选择', emptyText: '没有匹配选项，请尝试其他关键词。' },
@@ -117,6 +118,7 @@ function keydown(event: KeyboardEvent) {
           :aria-label="label"
           :placeholder="placeholder"
           :maxlength="maxlength"
+          :autocomplete="autocomplete"
           :disabled="disabled"
         />
         <button

@@ -2,9 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "maxModelCalls": { "type": "integer", "minimum": 1, "default": 64 },
-    "modelIdleTimeoutMs": { "type": "integer", "minimum": 1, "default": 600000 },
-    "toolTimeoutMs": { "type": "integer", "minimum": 1, "default": 600000 }
+    "maxModelCalls": {
+      "title": "最大模型调用次数",
+      "description": "单次运行允许的模型调用次数上限，达到上限后不再发起新的模型请求。默认 64 次。",
+      "type": "integer",
+      "minimum": 1,
+      "default": 64
+    },
+    "modelIdleTimeoutMs": {
+      "title": "模型无活动超时（毫秒）",
+      "description": "模型请求持续无活动的最长等待时间，收到模型活动后重新计时。默认 600000 毫秒（10 分钟），模型提供方可单独覆盖。",
+      "type": "integer",
+      "minimum": 1,
+      "default": 600000
+    },
+    "toolTimeoutMs": {
+      "title": "工具执行超时（毫秒）",
+      "description": "单次工具执行的默认超时时间。默认 600000 毫秒（10 分钟），工具可单独覆盖或声明不超时。",
+      "type": "integer",
+      "minimum": 1,
+      "default": 600000
+    }
   },
   "additionalProperties": false
 }

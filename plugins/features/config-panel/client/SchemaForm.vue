@@ -72,6 +72,7 @@ function input(key: string, field: Schema, raw: string) {
               field.default === undefined ? '未设置' : `默认：${JSON.stringify(field.default)}`
             "
             editable
+            autocomplete="off"
             empty-text="没有匹配选项，可保留手动输入的值或 $环境变量。"
             @update:model-value="input(key, field, $event)"
           />
@@ -83,7 +84,7 @@ function input(key: string, field: Schema, raw: string) {
             :placeholder="
               field.default === undefined ? '未设置' : `默认：${JSON.stringify(field.default)}`
             "
-            autocomplete="off"
+            :autocomplete="field['x-sensitive'] ? 'new-password' : 'off'"
             @input="input(key, field, ($event.target as HTMLInputElement).value)"
           />
           <button
