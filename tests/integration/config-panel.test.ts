@@ -62,6 +62,37 @@ async function setup() {
   }
   return { ctx, request, login, restart, filename }
 }
+it('删除未设置面板元数据的配置成功，任务结果直接返回新快照', async () => {
+  const app = await setup()
+  const cookie = await app.login()
+  await app.ctx.configManager.add(
+    (await app.ctx.configManager.snapshot()).version,
+    '@antarestra/plugin-logger',
+    { id: 'fixture', state: 'running', saved: false, message: '' },
+  )
+  const before = await app.ctx.configManager.snapshot()
+  const id = before.instances.find(
+    (item) => item.pluginId === '@antarestra/plugin-logger',
+  )!.instanceId
+  const response = await app.request(
+    '/plugin-config-panel/instances/' + encodeURIComponent(id),
+    cookie,
+    { version: before.version },
+    'DELETE',
+  )
+  expect(response.status).toBe(202)
+  const operation = (await response.json()) as { id: string }
+  await vi.waitFor(async () => {
+    const result = await app.request('/plugin-config-panel/operations/' + operation.id, cookie)
+    const completed = (await result.json()) as {
+      state: string
+      snapshot: { version: string; instances: { instanceId: string }[] }
+    }
+    expect(completed.state).toBe('completed')
+    expect(completed.snapshot.version).not.toBe(before.version)
+    expect(completed.snapshot.instances.some((item) => item.instanceId === id)).toBe(false)
+  })
+})
 it('管理 API：认证、默认权限、保存任务、配置版本和敏感值边界', async () => {
   const app = await setup()
   expect((await app.request('/plugin-config-panel')).status).toBe(401)

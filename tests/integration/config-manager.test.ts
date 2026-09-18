@@ -30,6 +30,49 @@ async function setup(source: string, resolver?: loader.PluginResolver) {
 }
 
 describe('配置面板管理服务', () => {
+  it.each(['', 'pluginPanel: {}\n', 'pluginPanel: { instances: {} }\n'])(
+    '删除配置允许缺少面板元数据：%s',
+    async (layout) => {
+      const app = await setup(`plugins:\n  ~plugin-server: {}\n${layout}`)
+      const result = operation()
+      await app.manager.remove((await app.manager.snapshot()).version, 'plugin-server', result)
+      expect(result.saved).toBe(true)
+      expect((await app.manager.snapshot()).instances).toEqual([])
+      expect((await loader.readDocument(app.filename)).entries).toEqual([])
+    },
+  )
+  it('删除服务提供者由 Cordis 暂停消费者，缺失依赖可保存并删除', async () => {
+    const cleaned = vi.fn()
+    const resolver = async (id: string): Promise<Plugin<unknown>> =>
+      id === 'provider'
+        ? TestRegistry
+        : {
+            inject: ['testRegistry'],
+            apply(ctx) {
+              ctx.effect(() => cleaned)
+            },
+          }
+    const app = await setup('plugins:\n  provider: {}\n  consumer: {}\n', resolver)
+    await vi.waitFor(async () =>
+      expect(
+        (await app.manager.snapshot()).instances.every((item) => item.status === 'active'),
+      ).toBe(true),
+    )
+    await app.manager.remove((await app.manager.snapshot()).version, 'provider', operation())
+    await vi.waitFor(() => expect(cleaned).toHaveBeenCalledOnce())
+    expect((await app.manager.snapshot()).instances[0]?.status).toBe('waiting')
+    await app.manager.save(
+      (await app.manager.snapshot()).version,
+      'consumer',
+      'value: 2',
+      true,
+      '',
+      operation(),
+    )
+    expect((await app.manager.snapshot()).instances[0]?.status).toBe('waiting')
+    await app.manager.remove((await app.manager.snapshot()).version, 'consumer', operation())
+    expect((await app.manager.snapshot()).instances).toEqual([])
+  })
   it('隔离初始化失败，保留禁用和缺失依赖实例，独立插件继续运行', async () => {
     const cleaned = vi.fn()
     const resolver = async (id: string): Promise<Plugin<unknown>> => {
@@ -50,7 +93,7 @@ describe('配置面板管理服务', () => {
       const items = (await app.manager.snapshot()).instances
       expect(items.find((x) => x.instanceId === 'good')?.status).toBe('active')
       expect(items.find((x) => x.instanceId === 'broken')?.status).toBe('failed')
-      expect(items.find((x) => x.instanceId === 'waiting')?.status).toBe('failed')
+      expect(items.find((x) => x.instanceId === 'waiting')?.status).toBe('waiting')
       expect(items.find((x) => x.instanceId === 'disabled')?.status).toBe('disabled')
       expect(JSON.stringify(items)).not.toContain('不可回传的凭据')
     })

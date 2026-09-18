@@ -54,7 +54,6 @@ export class ConfigManager extends Service<ManagerConfig> {
   private queue: Promise<unknown> = Promise.resolve()
   private closing = false
   private restarting = false
-  private initialized = false
   private readonly disposing = new Set<Fiber>()
   private readonly cleanupErrors = new WeakSet<Fiber>()
   private readonly cleanups = new WeakMap<Instance, Promise<void>>()
@@ -113,7 +112,6 @@ export class ConfigManager extends Service<ManagerConfig> {
       }
       if (entry.enabled) await this.launch(item)
     }
-    this.initialized = true
     // 管理服务先就绪，面板本身才能注入它；实例初始化由监视器独立跟踪。
   }
 
@@ -193,11 +191,8 @@ export class ConfigManager extends Service<ManagerConfig> {
     if (state === 2) return 'active'
     if (state === 1) return 'loading'
     if (state === 5) return 'unloading'
-    if (state === 0) return this.hasLoading() || !this.initialized ? 'waiting' : 'failed'
+    if (state === 0) return 'waiting'
     return 'failed'
-  }
-  private hasLoading() {
-    return [...this.instances.values()].some((item) => item.fiber?.state === 1 && !item.timedOut)
   }
   private failure(item: Instance) {
     if (item.error) return item.error
@@ -275,12 +270,7 @@ export class ConfigManager extends Service<ManagerConfig> {
     }
   }
   private async settle(item: Instance) {
-    while (
-      !this.closing &&
-      (item.fiber?.state === 1 ||
-        item.fiber?.state === 5 ||
-        (item.fiber?.state === 0 && this.hasLoading()))
-    )
+    while (!this.closing && (item.fiber?.state === 1 || item.fiber?.state === 5))
       await new Promise((resolve) => setTimeout(resolve, 50))
     if (this.state(item) === 'failed')
       throw new ManagementError(409, item.error ?? '插件启动失败或依赖未就绪')
@@ -519,7 +509,8 @@ export class ConfigManager extends Service<ManagerConfig> {
     await writeDocument(this.options.filename, version, (document) => {
       document.deleteIn(['plugins', id])
       document.deleteIn(['plugins', `~${id}`])
-      document.deleteIn(['pluginPanel', 'instances', id])
+      const metadataPath = ['pluginPanel', 'instances', id]
+      if (document.hasIn(metadataPath)) document.deleteIn(metadataPath)
     })
     operation.saved = true
     const item = this.instances.get(id)

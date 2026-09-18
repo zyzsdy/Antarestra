@@ -27,7 +27,6 @@ const settings = ref<Settings>({
 const mode = ref('form')
 const search = ref('')
 const searchInput = ref<HTMLInputElement>()
-const changed = ref(false)
 const status = ref('')
 const adding = ref(false)
 const catalog = ref<Metadata[]>([])
@@ -38,7 +37,6 @@ const groupName = ref('')
 const collapsed = ref(new Set<string>())
 const dragging = ref('')
 let alive = true
-let timer: ReturnType<typeof setInterval> | undefined
 let request = 0
 const draft = () =>
   JSON.stringify(
@@ -105,20 +103,10 @@ async function discard() {
     (await feedback.modal('放弃未保存的修改？', '切换后当前草稿将丢失。已保存的配置不受影响。'))
   )
 }
-async function refresh(force = false) {
+async function refresh() {
   const data = await api<Snapshot>('/plugin-config-panel')
   if (!alive) return
-  if (!force && snapshot.value && snapshot.value.version !== data.version) {
-    changed.value = true
-    // 只刷新已知实例的运行状态，不覆盖编辑基线与磁盘版本。
-    snapshot.value.instances = snapshot.value.instances.map((old) => {
-      const next = data.instances.find((row) => row.instanceId === old.instanceId)
-      return next ? { ...old, status: next.status, error: next.error, pending: next.pending } : old
-    })
-  } else {
-    snapshot.value = data
-    changed.value = false
-  }
+  snapshot.value = data
 }
 async function select(id: string, skipConfirm = false) {
   if (!skipConfirm && !(await discard())) return
@@ -142,7 +130,7 @@ async function select(id: string, skipConfirm = false) {
 }
 async function reload() {
   if (!(await discard())) return
-  await refresh(true)
+  await refresh()
   if (
     selected.value &&
     (selected.value === '$loader' ||
@@ -183,16 +171,14 @@ async function operate(path: string, body: object, method = 'POST') {
     }
   }
   if (!alive) return
+  if (operation.snapshot) snapshot.value = operation.snapshot
   status.value = operation.saved ? '配置已保存' : ''
   if (operation.state === 'failed') {
     if (operation.saved) {
-      const fresh = await api<Snapshot>('/plugin-config-panel')
-      snapshot.value = fresh
-      if (detail.value) detail.value.version = fresh.version
+      if (detail.value && operation.snapshot) detail.value.version = operation.snapshot.version
     }
     throw new Error(`${operation.saved ? '配置已保存，但应用未完成：' : ''}${operation.message}`)
   }
-  await refresh(true)
   feedback.toast('操作完成')
   status.value = ''
   await refreshExtensions()
@@ -352,18 +338,11 @@ const unload = (event: BeforeUnloadEvent) => {
   }
 }
 onMounted(() => {
-  void run(() => refresh(true))
+  void run(() => refresh())
   window.addEventListener('beforeunload', unload)
-  timer = setInterval(() => {
-    if (!document.hidden && !busy.value)
-      void refresh().catch(() => {
-        status.value = '状态更新失败，请检查连接后刷新。'
-      })
-  }, 2500)
 })
 onUnmounted(() => {
   alive = false
-  clearInterval(timer)
   stopGuard()
   window.removeEventListener('beforeunload', unload)
 })
@@ -379,14 +358,6 @@ onUnmounted(() => {
     </header>
     <p v-if="message" class="error" role="alert">{{ message }}</p>
     <p v-if="status" role="status">{{ status }}</p>
-    <div v-if="changed" class="notice" role="status">
-      主配置已在其他位置修改。当前草稿保留，请刷新后查看差异。<button
-        :disabled="busy"
-        @click="run(reload)"
-      >
-        刷新配置
-      </button>
-    </div>
     <p v-if="!snapshot" role="status">正在读取插件配置…</p>
     <div v-else class="split" :class="{ 'has-selection': selected }">
       <aside class="plugin-list" aria-label="插件实例">
@@ -531,9 +502,7 @@ onUnmounted(() => {
             请确保部署平台收到退出码 75 后重新启动服务。
           </p>
           <div class="actions">
-            <button type="submit" class="primary" :disabled="busy || changed">
-              保存加载器设置
-            </button>
+            <button type="submit" class="primary" :disabled="busy">保存加载器设置</button>
           </div>
         </form>
         <form v-else-if="detail" novalidate @submit.prevent="save">
@@ -546,11 +515,7 @@ onUnmounted(() => {
           </header>
           <p v-if="current?.error" class="error" role="alert">{{ current.error }}</p>
           <div v-if="current?.pending" class="notice">
-            磁盘配置与当前运行实例不一致。<button
-              type="button"
-              :disabled="busy || changed"
-              @click="applyDisk"
-            >
+            磁盘配置与当前运行实例不一致。<button type="button" :disabled="busy" @click="applyDisk">
               应用磁盘配置
             </button>
           </div>
@@ -627,12 +592,10 @@ onUnmounted(() => {
             监听配置变更后请手动打开：<code>{{ newAddress }}</code>
           </p>
           <div class="actions">
-            <button type="submit" class="primary" :disabled="busy || changed || current?.removed">
+            <button type="submit" class="primary" :disabled="busy || current?.removed">
               {{ busy ? '正在处理…' : '保存并应用' }}</button
             ><span v-if="dirty" class="muted">有未保存修改</span
-            ><button type="button" class="danger" :disabled="busy || changed" @click="remove">
-              删除配置
-            </button>
+            ><button type="button" class="danger" :disabled="busy" @click="remove">删除配置</button>
           </div>
         </form>
       </main>

@@ -69,7 +69,13 @@ export function apply(ctx: Context) {
     http.body = await manager.detail(textField(http.params.id, '实例标识', 250))
   })
   route('GET', '/operations/:id', async (http) => {
-    http.body = manager.operation(textField(http.params.id, '操作标识'))
+    const operation = manager.operation(textField(http.params.id, '操作标识'))
+    http.body = {
+      ...operation,
+      ...(['completed', 'failed'].includes(operation.state)
+        ? { snapshot: await manager.snapshot() }
+        : {}),
+    }
   })
   route('POST', '/instances', async (http) => {
     const body = await readJson(http, 262144)

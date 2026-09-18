@@ -7,13 +7,26 @@ export interface Schema {
   properties?: Record<string, Schema>
   required?: string[]
   items?: Schema
+  allOf?: Record<string, unknown>[]
   ['x-sensitive']?: boolean
   ['x-order']?: number
+}
+// 仅校验约束不改变字段结构，仍可由 properties 生成表单；校验交给服务端。
+function validationOnly(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return Object.entries(value).every(([key, item]) => {
+    if (['const', 'enum', 'required'].includes(key)) return true
+    if (['if', 'then', 'else', 'not'].includes(key)) return validationOnly(item)
+    if (key === 'properties')
+      return !!item && typeof item === 'object' && Object.values(item).every(validationOnly)
+    return false
+  })
 }
 export function supportsForm(schema?: Schema): boolean {
   if (
     !schema ||
-    ['$ref', 'oneOf', 'anyOf', 'allOf', 'if', 'patternProperties'].some((key) => key in schema)
+    ['$ref', 'oneOf', 'anyOf', 'if', 'patternProperties'].some((key) => key in schema) ||
+    (schema.allOf !== undefined && !schema.allOf.every(validationOnly))
   )
     return false
   if (schema.type === 'object')
@@ -71,4 +84,5 @@ export interface Operation {
   state: string
   saved: boolean
   message: string
+  snapshot?: Snapshot
 }

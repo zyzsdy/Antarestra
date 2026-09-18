@@ -13,12 +13,14 @@
     "filename": {
       "type": "string",
       "title": "SQLite 文件",
+      "description": "仅用于 SQLite；切换到 PostgreSQL 或 MySQL 时请重置此字段。",
       "minLength": 1,
       "pattern": "\\S"
     },
     "url": {
       "type": "string",
       "title": "数据库连接串",
+      "description": "PostgreSQL 和 MySQL 必填，支持 $环境变量名；SQLite 不使用此字段，请重置。",
       "minLength": 1,
       "x-sensitive": true,
       "pattern": "\\S"
