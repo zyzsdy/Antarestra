@@ -1,24 +1,28 @@
 # 按声明顺序加载；先声明定义与实现，再声明使用它们的入口插件。
 # 多实例的随机哈希保存后保持不变，复制实例时生成新的哈希。
 plugins:
-  plugin-logger: {}
-  plugin-hmr:
+  logger: {}
+  hmr:
     include: [plugins]
     exclude: []
   database: {}
-  plugin-database-kysely:
+  database-kysely:
     type: postgresql
     url: $ANTARESTRA_DATABASE_URL
-  plugin-server: {}
+  server: {}
   webui: {}
   rbac: {}
   ai: {}
-  plugin-auth-local:
+  auth-local:
     providerId: local
     allowRegistration: false
     # 首次创建管理员时取消以下注释，并在环境变量中设置密码。
     # bootstrapEmail: admin@ikp.yt
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
-  plugin-admin-console: {}
-  plugin-config-panel: {}
-  plugin-chat-webui: {}
+  admin-console: {}
+  config-panel: {}
+  chat-webui: {}
+pluginPanel:
+  instances:
+    chat-webui:
+      alias: ''
