@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "maxModelCalls": { "type": "integer", "minimum": 1, "default": 64 },
+    "modelIdleTimeoutMs": { "type": "integer", "minimum": 1, "default": 600000 },
+    "toolTimeoutMs": { "type": "integer", "minimum": 1, "default": 600000 }
+  },
+  "additionalProperties": false
+}

@@ -10,6 +10,7 @@
     "dev": "tsx watch --include '../../packages/**/src/**' --include '../*/src/**' --exclude '../../plugins/**' --expose-internals --conditions=development src/index.ts"
   },
   "dependencies": {
+    "@antarestra/ai": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",

@@ -43,7 +43,7 @@ Antarestra/
 
 后续按实际任务增加：
 
-- 定义插件：`agent`、`llm`、`identity`、`workspace`、`conversation`、`storage`、`tools`、`skills`、`mcp`。
+- AI 能力统一在定义插件 `ai`，通过 `ctx.ai` 提供 Agent、模型、工具、Skill 接口、运行与历史；其他定义按实际需要增加 `identity`、`workspace`、`storage`、`mcp`。
 - 实现插件：`agent-pi`、`llm-pi`、身份映射、数据库等；pi-agent 与 pi-ai 必须是独立插件。
 - 业务插件：`plugins/features/chat` 与 `agent-presets` 等。
 - 入口插件：网页 API、嵌入入口与具体 IM 平台适配器。
@@ -92,18 +92,18 @@ Antarestra/
 - `ctx.plugin()` 返回可等待的 Fiber。需要确认就绪的装配与测试必须等待它；卸载使用 `await fiber.dispose()`。不要复制旧版 `ctx.start()`、`ctx.stop()`、`reusable` 或生命周期事件写法。
 - 注册表不等于后端就绪。调用时仍需检查 `backendId`、`connectionId` 等注册项是否存在及是否获得授权。
 - 每次能力注册明确传入所属插件上下文，通过 `ctx.effect()` 绑定回收。网络、事件、定时器与子进程也必须回收，异步清理必须可等待。
-- 注册标识重复时明确拒绝，不静默覆盖。回收必须幂等，旧实例的回收函数不能删除后来注册的新实例。
+- 注册标识重复时明确拒绝；AI 工具例外：同名工具后注册覆盖，卸载后恢复上一有效实现，Run 固定其启动时的实现。`use_skill` 仅由唯一 Skill 服务提供。回收必须幂等，旧实例的回收函数不能删除后来注册的新实例。
 - 多实例的配置、凭据、连接与运行状态各自独立。模块顶层不能存放跨用户共享的可变 Agent 或账号状态。
 - 基础生命周期机制不等于热重载平台或安全沙箱；文档与界面不能把规划能力描述为已实现。
 
 ## 多用户与真实 AI 接入约定
 
 - Actor、Workspace 与 Conversation 分开建模。空间必须由服务端解析与校验，所有数据和能力访问携带空间范围。
-- 入口不直接调用 pi。聊天业务依赖 Agent 定义，Agent 实现依赖 LLM 定义，LLM 实现适配 pi-ai。
+- 入口不直接调用 pi。聊天业务、Agent 执行后端和模型驱动统一依赖 `@antarestra/ai`；`agent-pi` 与 `llm-pi` 独立，前者通过核心受控请求接口使用后者，不互相导入实现包。
 - 预设包含系统提示词、工具、Skill、MCP Server 和模型连接选择，运行时应固定版本快照。
 - 有状态 Agent 按会话或运行创建；同会话默认串行，不同会话允许并发。IM 回调要处理重复投递。
 - 密钥、令牌和真实账号配置不写进仓库、日志或网页；未来通过服务端凭据引用读取。
-- 工具执行、Skill 资源和 MCP 连接分别鉴权。Cordis 上下文不提供不可信插件的进程安全隔离。
+- AI 首版注册能力向拥有 `ai.chat.use` 的用户开放，会话按空间隔离；Agent 列表约束当次工具和模型，Skill 服务负责 Skill 范围校验。附件解析器校验资源范围；未来 MCP 实现需要独立鉴权。Cordis 上下文不提供不可信插件的进程安全隔离。
 
 ## 验证与提交
 

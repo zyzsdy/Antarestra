@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:plugins/definitions/ai
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:packages/config-loader
@@ -77,6 +80,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../plugins/definitions/ai
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:../../packages/config-loader
@@ -173,6 +179,27 @@ importers:
       '@types/koa-send':
         specifier: ^4.1.6
         version: 4.1.6
+
+  plugins/definitions/ai:
+    dependencies:
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../database
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@antarestra/plugin-server':
+        specifier: workspace:*
+        version: link:../../adapters/server
+      '@antarestra/rbac':
+        specifier: workspace:*
+        version: link:../rbac
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
 
   plugins/definitions/database:
     dependencies:

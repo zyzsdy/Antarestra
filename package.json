@@ -21,6 +21,7 @@
     "create:webui": "node scripts/create-webui.mjs"
   },
   "devDependencies": {
+    "@antarestra/ai": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",

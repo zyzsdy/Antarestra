@@ -24,10 +24,10 @@ try {
   await writeFile(
     filename,
     config
-      .replace('plugin-server: {}', `plugin-server: { host: 127.0.0.1, port: ${port} }`)
+      .replace(/(\s{2}(?:plugin-)?server): \{\}/, `$1: { host: 127.0.0.1, port: ${port} }`)
       .replace(
-        /plugin-database-kysely:(?: \{\}|\r?\n    type: postgresql\r?\n    url: \$ANTARESTRA_DATABASE_URL)/,
-        `plugin-database-kysely: ${JSON.stringify({ filename: join(temporary, 'smoke.sqlite') })}`,
+        /((?:plugin-)?database-kysely):(?: \{\}|\r?\n    type: postgresql\r?\n    url: \$ANTARESTRA_DATABASE_URL)/,
+        `$1: ${JSON.stringify({ filename: join(temporary, 'smoke.sqlite') })}`,
       ),
   )
   child = spawn(

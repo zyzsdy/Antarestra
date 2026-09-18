@@ -12,6 +12,7 @@ plugins:
   plugin-server: {}
   webui: {}
   rbac: {}
+  ai: {}
   plugin-auth-local:
     providerId: local
     allowRegistration: false
