@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { SelectField } from '@antarestra/webui/components'
 import type { Schema } from './types.js'
 const props = defineProps<{ schema: Schema; value: Record<string, unknown>; prefix?: string }>()
 const emit = defineEmits<{ change: [path: string[], value: unknown, remove?: boolean] }>()
@@ -9,8 +10,7 @@ const fields = computed(() =>
     ([, a], [, b]) => (a['x-order'] ?? 0) - (b['x-order'] ?? 0),
   ),
 )
-function input(key: string, field: Schema, event: Event) {
-  const raw = (event.target as HTMLInputElement).value
+function input(key: string, field: Schema, raw: string) {
   let value: unknown = raw
   if (!raw.startsWith('$')) {
     if (field.type === 'boolean' && ['true', 'false'].includes(raw)) value = raw === 'true'
@@ -57,20 +57,34 @@ function input(key: string, field: Schema, event: Event) {
           <span v-if="schema.required?.includes(key)">（必填）</span></label
         >
         <div class="field-input">
+          <SelectField
+            v-if="!field['x-sensitive'] && (field.enum || field.type === 'boolean')"
+            :id="`${prefix ?? 'config'}-${key}`"
+            :label="field.title ?? key"
+            :model-value="String(value[key] ?? '')"
+            :options="
+              (field.enum ?? [true, false]).map((option) => ({
+                id: String(option),
+                name: String(option),
+              }))
+            "
+            :placeholder="
+              field.default === undefined ? '未设置' : `默认：${JSON.stringify(field.default)}`
+            "
+            editable
+            empty-text="没有匹配选项，可保留手动输入的值或 $环境变量。"
+            @update:model-value="input(key, field, $event)"
+          />
           <input
+            v-else
             :id="`${prefix ?? 'config'}-${key}`"
             :type="field['x-sensitive'] && !visible[key] ? 'password' : 'text'"
             :value="Array.isArray(value[key]) ? JSON.stringify(value[key]) : (value[key] ?? '')"
             :placeholder="
               field.default === undefined ? '未设置' : `默认：${JSON.stringify(field.default)}`
             "
-            :list="
-              field.enum || field.type === 'boolean'
-                ? `${prefix ?? 'config'}-${key}-values`
-                : undefined
-            "
             autocomplete="off"
-            @input="input(key, field, $event)"
+            @input="input(key, field, ($event.target as HTMLInputElement).value)"
           />
           <button
             v-if="field['x-sensitive']"
@@ -89,13 +103,6 @@ function input(key: string, field: Schema, event: Event) {
             重置
           </button>
         </div>
-        <datalist :id="`${prefix ?? 'config'}-${key}-values`">
-          <option
-            v-for="option in field.enum ?? (field.type === 'boolean' ? [true, false] : [])"
-            :key="String(option)"
-            :value="String(option)"
-          />
-        </datalist>
         <small v-if="field.description">{{ field.description }}</small>
         <small v-if="field.type === 'array'"
           >使用 JSON 数组，例如 ["plugins"]；复杂内容可切换 YAML。</small
@@ -118,7 +125,8 @@ function input(key: string, field: Schema, event: Event) {
   display: flex;
   gap: 6px;
 }
-.field-input input {
+.field-input input,
+.field-input .ui-select {
   min-width: 0;
   flex: 1;
 }

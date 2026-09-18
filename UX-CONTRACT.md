@@ -15,14 +15,14 @@
 
 下表列名与能力标识为自动审计协议，具体约定使用中文。
 
-| Capability     | Canonical owner                                  | Source of truth | Allowed variants                               | Verification           |
-| -------------- | ------------------------------------------------ | --------------- | ---------------------------------------------- | ---------------------- |
-| Scrollbar      | WebUI 的 client/style.css                        | DESIGN.md       | 表格可局部滚动                                 | 浏览器计算样式及窄屏   |
-| Toast          | WebUI 的 FeedbackHost.vue                        | WebUI README    | 持续通知、短提示、确认弹窗                     | 浏览器关闭与键盘操作   |
-| Select/Listbox | WebUI EditableSelect.vue（Reka UI）及原生 select | 本节            | 角色选择复用组件弹层；状态选择接受平台弹层几何 | 浏览器键盘和展开状态   |
-| Form           | WebUI 的 useApi 与业务页面校验                   | RBAC HTTP 契约  | 显式提交、错误保留输入                         | 类型与浏览器验证       |
-| CRUD           | auth-local 的用户列表及角色编辑器                | RBAC HTTP 契约  | 保存后停留，刷新对应数据                       | 集成测试               |
-| Dialog         | WebUI EditorDialog.vue                           | 本节            | 角色分配表单；确认仍使用 FeedbackHost          | Escape、焦点恢复、窄屏 |
+| Capability     | Canonical owner                   | Source of truth | Allowed variants                           | Verification           |
+| -------------- | --------------------------------- | --------------- | ------------------------------------------ | ---------------------- |
+| Scrollbar      | WebUI 的 client/style.css         | DESIGN.md       | 表格可局部滚动                             | 浏览器计算样式及窄屏   |
+| Toast          | WebUI 的 FeedbackHost.vue         | WebUI README    | 持续通知、短提示、确认弹窗                 | 浏览器关闭与键盘操作   |
+| Select/Listbox | WebUI SelectField.vue（Reka UI）  | 本节            | 普通选择、筛选选择、允许自由输入的建议选择 | 浏览器键盘和展开状态   |
+| Form           | WebUI 的 useApi 与业务页面校验    | RBAC HTTP 契约  | 显式提交、错误保留输入                     | 类型与浏览器验证       |
+| CRUD           | auth-local 的用户列表及角色编辑器 | RBAC HTTP 契约  | 保存后停留，刷新对应数据                   | 集成测试               |
+| Dialog         | WebUI EditorDialog.vue            | 本节            | 角色分配表单；确认仍使用 FeedbackHost      | Escape、焦点恢复、窄屏 |
 
 ## 导航与异步状态
 
@@ -64,6 +64,6 @@
 
 配置编辑以实例为单位，表单与 YAML 共用文档，切换不丢字段和注释。保存失败保留草稿；文件版本冲突要求刷新，禁止覆盖。保存成功但运行失败明确区分两种结果。删除前说明立即卸载、依赖包保留；基础服务变更前说明消费者影响及文件恢复方法。
 
-单层分组可排序，实例可跨组移动；拖动必须配有上移、下移和所属分组选择。分组选择使用平台原生 select，枚举/布尔配置允许原生建议列表以支持环境引用。敏感字段默认遮罩但最高权限管理员可显示。Schema 表单属于插件配置领域，通用 API、对话框及反馈分别复用 WebUI 的 api.ts、EditorDialog 和 FeedbackHost。
+单层分组可排序，实例可跨组移动；拖动必须配有上移、下移和所属分组选择。分组与监督模式使用共享普通下拉框；插件包使用仅接受列表值的筛选下拉框，筛选文字与已选值分离，关闭时恢复已选项。枚举/布尔配置使用可编辑建议下拉框，保留环境引用和原有类型转换。下拉筛选为本地临时状态，不写入 URL；清空筛选恢复列表，Escape 先关闭下拉框，再次按下才关闭外层弹窗。敏感字段默认遮罩但最高权限管理员可显示。Schema 表单属于插件配置领域，通用 API、对话框及反馈分别复用 WebUI 的 api.ts、EditorDialog 和 FeedbackHost。
 
 控制台入口权限继承现有守卫。重启验证当前密码，120 秒内等待健康接口的新运行代次，恢复后重新登录。配置列表仅在首次进入和手工刷新时读取，操作完成使用任务结果快照同步，不进行后台轮询。手工刷新前确认未保存草稿；卸载后不再应用请求结果。缺少服务依赖不阻止配置保存或删除，运行依赖由 Cordis 管理。

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
+import { SelectField } from '@antarestra/webui/components'
 import { ArrowPathIcon } from '@antarestra/webui/icons'
 import { useApi } from './api.js'
 import RoleAssignment from './RoleAssignment.vue'
@@ -139,12 +140,16 @@ async function resetPassword(user: User) {
           >
         </label>
         <label
-          >账号状态<select v-model="status" :disabled="busy">
-            <option value="">全部状态</option>
-            <option value="active">正常</option>
-            <option value="disabled">已禁用</option>
-          </select></label
-        >
+          >账号状态<SelectField
+            v-model="status"
+            :disabled="busy"
+            label="账号状态"
+            :options="[
+              { id: '', name: '全部状态' },
+              { id: 'active', name: '正常' },
+              { id: 'disabled', name: '已禁用' },
+            ]"
+        /></label>
         <label
           >角色 ID<input v-model="role" :disabled="busy" maxlength="64" placeholder="全部角色"
         /></label>

@@ -2,7 +2,7 @@
 import { computed, inject, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { parseDocument } from 'yaml'
 import { feedbackKey, refreshExtensionsKey } from '@antarestra/webui/client'
-import { EditorDialog } from '@antarestra/webui/components'
+import { EditorDialog, SelectField } from '@antarestra/webui/components'
 import { PlusIcon, ArrowPathIcon } from '@antarestra/webui/icons'
 import { ApiError, useApi } from '@antarestra/webui/api'
 import SchemaForm from './SchemaForm.vue'
@@ -494,10 +494,20 @@ onUnmounted(() => {
             min="1"
           />
           <label for="supervision">进程监督模式</label
-          ><select id="supervision" v-model="settings.supervision">
-            <option value="internal">内部监督 · 自动拉起新进程</option>
-            <option value="external">外部监督 · 退出码 75</option>
-          </select>
+          ><SelectField
+            id="supervision"
+            :model-value="settings.supervision"
+            label="进程监督模式"
+            :options="[
+              { id: 'internal', name: '内部监督 · 自动拉起新进程' },
+              { id: 'external', name: '外部监督 · 退出码 75' },
+            ]"
+            @update:model-value="
+              (value) => {
+                if (value === 'internal' || value === 'external') settings.supervision = value
+              }
+            "
+          />
           <p v-if="settings.supervision === 'external'" class="notice">
             请确保部署平台收到退出码 75 后重新启动服务。
           </p>
@@ -541,16 +551,14 @@ onUnmounted(() => {
             </div>
           </div>
           <label for="instance-group">所属分组</label
-          ><select
+          ><SelectField
             id="instance-group"
-            :value="current?.group ?? ''"
+            label="所属分组"
+            :options="groups"
+            :model-value="current?.group ?? ''"
             :disabled="busy"
-            @change="current && move(current, ($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="group in groups" :key="group.id" :value="group.id">
-              {{ group.name }}
-            </option>
-          </select>
+            @update:model-value="current && move(current, $event)"
+          />
           <div class="editor-tabs" role="group" aria-label="配置编辑方式">
             <button
               type="button"
@@ -604,12 +612,21 @@ onUnmounted(() => {
       ><form novalidate @submit.prevent="add">
         <p>只添加配置，不安装依赖。新实例初始为禁用状态。</p>
         <label for="package-name">插件包</label
-        ><select id="package-name" v-model="packageName">
-          <option value="">请选择插件</option>
-          <option v-for="item in catalog" :key="item.name" :value="item.name">
-            {{ item.name }} {{ item.multipleInstances ? '（可多实例）' : '' }}
-          </option>
-        </select>
+        ><SelectField
+          id="package-name"
+          v-model="packageName"
+          label="插件包"
+          searchable
+          placeholder="输入插件包名称筛选"
+          :disabled="busy"
+          :options="
+            catalog.map((item) => ({
+              id: item.name,
+              name: item.name,
+              description: item.multipleInstances ? '可多实例' : '单实例',
+            }))
+          "
+        />
         <p v-if="!catalog.length">
           未发现可添加插件，请先在服务端安装带有 antarestra-plugin 标记的依赖包。
         </p>

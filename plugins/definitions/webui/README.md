@@ -14,6 +14,12 @@
 
 ## 通用交互
 
+### 下拉选择
+
+从 `@antarestra/webui/components` 导入 `SelectField`，使用字符串 `v-model`、中文 `label` 和 `{ id, name, description?, disabled? }[]` 形式的 `options`。传入 `id` 可关联外部 `<label for>`。默认是普通单选；`searchable` 开启本地输入筛选，只提交列表选项；`editable` 允许直接提交手动输入，适用于环境变量引用等配置字段。普通单选支持空字符串选项，例如“未分组”。
+
+组件统一处理选中标记、空结果、禁用、清空筛选、键盘导航和弹层避让；弹窗内的菜单挂载到所属 `dialog`。筛选文字与已选值独立，关闭菜单不修改已选值；可编辑模式直接保留输入。`placeholder`、`emptyText` 和 `maxlength` 可按字段设置。现有角色选择继续使用 `EditableSelect`，复用同一组件及样式。
+
 ### 品牌与图标
 
 Logo 与 favicon 的源文件位于 `assets/brand/logo.svg` 和 `assets/favicon.ico`，由页面壳构建并统一托管；插件不要复制资源或使用字符占位。Vue 组件与图标使用独立客户端入口，不引入后端依赖：
