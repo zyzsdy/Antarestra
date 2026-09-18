@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/plugin-logger",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "console": {
+      "type": "boolean",
+      "title": "控制台日志",
+      "default": true
+    },
+    "consoleLevel": {
+      "type": "string",
+      "title": "控制台日志级别",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "info"
+    },
+    "file": {
+      "type": "boolean",
+      "title": "文件日志",
+      "default": false
+    },
+    "fileLevel": {
+      "type": "string",
+      "title": "文件日志级别",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "debug"
+    },
+    "directory": {
+      "type": "string",
+      "title": "日志目录",
+      "default": "../../log",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "rotation": {
+      "type": "string",
+      "title": "日志轮转",
+      "enum": ["none", "daily", "size"],
+      "default": "daily"
+    },
+    "retentionDays": {
+      "type": "integer",
+      "title": "保留天数",
+      "default": 30,
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "maxSize": {
+      "type": "integer",
+      "title": "文件大小上限",
+      "default": 104857600,
+      "minimum": 1,
+      "maximum": 2147483647
+    }
+  }
+}

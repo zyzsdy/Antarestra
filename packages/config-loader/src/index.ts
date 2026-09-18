@@ -2,6 +2,12 @@ import type { Context, Fiber, Plugin } from '@antarestra/plugin-sdk'
 import { Entry, Loader } from '@antarestra/plugin-sdk/loader'
 import { readConfig } from './config.js'
 import type { PluginEntry } from './config.js'
+import { ConfigManager } from './manager.js'
+export { ConfigManager } from './manager.js'
+export type { Operation, InstanceState } from './manager.js'
+export { readDocument, ManagementError, loaderSchema } from './document.js'
+export type { LoaderSettings, PanelLayout } from './document.js'
+export type { PluginMetadata } from './catalog.js'
 
 export { createInstanceId, parseConfig, readConfig, resolveConfigPath } from './config.js'
 export type { ConfigLocation, PluginEntry } from './config.js'
@@ -10,12 +16,14 @@ export { createPluginResolver, pluginCandidates } from './resolver.js'
 export interface PluginResolver {
   (pluginId: string): Promise<Plugin<unknown>>
   resolveUrl?: (pluginId: string) => string
+  searchPaths?: readonly string[]
 }
 
 export interface Config {
   filename: string
   resolvePlugin: PluginResolver
   baseUrl?: string
+  restart?: () => Promise<void>
 }
 
 export const name = 'config-loader'
@@ -122,5 +130,11 @@ async function loadEntries(
 }
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  await loadPlugins(ctx, await readConfig(config.filename), config.resolvePlugin, config.baseUrl)
+  if (config.baseUrl) ctx = ctx.extend({ baseUrl: config.baseUrl })
+  if (config.resolvePlugin.resolveUrl) {
+    await ctx.plugin(Loader, config.baseUrl ? { baseUrl: config.baseUrl } : {})
+    await ctx.inject(['loader'], async (owner) => {
+      await owner.plugin(ConfigManager, config)
+    })
+  } else await ctx.plugin(ConfigManager, config)
 }

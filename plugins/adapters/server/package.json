@@ -28,5 +28,9 @@
     "@types/koa": "^3.0.3",
     "@types/koa-compose": "^3.2.9",
     "@types/koa-send": "^4.1.6"
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
   }
 }

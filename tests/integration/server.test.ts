@@ -17,6 +17,10 @@ const directories: string[] = []
 function context(): Context {
   const ctx = new Context()
   contexts.push(ctx)
+  // 路由单元场景显式安装允许访问的测试认证器。默认拒绝由独立测试覆盖。
+  ctx.inject(['server'], (owner) => {
+    owner.server.authentication(owner, async (_http, next) => next())
+  })
   return ctx
 }
 

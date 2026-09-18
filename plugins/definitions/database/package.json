@@ -20,5 +20,9 @@
   "dependencies": {
     "@antarestra/plugin-sdk": "workspace:*",
     "kysely": "^0.29.5"
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
   }
 }

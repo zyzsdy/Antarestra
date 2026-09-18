@@ -18,6 +18,7 @@ const starts = []
 const pluginSource = (value) => `
   export const inject = ['server']
   export function apply(ctx) {
+    ctx.server.publicRoute(ctx, 'GET', '/hmr-test')
     ctx.server.route(ctx, 'GET', '/hmr-test', (http) => {
       http.body = { value: ${JSON.stringify(value)}, pid: process.pid }
     })

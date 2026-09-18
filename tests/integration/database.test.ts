@@ -485,7 +485,7 @@ describe('database 声明与配置校验', () => {
     contexts.push(ctx)
     await ctx.plugin(DatabaseProvider)
     await expect(ctx.plugin({ ...implementation }, { type: 'mysql' })).rejects.toThrow('url')
-    await expect(ctx.plugin({ ...implementation }, { filename: '' })).rejects.toThrow('文件名')
+    await expect(ctx.plugin({ ...implementation }, { filename: '' })).rejects.toThrow('filename')
     await expect(
       ctx.plugin({ ...implementation }, { type: 'postgresql', url: 'invalid-secret' }),
     ).rejects.toThrow('连接串格式无效')

@@ -49,6 +49,8 @@ function normalizePath(path: string): string {
 }
 
 export class HttpServer extends Service<Config> {
+  private accessGuard: Middleware | undefined
+  private readonly publicRoutes = new Set<string>()
   private readonly config: Readonly<Required<Config>>
   private readonly middleware = new Set<Middleware>()
   private readonly routes = new Map<string, RouteEntry>()
@@ -139,6 +141,29 @@ export class HttpServer extends Service<Config> {
       res.once('finish', finished)
       res.once('close', closed)
       try {
+        if (
+          (ctx.path === '/api' || ctx.path.startsWith('/api/')) &&
+          ctx.path !== '/api/health' &&
+          !this.publicRoutes.has(`${ctx.method} ${ctx.path}`)
+        ) {
+          const guard = this.accessGuard
+          if (!guard) {
+            ctx.status = 503
+            ctx.body = { error: '认证服务不可用，已拒绝访问' }
+            return
+          }
+          let authorized = false
+          try {
+            await guard(ctx, async () => {
+              authorized = true
+            })
+          } catch {
+            ctx.status = 503
+            ctx.body = { error: '认证服务不可用，已拒绝访问' }
+            return
+          }
+          if (!authorized) return
+        }
         await this.dispatch(ctx, next)
         await sendStream(ctx)
       } catch (error) {
@@ -225,6 +250,27 @@ export class HttpServer extends Service<Config> {
       () => this.middleware.add(entry),
       () => this.middleware.delete(entry),
     )
+  }
+
+  authentication(owner: Context, guard: Middleware): Dispose {
+    if (this.accessGuard) throw new Error('认证守卫重复注册')
+    return owner.effect(() => {
+      this.accessGuard = guard
+      return () => {
+        if (this.accessGuard === guard) this.accessGuard = undefined
+      }
+    })
+  }
+
+  publicRoute(owner: Context, method: string, path: string): Dispose {
+    const key = `${method.toUpperCase()} /api${normalizePath(path)}`
+    if (this.publicRoutes.has(key)) throw new Error('公共接口重复注册')
+    return owner.effect(() => {
+      this.publicRoutes.add(key)
+      return () => {
+        this.publicRoutes.delete(key)
+      }
+    })
   }
 
   route(owner: Context, method: string, path: string, ...handlers: ApiHandler[]): Dispose {

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/plugin-database-kysely",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "title": "数据库类型",
+      "enum": ["sqlite", "postgresql", "mysql"],
+      "default": "sqlite"
+    },
+    "filename": {
+      "type": "string",
+      "title": "SQLite 文件",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "url": {
+      "type": "string",
+      "title": "数据库连接串",
+      "minLength": 1,
+      "x-sensitive": true,
+      "pattern": "\\S"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "sqlite"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": ["url"]
+        }
+      },
+      "else": {
+        "required": ["url"],
+        "not": {
+          "required": ["filename"]
+        }
+      }
+    }
+  ]
+}

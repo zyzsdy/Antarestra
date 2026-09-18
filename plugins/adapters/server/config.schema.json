@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/plugin-server",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "host": {
+      "type": "string",
+      "title": "监听地址",
+      "default": "0.0.0.0",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "port": {
+      "type": "integer",
+      "title": "监听端口",
+      "default": 14451,
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "publicUrl": {
+      "type": "string",
+      "title": "外网地址",
+      "default": ""
+    },
+    "https": {
+      "type": "boolean",
+      "title": "启用 HTTPS",
+      "default": false
+    },
+    "cert": {
+      "type": "string",
+      "title": "证书文件",
+      "default": ""
+    },
+    "key": {
+      "type": "string",
+      "title": "私钥文件",
+      "default": ""
+    },
+    "passphraseFile": {
+      "type": "string",
+      "title": "私钥口令文件",
+      "default": ""
+    },
+    "debug": {
+      "type": "boolean",
+      "title": "调试错误",
+      "default": false
+    }
+  }
+}

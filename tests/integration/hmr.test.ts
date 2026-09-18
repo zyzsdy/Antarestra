@@ -16,6 +16,7 @@ describe('官方 HMR 接入', () => {
 
   it.each([
     ['hmr-runner.mjs', 'HMR 验证通过'],
+    ['hmr-managed.mjs', 'HMR 验证通过'],
     ['hmr-watch.mjs', '开发监视验证通过'],
   ])(
     '真实 Node 进程验证：%s',

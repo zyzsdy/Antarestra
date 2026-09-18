@@ -1,3 +1,4 @@
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import SQLite from 'better-sqlite3'
@@ -14,25 +15,10 @@ export interface Config {
 }
 
 export function parseConfig(input: Config = {}): Required<Pick<Config, 'type'>> & Config {
-  if (!input || typeof input !== 'object' || Array.isArray(input))
-    throw new Error('数据库配置必须是对象')
-  if (Object.keys(input).some((key) => !['type', 'filename', 'url'].includes(key)))
-    throw new Error('数据库配置包含未知字段')
-  const type = input.type ?? 'sqlite'
-  if (!['sqlite', 'postgresql', 'mysql'].includes(type)) throw new Error('不支持的数据库类型')
-  if (type === 'sqlite') {
-    if (input.url !== undefined) throw new Error('SQLite 配置不接受 url')
-    if (
-      input.filename !== undefined &&
-      (typeof input.filename !== 'string' || !input.filename.trim())
-    )
-      throw new Error('SQLite 文件名不能为空')
-  } else {
-    if (input.filename !== undefined) throw new Error('网络数据库不接受 filename')
-    if (typeof input.url !== 'string' || !input.url.trim())
-      throw new Error('网络数据库必须提供连接串 url')
-  }
-  return { ...input, type }
+  return schemaConfig<Required<Pick<Config, 'type'>> & Config>(
+    new URL('../config.schema.json', import.meta.url),
+    input,
+  )
 }
 
 function safeInteger(value: string): number {

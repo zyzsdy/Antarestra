@@ -1,3 +1,4 @@
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { randomUUID } from 'node:crypto'
 import { defineDatabasePlugin } from '@antarestra/database'
 import type { Context } from '@antarestra/plugin-sdk'
@@ -28,17 +29,7 @@ export default defineDatabasePlugin({
   migrations,
   inject: ['rbac', 'server', 'webui'],
   async apply(ctx: Context, config: Config = {}) {
-    if (
-      !config ||
-      typeof config !== 'object' ||
-      Object.keys(config).some(
-        (key) =>
-          !['providerId', 'allowRegistration', 'bootstrapEmail', 'bootstrapPassword'].includes(key),
-      )
-    )
-      throw new Error('本地认证配置无效')
-    if (config.allowRegistration !== undefined && typeof config.allowRegistration !== 'boolean')
-      throw new Error('allowRegistration 必须是布尔值')
+    config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), config)
     const providerId = config.providerId ?? 'local'
     const provider = await ctx.rbac.registerProvider(ctx, providerId, pluginId)
     const base = `/auth/local/${providerId}`
@@ -152,6 +143,20 @@ export default defineDatabasePlugin({
       }
       if (++item.count > 20 || hashing >= 2) throw new AuthError(429, '请求过于频繁，请稍后再试')
     }
+    ctx.rbac.registerReauthentication(ctx, providerId, async (auth, password, ip) => {
+      limit(ip)
+      hashing++
+      try {
+        const account = await accountForPrincipal(auth.principalId)
+        return (
+          !!account &&
+          account.identity_id === auth.identityId &&
+          (await verifyPassword(passwordInput(password), account.password_hash))
+        )
+      } finally {
+        hashing--
+      }
+    })
     for (const operation of ['login', 'register']) {
       const path = `${base}/${operation}`
       ctx.rbac.publicRoute(ctx, 'POST', path)

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/webui",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "directory": {
+      "type": "string",
+      "title": "页面壳资源目录"
+    }
+  }
+}

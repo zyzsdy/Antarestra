@@ -22,6 +22,7 @@ export const router = createRouter({
   history: typeof window === 'undefined' ? createMemoryHistory() : createWebHistory(),
   routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }],
 })
+export let refreshExtensions: () => Promise<void> = async () => {}
 export const failures = vue.ref<string[]>([])
 router.afterEach((to, _from, failure) => {
   if (failure || typeof document === 'undefined') return
@@ -233,6 +234,15 @@ export function startExtensions(
         if (reconnecting) timer = setTimeout(() => void initialize(true), 1000)
       }
     }
+  }
+  refreshExtensions = async () => {
+    const response = await fetch('/webui/entries.json', {
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+    if (!response.ok) throw new Error('无法刷新页面扩展')
+    schedule((await response.json()) as EntryManifest[])
+    await queue
   }
   void initialize()
   return () => {

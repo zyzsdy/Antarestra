@@ -21,7 +21,10 @@ export const errors: Middleware = async (http, next) => {
 }
 
 /** JSON 限制与同源检查同时防止 Cookie 会话被跨站表单利用。 */
-export async function readJson(http: HttpContext): Promise<Record<string, unknown>> {
+export async function readJson(
+  http: HttpContext,
+  maximum = 16_384,
+): Promise<Record<string, unknown>> {
   if (http.get('origin') && http.get('origin') !== `${http.protocol}://${http.host}`)
     throw new AuthError(403, '请求来源不匹配')
   if (http.get('sec-fetch-site') === 'cross-site') throw new AuthError(403, '不允许跨站请求')
@@ -31,7 +34,7 @@ export async function readJson(http: HttpContext): Promise<Record<string, unknow
   for await (const chunk of http.req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array)
     size += buffer.length
-    if (size > 16_384) throw new AuthError(413, '请求内容过大')
+    if (size > maximum) throw new AuthError(413, '请求内容过大')
     chunks.push(buffer)
   }
   let value: unknown

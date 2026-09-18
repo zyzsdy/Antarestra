@@ -1,3 +1,4 @@
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
@@ -47,6 +48,8 @@ export interface RequestSourceProvider {
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
 const adminPermissions = {
+  'admin.plugins.manage': '查看原始配置并管理所有插件（系统最高权限）',
+  'admin.system.restart': '经过二次认证重启系统',
   'identity.local.manage': '查询、创建、重置密码、启用或禁用本地账号',
   'authz.role.manage': '查询角色与权限、创建角色及修改角色权限',
   'authz.binding.manage': '查询用户角色、分配或撤销用户的手动角色绑定',
@@ -59,6 +62,10 @@ declare module '@antarestra/plugin-sdk' {
 }
 
 export class RbacService extends Service<Config> {
+  private readonly reauthenticators = new Map<
+    string,
+    (auth: AuthContext, password: string, ip: string) => Promise<boolean>
+  >()
   private readonly providers = new Map<string, { ready: boolean }>()
   private readonly permissions = new Map<
     string,
@@ -71,27 +78,22 @@ export class RbacService extends Service<Config> {
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'rbac')
-    if (
-      !config ||
-      typeof config !== 'object' ||
-      Object.keys(config).some((key) => key !== 'sessionHours')
-    )
-      throw new Error('RBAC 配置无效')
+    config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), config)
     this.hours = config.sessionHours ?? 24
-    if (!Number.isFinite(this.hours) || this.hours <= 0 || this.hours > 720)
-      throw new Error('会话有效期必须在 0 到 720 小时之间')
     for (const [permission, description] of Object.entries(adminPermissions))
       this.registerPermission(ctx, permission, description, ['admin'])
     ctx.server.use(ctx, errors)
-    ctx.server.use(ctx, async (http, next) => {
-      if ((http.path !== '/api' && !http.path.startsWith('/api/')) || http.path === '/api/health')
-        return next()
-      if (this.publicPaths.has(`${http.method} ${http.path}`)) return next()
-      const auth = await this.authenticate(this.token(http))
-      if (!auth) throw new AuthError(401, '请先登录')
-      this.requests.set(http, auth)
-      await next()
-    })
+    ctx.server.authentication(ctx, (http, next) =>
+      errors(http, async () => {
+        if ((http.path !== '/api' && !http.path.startsWith('/api/')) || http.path === '/api/health')
+          return next()
+        if (this.publicPaths.has(`${http.method} ${http.path}`)) return next()
+        const auth = await this.authenticate(this.token(http))
+        if (!auth) throw new AuthError(401, '请先登录')
+        this.requests.set(http, auth)
+        await next()
+      }),
+    )
     ctx.effect(() => () => {
       this.providers.clear()
       this.permissions.clear()
@@ -399,11 +401,39 @@ export class RbacService extends Service<Config> {
     const key = `${method.toUpperCase()} /api${path}`
     if (this.publicPaths.has(key)) throw new Error('公开路径重复注册')
     return owner.effect(() => {
+      const release = this.ctx.server.publicRoute(owner, method, path)
       this.publicPaths.add(key)
-      return () => {
+      return async () => {
         this.publicPaths.delete(key)
+        await release()
       }
     })
+  }
+
+  registerReauthentication(
+    owner: Context,
+    providerId: string,
+    verify: (auth: AuthContext, password: string, ip: string) => Promise<boolean>,
+  ) {
+    if (this.reauthenticators.has(providerId)) throw new Error('二次认证提供者重复注册')
+    return owner.effect(() => {
+      this.reauthenticators.set(providerId, verify)
+      return () => {
+        if (this.reauthenticators.get(providerId) === verify)
+          this.reauthenticators.delete(providerId)
+      }
+    })
+  }
+
+  async reauthenticate(http: HttpContext, password: string): Promise<void> {
+    await this.require('admin.system.restart')(http, async () => {})
+    const auth = this.auth(http)
+    const verify = this.reauthenticators.get(auth.providerId)
+    if (!verify) throw new AuthError(503, '当前认证提供者不支持密码复核')
+    if (!(await verify(auth, password, http.ip))) throw new AuthError(403, '当前账号密码不正确')
+    if (this.reauthenticators.get(auth.providerId) !== verify)
+      throw new AuthError(503, '认证提供者已卸载')
+    await this.require('admin.system.restart')(http, async () => {})
   }
 
   async registerProvider(

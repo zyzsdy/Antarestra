@@ -42,6 +42,9 @@
     },
     {
       "path": "../../plugins/features/admin-console"
+    },
+    {
+      "path": "../../plugins/features/config-panel"
     }
   ]
 }

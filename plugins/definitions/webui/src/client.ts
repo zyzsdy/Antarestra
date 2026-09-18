@@ -19,6 +19,9 @@ export interface ClientSession {
   clear(): void
 }
 export const sessionKey = Symbol.for('antarestra.webui.session') as Vue.InjectionKey<ClientSession>
+export const refreshExtensionsKey = Symbol.for('antarestra.webui.refresh') as Vue.InjectionKey<
+  () => Promise<void>
+>
 export const routerKey = Symbol.for('antarestra.webui.router') as Vue.InjectionKey<Router>
 
 export interface EntryManifest {

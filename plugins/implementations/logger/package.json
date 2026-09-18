@@ -19,5 +19,9 @@
   ],
   "dependencies": {
     "@antarestra/plugin-sdk": "workspace:*"
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
   }
 }

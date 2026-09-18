@@ -1,3 +1,4 @@
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 export interface Config {
   host?: string
   port?: number
@@ -10,27 +11,10 @@ export interface Config {
 }
 
 export function resolveConfig(config: Config): Readonly<Required<Config>> {
-  const result = {
-    host: '0.0.0.0',
-    port: 14451,
-    publicUrl: '',
-    https: false,
-    cert: '',
-    key: '',
-    passphraseFile: '',
-    debug: false,
-    ...config,
-  }
-  for (const field of ['host', 'publicUrl', 'cert', 'key', 'passphraseFile'] as const) {
-    if (typeof result[field] !== 'string') throw new Error(`server 配置 ${field} 必须是字符串`)
-  }
-  for (const field of ['https', 'debug'] as const) {
-    if (typeof result[field] !== 'boolean') throw new Error(`server 配置 ${field} 必须是布尔值`)
-  }
-  if (!result.host.trim()) throw new Error('server 监听地址不能为空')
-  if (!Number.isInteger(result.port) || result.port < 0 || result.port > 65535) {
-    throw new Error('server 端口必须是 0–65535 的整数')
-  }
+  const result = schemaConfig<Required<Config>>(
+    new URL('../config.schema.json', import.meta.url),
+    config,
+  )
   if (result.publicUrl) {
     let url: URL
     try {

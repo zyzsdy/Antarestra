@@ -28,5 +28,9 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/pg": "^8.23.1"
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
   }
 }

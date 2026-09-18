@@ -1,5 +1,7 @@
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import type { Context } from '@antarestra/plugin-sdk'
-import { Hmr, TimerService } from '@antarestra/plugin-sdk/hmr'
+import { Hmr, TimerService, coordinateHmr } from '@antarestra/plugin-sdk/hmr'
+import type {} from '@antarestra/config-loader'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { applyWebHmr } from './webui.js'
@@ -21,6 +23,7 @@ function directories(value: unknown, fallback: string[], key: string): string[] 
 }
 
 export function resolveConfig(input: Config, baseDir: string): Hmr.Config {
+  input = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
   const include = directories(input.include, ['plugins'], 'include')
   const exclude = directories(input.exclude, [], 'exclude')
   const excluded = exclude.map((directory) => resolve(baseDir, directory))
@@ -62,6 +65,9 @@ export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   const resolved = resolveConfig(config, fileURLToPath(new URL('.', baseUrl)))
   await ctx.plugin(TimerService)
   await ctx.plugin(Hmr, resolved)
+  ctx.inject(['hmr', 'configManager'], (owner) => {
+    owner.effect(() => coordinateHmr(owner.hmr, (action) => owner.configManager.exclusive(action)))
+  })
   ctx.inject(['webui', 'server'], (web) => {
     const baseDir = fileURLToPath(new URL('.', baseUrl))
     applyWebHmr(

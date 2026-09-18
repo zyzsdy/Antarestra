@@ -37,7 +37,7 @@ describe('WebUI 插件', () => {
       '/missing.js',
       '/webui/extensions/a/%2e%2e/private',
     ])
-      expect((await app.get(path)).status).toBe(404)
+      expect((await app.get(path)).status).toBe(path.startsWith('/api') ? 503 : 404)
     expect((await app.get('/api/health')).status).toBe(200)
     expect((await app.get('/webui/entries.json')).headers.get('X-WebUI-HMR')).toBeNull()
   })

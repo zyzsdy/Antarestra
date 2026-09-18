@@ -631,7 +631,7 @@ describe('认证边界与生命周期', () => {
     const cookie = await app.login()
     const service = app.ctx.rbac
     await app.backend.dispose()
-    expect((await app.request('/auth/me', undefined, cookie)).status).toBe(404)
+    expect((await app.request('/auth/me', undefined, cookie)).status).toBe(503)
     await expect(service.authenticate(cookie.split('=')[1])).rejects.toThrow()
     expect(await (await fetch(`${app.url}/webui/entries.json`)).json()).toEqual([])
   })

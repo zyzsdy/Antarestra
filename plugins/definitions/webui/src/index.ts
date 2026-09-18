@@ -1,3 +1,4 @@
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import '@antarestra/plugin-server'
@@ -69,6 +70,7 @@ export class WebUI extends Service<Config> {
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'webui')
+    config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), config)
     const directory = config.directory
       ? resolve(config.directory)
       : fileURLToPath(new URL('../public/', import.meta.url))

@@ -32,7 +32,8 @@
       "types": "./dist/vite.d.ts",
       "development": "./src/vite.ts",
       "default": "./dist/vite.js"
-    }
+    },
+    "./api": "./client/api.ts"
   },
   "dependencies": {
     "@antarestra/contracts": "workspace:*",
@@ -48,5 +49,9 @@
     "typescript": "6.0.3",
     "vite": "^8.2.2",
     "vue-tsc": "^3.3.11"
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
   }
 }

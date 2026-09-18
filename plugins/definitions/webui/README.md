@@ -72,7 +72,7 @@ export default apply
 
 `pnpm build` 按依赖顺序构建框架与客户端扩展。服务端在同一端口提供静态资源和 HTML 回退；API、扩展资源和缺失文件不会回退到 HTML。
 
-浏览器首次获取一次清单。启用 `plugin-hmr` 时通过同源 WebSocket 接收扩展更新，替换对应页面并回收副作用；未变化的扩展保留。未启用时需要刷新页面获取新的清单。WebUI 可配置 `directory` 指向其他框架构建目录。
+浏览器首次获取一次清单。启用 `plugin-hmr` 时通过同源 WebSocket 接收扩展更新，替换对应页面并回收副作用；未变化的扩展保留。插件设置面板在管理任务完成后通过 `refreshExtensionsKey` 主动刷新清单，复用同一替换队列，不依赖 HMR 或公开清单轮询。其他外部修改可刷新页面获取新清单。WebUI 可配置 `directory` 指向其他框架构建目录。
 
 ## WebUI SFC 插件模板
 
@@ -85,6 +85,8 @@ export default apply
 运行 `pnpm --filter @antarestra/plugin-<名称> dev` 启动 Vite 构建监听；现有 HMR 插件监视产物并替换整个扩展，不保留组件内状态。修改共享构建工具后需重新构建 `@antarestra/webui` 并重启扩展构建监听。
 
 模板页面是公开的示例计数器。访问业务数据时，必须另行注入 RBAC、声明权限并在服务端校验身份和空间；前端页面路由不承担鉴权。
+
+插件配置契约使用包内静态 JSON Schema，并在清单的 `antarestra.configSchema` 中声明路径。字段中文说明使用 `title`、`description`，顺序使用 `x-order`，敏感值使用 `x-sensitive`。默认仅允许一份配置；声明多实例前必须验证资源隔离和独立卸载。详细约定参见[插件设置面板](../../features/config-panel/README.md)。
 
 ## 客户端插槽
 

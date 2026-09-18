@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/plugin-auth-local",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "providerId": {
+      "type": "string",
+      "title": "认证实例标识",
+      "default": "local",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "allowRegistration": {
+      "type": "boolean",
+      "title": "允许注册",
+      "default": false
+    },
+    "bootstrapEmail": {
+      "type": "string",
+      "title": "初始管理员登录名"
+    },
+    "bootstrapPassword": {
+      "type": "string",
+      "title": "初始管理员密码",
+      "x-sensitive": true,
+      "minLength": 8,
+      "maxLength": 128
+    }
+  },
+  "dependentRequired": {
+    "bootstrapEmail": ["bootstrapPassword"],
+    "bootstrapPassword": ["bootstrapEmail"]
+  }
+}

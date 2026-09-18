@@ -18,3 +18,5 @@ log/
 /plugins/implementations/auth-local/public/
 /plugins/features/chat-webui/public/
 /plugins/features/admin-console/public/
+
+/plugins/features/config-panel/public/

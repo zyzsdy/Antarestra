@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/plugin-hmr",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "include": {
+      "type": "array",
+      "title": "监听目录",
+      "default": ["plugins"],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "title": "排除目录",
+      "default": [],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

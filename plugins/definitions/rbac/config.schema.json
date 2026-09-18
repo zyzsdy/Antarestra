@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "@antarestra/rbac",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sessionHours": {
+      "type": "number",
+      "title": "会话有效期（小时）",
+      "default": 24,
+      "exclusiveMinimum": 0,
+      "maximum": 720
+    }
+  }
+}

@@ -18,6 +18,7 @@
     "antarestra-plugin"
   ],
   "dependencies": {
+    "@antarestra/config-loader": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/webui": "workspace:*",
@@ -26,5 +27,9 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.1"
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
   }
 }

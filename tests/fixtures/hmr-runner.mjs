@@ -5,7 +5,9 @@ import { join, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Context } from '@antarestra/plugin-sdk'
-import { createPluginResolver, loadPlugins } from '@antarestra/config-loader'
+import * as configLoader from '@antarestra/config-loader'
+const { createPluginResolver, loadPlugins } = configLoader
+const managed = process.env.ANTARESTRA_TEST_MANAGED_HMR === '1'
 
 const directory = await mkdtemp(join(tmpdir(), 'antarestra hmr '))
 const ctx = new Context()
@@ -33,7 +35,15 @@ export function apply(ctx, { id }) {
 async function fixture(id) {
   const path = join(directory, 'plugins', id)
   await mkdir(path, { recursive: true })
-  await writeFile(join(path, 'package.json'), '{"type":"module"}')
+  await writeFile(
+    join(path, 'package.json'),
+    JSON.stringify({
+      type: 'module',
+      name: id,
+      keywords: ['antarestra-plugin'],
+      antarestra: { multipleInstances: true },
+    }),
+  )
   await writeFile(join(path, 'value.ts'), source('初始'))
   await writeFile(join(path, 'index.ts'), entry)
   urls[id] = pathToFileURL(join(path, 'index.ts')).href
@@ -53,6 +63,15 @@ try {
   const excluded = await fixture('excluded')
   const sibling = await fixture('excluded-sibling')
   await fixture('unrelated')
+  await writeFile(
+    join(directory, 'plugins', 'package.json'),
+    JSON.stringify({
+      type: 'module',
+      name: 'fixture-services',
+      keywords: ['antarestra-plugin'],
+      antarestra: { multipleInstances: true },
+    }),
+  )
   const serviceFile = join(directory, 'plugins', 'service.mjs')
   const serviceSource = (value) => `
     import { Service } from ${JSON.stringify(import.meta.resolve('@antarestra/plugin-sdk'))}
@@ -81,21 +100,28 @@ try {
   })
   let instances
   await ctx.plugin(async (scope) => {
-    instances = await loadPlugins(
-      scope,
-      [
-        plugin('hmr', { include: ['plugins', 'plugins/excluded'], exclude: ['plugins/excluded'] }),
-        plugin('changed', { id: 'a' }),
-        { ...plugin('changed', { id: 'b' }), instanceId: 'changed:1234abcd' },
-        plugin('excluded', { id: 'excluded' }),
-        plugin('excluded-sibling', { id: 'sibling' }),
-        plugin('unrelated', { id: 'unrelated' }),
-        plugin('consumer'),
-        plugin('service'),
-      ],
-      resolver,
-      pathToFileURL(directory + sep).href,
-    )
+    const entries = [
+      plugin('hmr', { include: ['plugins', 'plugins/excluded'], exclude: ['plugins/excluded'] }),
+      plugin('changed', { id: 'a' }),
+      { ...plugin('changed', { id: 'b' }), instanceId: 'changed:1234abcd' },
+      plugin('excluded', { id: 'excluded' }),
+      plugin('excluded-sibling', { id: 'sibling' }),
+      plugin('unrelated', { id: 'unrelated' }),
+      plugin('consumer'),
+      plugin('service'),
+    ]
+    const baseUrl = pathToFileURL(directory + sep).href
+    if (managed) {
+      const filename = join(directory, 'main.yml')
+      await writeFile(
+        filename,
+        JSON.stringify({
+          plugins: Object.fromEntries(entries.map((item) => [item.instanceId, item.config])),
+        }),
+      )
+      await scope.plugin(configLoader, { filename, resolvePlugin: resolver, baseUrl })
+      instances = { get: (id) => ctx.configManager.instances.get(id)?.fiber }
+    } else instances = await loadPlugins(scope, entries, resolver, baseUrl)
   })
   const originalPid = process.pid
   await delay(500)
@@ -119,6 +145,19 @@ try {
   await waitFor(() => !state.active.has('a') && !state.active.has('b'))
   await writeFile(changed, source('再次恢复'))
   await waitFor(() => state.active.get('a') === '再次恢复' && state.active.get('b') === '再次恢复')
+  if (managed) {
+    const version = (await ctx.configManager.snapshot()).version
+    const task = ctx.configManager.enqueue((operation) =>
+      ctx.configManager.save(version, 'changed', '{ id: a, updated: true }', true, '', operation),
+    )
+    await writeFile(changed, source('配置与源码交错'))
+    await waitFor(
+      () =>
+        ctx.configManager.operation(task.id).state === 'completed' &&
+        state.active.get('a') === '配置与源码交错',
+    )
+    assert.equal(state.starts.get('unrelated'), 1)
+  }
   // 加载器返回的映射也必须指向热替换后的 Fiber。
   await instances.get('changed:1234abcd').dispose()
   await writeFile(changed, source('独立运行'))

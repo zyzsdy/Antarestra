@@ -5,7 +5,8 @@
     "plugins/definitions/webui/client",
     "plugins/features/admin-console/client",
     "plugins/features/chat-webui/client",
-    "plugins/implementations/auth-local/client"
+    "plugins/implementations/auth-local/client",
+    "plugins/features/config-panel/client"
   ],
   "canonicalMap": "UX-CONTRACT.md",
   "requiredCapabilities": ["Scrollbar", "Toast", "Select/Listbox", "Form", "CRUD"],

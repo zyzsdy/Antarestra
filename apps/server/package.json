@@ -15,6 +15,7 @@
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-chat-webui": "workspace:*",
+    "@antarestra/plugin-config-panel": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
     "@antarestra/plugin-hmr": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",

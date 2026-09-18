@@ -35,7 +35,7 @@ try {
     ['--expose-internals', 'apps/server/dist/index.js', `--conf=${filename}`],
     {
       cwd: root,
-      stdio: 'inherit',
+      stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
       windowsHide: true,
     },
   )
@@ -71,7 +71,8 @@ try {
           const entry = entries.find((item) => item.id === 'auth-local-local')
           const chat = entries.find((item) => item.id === 'chat-webui')
           const admin = entries.find((item) => item.id === 'admin-console')
-          healthy = entry?.config.path === '/auth/user/' && !!chat && !!admin
+          const panel = entries.find((item) => item.id === 'config-panel')
+          healthy = entry?.config.path === '/auth/user/' && !!chat && !!admin && !!panel
           if (healthy) {
             const resource = await fetch('http://127.0.0.1:' + port + entry.url)
             healthy =
@@ -83,6 +84,8 @@ try {
             const favicon = await fetch(`http://127.0.0.1:${port}/favicon.ico`)
             const adminResource = await fetch(`http://127.0.0.1:${port}${admin.url}`)
             const adminPage = await fetch(`http://127.0.0.1:${port}/admin`)
+            const panelResource = await fetch(`http://127.0.0.1:${port}${panel.url}`)
+            const panelAccess = await fetch(`http://127.0.0.1:${port}/api/plugin-config-panel`)
             healthy =
               healthy &&
               access.status === 401 &&
@@ -92,6 +95,8 @@ try {
               logo.headers.get('content-type')?.includes('image/svg+xml') &&
               favicon.status === 200 &&
               adminResource.status === 200 &&
+              panelResource.status === 200 &&
+              panelAccess.status === 401 &&
               adminPage.status === 200
           }
         }
@@ -104,7 +109,7 @@ try {
   }
   if (!healthy) throw new Error('编译产物健康检查失败')
   console.log('编译产物健康接口、认证、聊天与后台扩展、未登录拒绝检查通过')
-  child.kill('SIGTERM')
+  child.send({ type: 'shutdown' })
   await exited
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {
@@ -112,5 +117,5 @@ try {
     child.kill('SIGKILL')
     await exited
   }
-  await rm(temporary, { recursive: true, force: true })
+  await rm(temporary, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 }

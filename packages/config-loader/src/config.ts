@@ -57,7 +57,11 @@ function resolveEnvironment(value: unknown, env: Environment): unknown {
   return value
 }
 
-export function parseConfig(source: string, env: Environment = process.env): PluginEntry[] {
+export function parseConfig(
+  source: string,
+  env: Environment = process.env,
+  raw = false,
+): PluginEntry[] {
   // 禁止别名展开，避免共享可变配置和递归配置；不回显 YAML 原文中的凭据。
   let document: unknown
   try {
@@ -70,8 +74,8 @@ export function parseConfig(source: string, env: Environment = process.env): Plu
   if (!isRecord(document) || !isRecord(document.plugins)) {
     throw new Error('主配置必须包含 plugins 映射')
   }
-  if (Object.keys(document).some((key) => key !== 'plugins')) {
-    throw new Error('主配置只支持 plugins 字段')
+  if (Object.keys(document).some((key) => !['plugins', 'loader', 'pluginPanel'].includes(key))) {
+    throw new Error('主配置只支持 plugins、loader、pluginPanel 字段')
   }
   const entries: PluginEntry[] = []
   const identities = new Set<string>()
@@ -94,13 +98,14 @@ export function parseConfig(source: string, env: Environment = process.env): Plu
       pluginId,
       instanceId,
       enabled,
-      config: enabled
-        ? (resolveEnvironment(value ?? {}, env) as Record<string, unknown>)
-        : (value ?? {}),
+      config:
+        enabled && !raw
+          ? (resolveEnvironment(value ?? {}, env) as Record<string, unknown>)
+          : (value ?? {}),
     })
   }
   for (const entry of entries) {
-    if (counts.get(entry.pluginId)! > 1 && entry.instanceId === entry.pluginId) {
+    if (!raw && counts.get(entry.pluginId)! > 1 && entry.instanceId === entry.pluginId) {
       throw new Error(`多实例配置必须使用 插件名:随机哈希：${entry.pluginId}`)
     }
   }
