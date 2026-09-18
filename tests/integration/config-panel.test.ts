@@ -71,9 +71,7 @@ it('删除未设置面板元数据的配置成功，任务结果直接返回新�
     { id: 'fixture', state: 'running', saved: false, message: '' },
   )
   const before = await app.ctx.configManager.snapshot()
-  const id = before.instances.find(
-    (item) => item.pluginId === '@antarestra/plugin-logger',
-  )!.instanceId
+  const id = before.instances.find((item) => item.pluginId === 'logger')!.instanceId
   const response = await app.request(
     '/plugin-config-panel/instances/' + encodeURIComponent(id),
     cookie,

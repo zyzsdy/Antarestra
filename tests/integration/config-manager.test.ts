@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import { Context } from '@antarestra/plugin-sdk'
 import type { Plugin } from '@antarestra/plugin-sdk'
 import { resolveConfigEnvironment, validateConfig } from '@antarestra/plugin-sdk/schema'
@@ -169,10 +170,60 @@ describe('配置面板管理服务', () => {
     )
     const snapshot = await app.manager.snapshot()
     expect(snapshot.instances[0]?.status).toBe('disabled')
+    expect(snapshot.instances[0]?.instanceId).toBe('server')
+    expect(await readFile(app.filename, 'utf8')).toContain('~server: {}')
     await expect(
       app.manager.add(snapshot.version, '@antarestra/plugin-server', operation()),
     ).rejects.toThrow('仅允许')
   })
+  it.each([
+    ['antarestra-plugin-example', false, 'example', false],
+    ['@antarestra/plugin-example', false, 'example', false],
+    ['@antarestra/example', false, 'example', false],
+    ['@other/plugin-example', false, '@other/plugin-example', false],
+    ['@antarestra/plugin-example', true, 'example', false],
+    ['antarestra-plugin-example', true, 'example', false],
+    ['@antarestra/plugin-example', false, '@antarestra/plugin-example', true],
+  ])(
+    '添加 %s（多实例 %s）使用可正确解析的配置键',
+    async (name, multipleInstances, key, shadowed) => {
+      const directory = await mkdtemp(join(tmpdir(), 'antarestra alias '))
+      directories.push(directory)
+      await writeFile(
+        join(directory, 'package.json'),
+        JSON.stringify({
+          name,
+          keywords: ['antarestra-plugin'],
+          antarestra: { multipleInstances },
+        }),
+      )
+      const resolver: loader.PluginResolver = async () => () => {}
+      resolver.resolveUrl = (id) => {
+        if (shadowed && id === 'example') return resolvePlugin.resolveUrl!('rbac')
+        return pathToFileURL(join(directory, 'index.js')).href
+      }
+      const app = await setup('plugins: {}\n', resolver)
+      vi.spyOn(app.manager, 'catalog').mockResolvedValue([
+        { name, version: '', description: '', multipleInstances },
+      ])
+      await app.manager.add((await app.manager.snapshot()).version, name, operation())
+      const entries = await loader.readConfig(app.filename)
+      expect(entries[0]?.pluginId).toBe(key)
+      expect(entries[0]?.enabled).toBe(false)
+      if (multipleInstances) {
+        expect(entries[0]?.instanceId.slice(key.length)).toMatch(/^:[a-f0-9]{8}$/)
+        await app.manager.add((await app.manager.snapshot()).version, name, operation())
+        const next = await loader.readConfig(app.filename)
+        expect(next).toHaveLength(2)
+        expect(next[0]?.instanceId).not.toBe(next[1]?.instanceId)
+      } else {
+        expect(entries[0]?.instanceId).toBe(key)
+        await expect(
+          app.manager.add((await app.manager.snapshot()).version, name, operation()),
+        ).rejects.toThrow('仅允许')
+      }
+    },
+  )
   it('未带后缀与带后缀的同包配置只阻止重复集合，不阻止其他插件', async () => {
     const app = await setup(
       'plugins:\n  plugin-server: {}\n  ~plugin-server:abcdef12: {}\n  ~plugin-logger: {}\n',

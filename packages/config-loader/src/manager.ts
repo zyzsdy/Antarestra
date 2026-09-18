@@ -426,13 +426,30 @@ export class ConfigManager extends Service<ManagerConfig> {
         if (current?.name === info.name)
           throw new ManagementError(409, '此插件仅允许一份配置，禁用配置也占用名额')
       }
-    const id = createInstanceId(info.name)
+    let pluginId = info.name
+    const alias = info.name.replace(/^(?:@antarestra\/(?:plugin-)?|antarestra-plugin-)/, '')
+    if (alias && alias !== info.name) {
+      try {
+        // 短名称仍需命中原包，避免解析优先级导致同名插件被替换。
+        if ((await metadata(this.options.resolvePlugin, alias)).name === info.name) pluginId = alias
+      } catch {
+        /* 无法解析短名称时保留完整包名。 */
+      }
+    }
+    let id = info.multipleInstances ? createInstanceId(pluginId) : pluginId
+    const occupied = (id: string) =>
+      file.entries.some((entry) => entry.instanceId === id) || this.instances.has(id)
+    if (info.multipleInstances) {
+      while (occupied(id)) id = createInstanceId(pluginId)
+    } else if (occupied(id)) {
+      throw new ManagementError(409, '插件配置标识已被占用')
+    }
     await writeDocument(this.options.filename, version, (document) =>
       document.setIn(['plugins', `~${id}`], {}),
     )
     operation.saved = true
     this.instances.set(id, {
-      entry: { instanceId: id, pluginId: name, enabled: false, config: {} },
+      entry: { instanceId: id, pluginId, enabled: false, config: {} },
       info,
     })
   }
