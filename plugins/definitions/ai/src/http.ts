@@ -57,7 +57,7 @@ export function routes(ctx: Context) {
   })
   route('POST', '/conversations', async (http, access) => {
     const body = await readJson(http)
-    identifier(body.agentId)
+    if (body.agentId !== undefined) identifier(body.agentId)
     check(body.title === undefined || typeof body.title === 'string', '标题无效')
     http.body = await ctx.ai.createConversation(access, body.agentId, body.title)
     http.status = 201

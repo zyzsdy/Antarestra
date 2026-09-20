@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "title": "Agents",
+  "description": "持久化管理 AI 助理、提示词模板和可用能力。",
+  "properties": {},
+  "additionalProperties": false
+}

@@ -80,6 +80,12 @@ export interface ExecutionBackend {
 export interface SkillService {
   createTool(selection: string[] | null, context: RunContext): Promise<Tool>
 }
+/** 在读取目录或启动运行时解析，返回值会由核心复制并固定为运行快照。 */
+export interface AgentDefinition {
+  id: string
+  isDefault?: boolean
+  resolve(): AgentPreset | null
+}
 export interface Extension {
   id: string
   schema: JsonObject

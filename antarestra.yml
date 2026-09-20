@@ -22,6 +22,7 @@ plugins:
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
   admin-console: {}
   ai-provider: {}
+  ai-agents: {}
   config-panel: {}
   chat-webui: {}
 pluginPanel:

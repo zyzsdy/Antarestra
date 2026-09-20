@@ -7,8 +7,12 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
-    { "path": "../../plugins/implementations/ai-agent-core" },
-    { "path": "../../plugins/definitions/ai" },
+    {
+      "path": "../../plugins/implementations/ai-agent-core"
+    },
+    {
+      "path": "../../plugins/definitions/ai"
+    },
     {
       "path": "../../plugins/features/chat-webui"
     },
@@ -50,6 +54,9 @@
     },
     {
       "path": "../../plugins/features/ai-provider"
+    },
+    {
+      "path": "../../plugins/features/ai-agents"
     }
   ]
 }

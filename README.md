@@ -264,7 +264,7 @@ export function apply(ctx: Context): void {
 
 提供商表示独立连接实例，同厂商不同账号使用不同提供商 ID。工具允许后注册覆盖并在卸载后恢复上一有效实现，`use_skill` 仅由唯一 Skill 服务提供。扩展通过 Cordis 原生事件订阅，转换失败终止运行，通知失败不影响已落库结果。
 
-核心不依赖 pi。[ai-agent-core](plugins/implementations/ai-agent-core/README.md) 使用 pi-agent-core 提供执行循环，`ai-provider` 提供模型连接与驱动，两者均依赖核心而不互相导入。默认启用执行后端 `ai-agent-core`，注册 Agent 时需选择该后端并配置可用模型。自动化验证使用测试模型驱动，不代表真实外部模型联调。
+核心不依赖 pi。[ai-agent-core](plugins/implementations/ai-agent-core/README.md) 使用 pi-agent-core 提供执行循环，`ai-provider` 提供模型连接与驱动，两者均依赖核心而不互相导入。默认启用执行后端 `ai-agent-core`。[ai-agents](plugins/features/ai-agents/README.md) 在管理控制台“AI 设置 → Agents”持久化管理提示词模板、可用模型、工具与 Skill，内置可编辑但不可删除的默认助理。未指定 Agent 的新会话自动使用默认助理；首次使用仍需在提供商接入中配置至少一个模型。自动化验证使用测试模型驱动，不代表真实外部模型联调。
 
 接口、模板、分支与适配示例见 [AI 核心文档](plugins/definitions/ai/README.md)。首版能力向拥有 `ai.chat.use` 的用户开放，会话按空间隔离，附件由资源解析器校验。细粒度能力授权和 MCP 留到后续。
 

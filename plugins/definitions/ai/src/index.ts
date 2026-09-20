@@ -15,6 +15,7 @@ import type {
 } from '@antarestra/contracts'
 import type {
   Config,
+  AgentDefinition,
   ExecutionBackend,
   Extension,
   ModelDriver,
@@ -33,6 +34,7 @@ import { routes } from './http.js'
 import { validateAgent, validateCommand } from './validation.js'
 export * from './types.js'
 export { AiError } from './utils.js'
+export { validateAgent } from './validation.js'
 export type * from '@antarestra/contracts'
 
 export interface Access {
@@ -57,6 +59,7 @@ declare module '@antarestra/plugin-sdk' {
 }
 export class AiService extends Service<Config> {
   private readonly agents = new Registry<AgentPreset>((entry) => this.removed(entry))
+  private readonly agentDefinitions = new Registry<AgentDefinition>((entry) => this.removed(entry))
   private readonly providers = new Registry<Provider>((entry) => this.removed(entry))
   private readonly drivers = new Registry<ModelDriver>((entry) => this.removed(entry))
   private readonly backends = new Registry<ExecutionBackend>((entry) => this.removed(entry))
@@ -103,6 +106,7 @@ export class AiService extends Service<Config> {
   }
   registerAgent(owner: Context, value: AgentPreset) {
     this.active()
+    check(!this.agentDefinitions.list().some((entry) => entry.id === value.id), 'Agent ID 已存在')
     validateAgent(value)
     check(
       value.models.length > 0 &&
@@ -112,6 +116,43 @@ export class AiService extends Service<Config> {
     check(!value.toolIds.includes('use_skill'), 'use_skill 只能由 Skill 服务提供')
     identifier(value.version)
     return this.agents.register(owner, value.id, freeze(json(value)))
+  }
+  registerAgentDefinition(owner: Context, value: AgentDefinition) {
+    this.active()
+    check(!this.agents.list().some((entry) => entry.id === value.id), 'Agent ID 已存在')
+    check(
+      !value.isDefault || !this.agentDefinitions.list().some((entry) => entry.isDefault),
+      '默认 Agent 已存在',
+    )
+    return this.agentDefinitions.register(owner, value.id, Object.freeze({ ...value }))
+  }
+  get defaultAgentId() {
+    return this.agentDefinitions.list().find((entry) => entry.isDefault)?.id ?? null
+  }
+  /** 仅包含公开能力元数据，不包含连接地址、凭据或执行函数。 */
+  capabilities() {
+    this.active()
+    return json({
+      providers: this.providers.list().map((p) => ({ id: p.id, title: p.title, models: p.models })),
+      tools: this.tools.list().map((t) => ({ id: t.id, description: t.description })),
+      backends: this.backends.list().map((b) => b.id),
+      skillsAvailable: this.skills.list().length > 0,
+    })
+  }
+  private resolvedAgent(id: string): Registration<AgentPreset> {
+    if (this.agents.list().some((entry) => entry.id === id)) return this.agents.get(id)
+    const entry = this.agentDefinitions.get(id)
+    const value = entry.value.resolve()
+    if (!value)
+      throw new AiError('capability_unavailable', 'Agent 暂无可用模型，请在管理控制台配置模型', 503)
+    validateAgent(value)
+    check(
+      value.id === id &&
+        value.models.some((model) => canonical(model) === canonical(value.defaultModel)),
+      'Agent 默认模型无效',
+    )
+    check(!value.toolIds.includes('use_skill'), 'use_skill 只能由 Skill 服务提供')
+    return { ...entry, value: freeze(json(value)) }
   }
   registerProvider(owner: Context, value: Provider) {
     this.active()
@@ -214,16 +255,26 @@ export class AiService extends Service<Config> {
   async catalog(access: Access) {
     await this.verify(access)
     return json({
-      agents: this.agents.list(),
+      agents: [
+        ...this.agents.list(),
+        ...this.agentDefinitions.list().flatMap((entry) => {
+          const value = entry.resolve()
+          return value ? [value] : []
+        }),
+      ],
+      defaultAgentId: this.defaultAgentId,
       providers: this.providers.list().map((p) => ({ id: p.id, title: p.title, models: p.models })),
       tools: this.tools
         .list()
         .map((t) => ({ id: t.id, description: t.description, parameters: t.parameters })),
     })
   }
-  async createConversation(access: Access, agentId: string, title = '') {
+  async createConversation(access: Access, agentId?: string, title = '') {
     await this.verify(access)
-    this.agents.get(agentId)
+    agentId ??= this.defaultAgentId ?? undefined
+    if (!agentId) throw new AiError('capability_unavailable', '尚未配置默认 Agent', 503)
+    if (!this.agentDefinitions.list().some((entry) => entry.id === agentId))
+      this.agents.get(agentId)
     check(typeof title === 'string' && title.length <= 200, '标题无效')
     const value: Conversation = {
       id: randomUUID(),
@@ -364,7 +415,7 @@ export class AiService extends Service<Config> {
     return this.getRun(access, id)
   }
   private bind(agentId: string): Bound {
-    const agent = this.agents.get(agentId)
+    const agent = this.resolvedAgent(agentId)
     const bound: Bound = {
       agent,
       backend: this.backends.get(agent.value.backendId),

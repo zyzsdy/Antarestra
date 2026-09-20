@@ -21,3 +21,4 @@ log/
 
 /plugins/features/config-panel/public/
 /plugins/features/ai-provider/public/
+/plugins/features/ai-agents/public/
