@@ -20,6 +20,7 @@ export interface Discovery {
   models: Candidate[]
   warning: string
 }
+export const defaultModelLimits = { contextWindow: 128000, maxOutputTokens: 65535 }
 export const apiFormats = [
   { id: 'openai-completions', name: 'OpenAI Chat Completions' },
   { id: 'openai-responses', name: 'OpenAI Responses' },

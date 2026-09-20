@@ -16,6 +16,7 @@ import provider from '@antarestra/plugin-ai-provider'
 import type { ProviderView } from '@antarestra/plugin-ai-provider'
 import { discover, candidates } from '../../plugins/features/ai-provider/src/catalog.js'
 import { driver } from '../../plugins/features/ai-provider/src/driver.js'
+import { syncModels } from '../../plugins/features/ai-provider/client/models.js'
 import {
   publicProvider,
   validateProvider,
@@ -220,7 +221,11 @@ it('真实 HTTP 目录合并内置与远端同 ID，发送密钥和 Header，失
     contextWindow: builtin.contextWindow,
   })
   expect(result.models.filter((item) => item.id === 'remote-only')).toHaveLength(1)
-  expect(result.models.find((item) => item.id === 'remote-only')?.source).toBe('remote')
+  expect(result.models.find((item) => item.id === 'remote-only')).toMatchObject({
+    source: 'remote',
+    contextWindow: 128000,
+    maxOutputTokens: 65535,
+  })
   fail = true
   const fallback = await discover(record, new AbortController().signal)
   expect(fallback.warning).toContain('失败')
@@ -264,6 +269,52 @@ it.each(['', 'openai'])(
     if (!builtin) expect(result.models).toHaveLength(2)
   },
 )
+it('同步覆盖已有模型参数，保留未选模型并新增模型，保存后可重复同步', async () => {
+  const { ctx } = await setup()
+  const saved = await ctx.aiProvider.save(input)
+  const initial = await ctx.aiProvider.models(input.id, {
+    revision: saved.revision,
+    models: [model, { ...model, id: 'keep' }],
+  })
+  const baseUrl = await remote((_req, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ data: [{ id: model.id }, { id: 'new' }] }))
+  })
+  const { models: selected } = await discover(
+    validateProvider({ ...input, baseUrl }),
+    new AbortController().signal,
+  )
+  const merged = syncModels(initial.models, selected)
+  expect(merged.map((model) => model.id)).toEqual([model.id, 'keep', 'new'])
+  expect(merged[0]).toMatchObject({ contextWindow: 128000, maxOutputTokens: 65535 })
+  expect(merged[0]).not.toHaveProperty('source')
+  expect(merged[1]).toEqual(initial.models[1])
+  const updated = await ctx.aiProvider.models(input.id, {
+    revision: initial.revision,
+    models: merged,
+  })
+  expect(updated.models).toEqual(merged)
+  expect(syncModels(updated.models, selected)).toEqual(merged)
+})
+it('远端缺失或无效参数使用新默认值，最大输出仍受上下文限制', async () => {
+  const baseUrl = await remote((_req, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(
+      JSON.stringify({
+        data: [
+          { id: 'invalid', context_length: 0, max_output_tokens: -1 },
+          { id: 'small', context_length: 8192 },
+        ],
+      }),
+    )
+  })
+  const result = await discover(
+    validateProvider({ ...input, baseUrl }),
+    new AbortController().signal,
+  )
+  expect(result.models[0]).toMatchObject({ contextWindow: 128000, maxOutputTokens: 65535 })
+  expect(result.models[1]).toMatchObject({ contextWindow: 8192, maxOutputTokens: 8192 })
+})
 it('拒绝不安全 URL、Header 注入和未知接口，注册失败不留下数据库记录', async () => {
   const app = await setup()
   for (const changes of [

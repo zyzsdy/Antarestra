@@ -8,6 +8,7 @@ import type { ModelDefinition } from '@antarestra/ai'
 import type { ProviderView, Candidate, Discovery } from '../src/types.js'
 import ProviderForm from './ProviderForm.vue'
 import ModelForm from './ModelForm.vue'
+import { syncModels } from './models.js'
 import './style.css'
 
 const { api, run, busy, message, router } = useApi()
@@ -67,9 +68,6 @@ const filteredCandidates = computed(() =>
 )
 const visibleCandidates = computed(() =>
   filteredCandidates.value.slice((candidatePage.value - 1) * size, candidatePage.value * size),
-)
-const unsynced = computed(() =>
-  candidates.value.filter((item) => !models.value.some((model) => model.id === item.id)),
 )
 watch(search, () => {
   page.value = 1
@@ -231,18 +229,16 @@ function fetchModels() {
 }
 function sync(all: boolean) {
   void run(async () => {
-    const added = unsynced.value.filter((item) => all || selection.value.includes(item.id))
-    if (!added.length) return
-    await saveModels([...models.value, ...added.map(({ source: _source, ...model }) => model)])
+    const selected = candidates.value.filter((item) => all || selection.value.includes(item.id))
+    if (!selected.length) return
+    await saveModels(syncModels(models.value, selected))
     if (!alive) return
     selection.value = []
-    feedback.toast(`已同步 ${added.length} 个模型`)
+    feedback.toast(`已同步 ${selected.length} 个模型`)
   })
 }
 function checkPage(event: Event) {
-  const ids = visibleCandidates.value
-    .filter((item) => !models.value.some((model) => model.id === item.id))
-    .map((item) => item.id)
+  const ids = visibleCandidates.value.map((item) => item.id)
   selection.value = (event.target as HTMLInputElement).checked
     ? [...new Set([...selection.value, ...ids])]
     : selection.value.filter((id) => !ids.includes(id))
@@ -425,8 +421,9 @@ onUnmounted(() => {
     <EditorDialog v-if="syncDialog" title="同步模型" :busy="busy" @close="closeSync">
       <div class="sync-panel">
         <p class="hint">
-          内置目录与远端结果按模型 ID
-          合并。同步只添加新模型，保留已有设置。远端独有模型的能力为默认值，请同步后核对。
+          内置目录与远端结果按模型 ID 合并。同步会新增模型并覆盖同 ID
+          模型的已有设置，未选中的模型保留。全部同步包含筛选外的模型。缺少参数时默认使用 128000
+          上下文、65535 最大输出，请同步后核对。
         </p>
         <div class="actions">
           <button :disabled="busy" @click="fetchModels">获取模型列表</button
@@ -453,20 +450,11 @@ onUnmounted(() => {
                 <th>
                   <input
                     type="checkbox"
-                    aria-label="选择本页未同步模型"
-                    :disabled="
-                      busy ||
-                      !visibleCandidates.some((item) =>
-                        unsynced.some((model) => model.id === item.id),
-                      )
-                    "
+                    aria-label="选择本页模型"
+                    :disabled="busy || !visibleCandidates.length"
                     :checked="
-                      visibleCandidates.filter((item) =>
-                        unsynced.some((model) => model.id === item.id),
-                      ).length > 0 &&
-                      visibleCandidates
-                        .filter((item) => unsynced.some((model) => model.id === item.id))
-                        .every((item) => selection.includes(item.id))
+                      visibleCandidates.length > 0 &&
+                      visibleCandidates.every((item) => selection.includes(item.id))
                     "
                     @change="checkPage"
                   />
@@ -484,7 +472,7 @@ onUnmounted(() => {
                     type="checkbox"
                     :value="model.id"
                     :aria-label="`选择 ${model.title}`"
-                    :disabled="busy || models.some((item) => item.id === model.id)"
+                    :disabled="busy"
                   />
                 </td>
                 <td>
@@ -500,7 +488,9 @@ onUnmounted(() => {
                         : 'API'
                   }}
                 </td>
-                <td>{{ models.some((item) => item.id === model.id) ? '已同步' : '待同步' }}</td>
+                <td>
+                  {{ models.some((item) => item.id === model.id) ? '已存在，将覆盖' : '待新增' }}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -527,10 +517,10 @@ onUnmounted(() => {
           </button>
         </nav>
         <footer class="actions">
-          <button :disabled="busy || !unsynced.length" @click="sync(true)">
-            一键同步全部（{{ unsynced.length }}）</button
+          <button :disabled="busy || !candidates.length" @click="sync(true)">
+            同步并覆盖全部（{{ candidates.length }}）</button
           ><button class="primary" :disabled="busy || !selection.length" @click="sync(false)">
-            同步所选（{{ selection.length }}）
+            同步并覆盖所选（{{ selection.length }}）
           </button>
         </footer>
       </div>

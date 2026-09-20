@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import type { ModelDefinition } from '@antarestra/ai'
-import { thinkingLevels } from '../src/types.js'
+import { defaultModelLimits, thinkingLevels } from '../src/types.js'
 const props = defineProps<{ value?: ModelDefinition; busy: boolean; error: string }>()
 const emit = defineEmits<{ save: [value: ModelDefinition]; dirty: [value: boolean] }>()
 const draft = reactive<ModelDefinition>(
@@ -10,8 +10,7 @@ const draft = reactive<ModelDefinition>(
     : {
         id: '',
         title: '',
-        contextWindow: 32768,
-        maxOutputTokens: 4096,
+        ...defaultModelLimits,
         input: ['text'],
         output: ['text'],
         tools: true,

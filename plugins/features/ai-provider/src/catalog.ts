@@ -2,6 +2,7 @@ import { getSupportedThinkingLevels } from '@earendil-works/pi-ai'
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { Candidate, Discovery, ProviderRecord } from './types.js'
+import { defaultModelLimits } from './types.js'
 
 export function builtinModels(id: string): Model<Api>[] {
   const builtin = getBuiltinProviders().find((provider) => provider === id)
@@ -119,7 +120,7 @@ export async function discover(provider: ProviderRecord, signal: AbortSignal): P
         if (!id || id.length > 200 || /[\s\x00-\x1f]/.test(id)) continue
         const contextWindow = positive(
           value.context_length ?? value.contextWindow ?? value.inputTokenLimit,
-          32768,
+          defaultModelLimits.contextWindow,
         )
         remote.push({
           id,
@@ -130,7 +131,10 @@ export async function discover(provider: ProviderRecord, signal: AbortSignal): P
           contextWindow,
           maxOutputTokens: Math.min(
             contextWindow,
-            positive(value.outputTokenLimit ?? value.max_output_tokens, 4096),
+            positive(
+              value.outputTokenLimit ?? value.max_output_tokens,
+              defaultModelLimits.maxOutputTokens,
+            ),
           ),
           input: ['text'],
           output: ['text'],
