@@ -1,6 +1,6 @@
 # AI 对话核心
 
-`@antarestra/ai` 提供 `ctx.ai`，依赖 database、rbac 和 server。核心不导入 pi；模型驱动和执行后端由其他插件注册。默认主配置启用 `ai: {}`，未注册 Agent 和后端时目录为空，不能进行模型调用。
+`@antarestra/ai` 提供 `ctx.ai`，依赖 database、rbac 和 server。核心不导入 pi；模型驱动和执行后端由其他插件注册。默认主配置启用 `ai: {}` 和执行后端 [ai-agent-core](../../implementations/ai-agent-core/README.md)。仍需注册 Agent 并配置可用模型才能进行模型调用。
 
 ## 注册和执行
 

@@ -12,15 +12,8 @@ import rbac from '@antarestra/rbac'
 import WebUI from '@antarestra/webui'
 import local from '@antarestra/plugin-auth-local'
 import ai from '@antarestra/ai'
-import type {
-  Access,
-  AgentPreset,
-  Config,
-  ExecutionBackend,
-  ModelDriver,
-  RunCommand,
-  Tool,
-} from '@antarestra/ai'
+import * as agentCore from '@antarestra/plugin-ai-agent-core'
+import type { Access, AgentPreset, Config, ModelDriver, RunCommand, Tool } from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
 
 const contexts: Context[] = []
@@ -35,7 +28,7 @@ const agent = (changes: Partial<AgentPreset> = {}): AgentPreset => ({
   id: 'assistant',
   version: '1',
   title: '测试助理',
-  backendId: 'loop',
+  backendId: 'ai-agent-core',
   systemTemplate: '系统',
   userTemplate: '{{input}}',
   models: [model],
@@ -45,17 +38,6 @@ const agent = (changes: Partial<AgentPreset> = {}): AgentPreset => ({
   extensions: {},
   ...changes,
 })
-const loop: ExecutionBackend = {
-  id: 'loop',
-  async run(runtime) {
-    for (;;) {
-      const output = await runtime.request()
-      const calls = output.content.filter((block) => block.type === 'tool-call')
-      if (!calls.length) return
-      await runtime.executeTools(calls)
-    }
-  },
-}
 const plain: ModelDriver = {
   id: 'driver',
   async generate() {
@@ -106,10 +88,10 @@ async function setup(
     ],
   })
   ctx.ai.registerDriver(ctx, options.driver ?? plain)
-  ctx.ai.registerBackend(ctx, loop)
+  const backend = await ctx.plugin(agentCore)
   const removeAgent = ctx.ai.registerAgent(ctx, options.agent ?? agent())
   const conversation = await ctx.ai.createConversation(access, 'assistant')
-  return { ctx, access, other, conversation, core, removeAgent }
+  return { ctx, access, other, conversation, core, backend, removeAgent }
 }
 async function command(
   ctx: Context,
@@ -204,6 +186,9 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     await app.core.dispose()
     await app.ctx.plugin(ai, {})
     await consumer
+    await app.backend
+    // 依赖恢复后，执行后端应重新注册，不能只恢复其他消费者。
+    expect(() => app.ctx.ai.registerBackend(app.ctx, agentCore.backend)).toThrow()
     const access = await app.ctx.ai.authorize('test', 'space')
     expect(registrations).toBe(2)
     expect((await app.ctx.ai.catalog(access)).tools.map((tool) => tool.id)).toEqual(['lifecycle'])
@@ -224,6 +209,72 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(
       (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation.revision,
     ).toBe(0)
+  })
+  it('独立卸载 pi 后端取消在途模型请求，重载后可以继续运行', async () => {
+    let entered!: () => void
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    let aborted = false
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        async generate(_request, _connection, context) {
+          if (aborted) return { content: [{ type: 'text', text: '恢复完成' }] }
+          entered()
+          try {
+            await delay(10000, undefined, { signal: context.signal })
+          } finally {
+            aborted = context.signal.aborted
+          }
+          return { content: [] }
+        },
+      },
+    })
+    const run = await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id),
+    )
+    await ready
+    await app.backend.dispose()
+    expect((await app.ctx.ai.getRun(app.access, run.id)).status).toBe('cancelled')
+    await expect.poll(() => aborted).toBe(true)
+    await expect(send(app)).rejects.toMatchObject({ code: 'capability_unavailable' })
+    await app.ctx.plugin(agentCore)
+    expect(
+      (await send(app, { operation: 'regenerate', targetNodeId: run.userNodeId })).status,
+    ).toBe('completed')
+  })
+  it('pi 工具适配不吞掉核心参数校验异常，也不开始下一次模型请求', async () => {
+    let executed = false
+    const app = await setup({
+      agent: agent({ toolIds: ['strict'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          return { content: [{ type: 'tool-call', id: 'bad', name: 'strict', arguments: {} }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'strict',
+      description: '',
+      parameters: {
+        type: 'object',
+        properties: { value: { type: 'number' } },
+        required: ['value'],
+      },
+      async execute() {
+        executed = true
+        return null
+      },
+    })
+    const run = await send(app)
+    expect(run.status).toBe('failed')
+    expect(run.error?.code).toBe('invalid_request')
+    expect(run.requests).toHaveLength(1)
+    expect(executed).toBe(false)
   })
   it('保存完整请求与历史，拒绝伪造上下文和跨空间访问，凭据不进入导出', async () => {
     const app = await setup()

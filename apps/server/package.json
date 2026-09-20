@@ -14,6 +14,7 @@
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
+    "@antarestra/plugin-ai-agent-core": "workspace:*",
     "@antarestra/plugin-ai-provider": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-chat-webui": "workspace:*",

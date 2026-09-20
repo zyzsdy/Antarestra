@@ -1,0 +1,30 @@
+{
+  "name": "@antarestra/plugin-ai-agent-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@earendil-works/pi-agent-core": "^0.85.1",
+    "@earendil-works/pi-ai": "^0.85.1"
+  }
+}

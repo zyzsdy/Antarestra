@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Agent 循环",
+  "description": "通过 pi-agent-core 提供 ai-agent-core 执行后端，无需额外配置。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

@@ -13,6 +13,7 @@ plugins:
   webui: {}
   rbac: {}
   ai: {}
+  ai-agent-core: {}
   auth-local:
     providerId: local
     allowRegistration: false
