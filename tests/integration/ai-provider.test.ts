@@ -260,6 +260,29 @@ it('自定义网关不被内置模型的协议和端点覆盖', () => {
   expect(resolved.baseUrl).toBe(input.baseUrl)
   expect(resolved.compat).toBeUndefined()
 })
+it('自定义提供商即使使用内置模型 ID 和官方地址也始终使用默认接口', () => {
+  const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/zen/go' })
+  const builtin = builtinModels('opencode-go').find((model) => model.api === 'anthropic-messages')!
+  const resolved = resolveModel(record, validateModel({ ...model, id: builtin.id }), record.baseUrl)
+  expect(resolved.api).toBe(record.api)
+  expect(resolved.baseUrl).toBe(record.baseUrl)
+  expect(resolved.provider).toBe(record.id)
+})
+it('其他内置提供商的同名模型不会改变所选提供商的默认请求配置', () => {
+  const record = validateProvider({
+    ...input,
+    builtin: 'opencode-go',
+    api: 'anthropic-messages',
+    baseUrl: 'https://opencode.ai/zen/go',
+  })
+  const known = new Set(builtinModels(record.builtin).map((model) => model.id))
+  const other = builtinModels('openai').find((model) => !known.has(model.id))!
+  expect(other).toBeDefined()
+  const resolved = resolveModel(record, validateModel({ ...model, id: other.id }), record.baseUrl)
+  expect(resolved.api).toBe(record.api)
+  expect(resolved.baseUrl).toBe(record.baseUrl)
+  expect(resolved.provider).toBe(record.builtin)
+})
 it('真实 HTTP 目录合并内置与远端同 ID，发送密钥和 Header，失败保留内置目录', async () => {
   const record = validateProvider({ ...input, builtin: 'openai', api: 'openai-responses' })
   const builtin = candidates(record)[0]!

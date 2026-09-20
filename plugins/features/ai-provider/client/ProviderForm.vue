@@ -117,8 +117,12 @@ function save(event: Event) {
         maxlength="2000"
         style="resize: none"
       />
-      <label for="provider-api">接口格式</label
-      ><SelectField id="provider-api" v-model="draft.api" label="接口格式" :options="formats" />
+      <label for="provider-api">默认接口格式</label
+      ><SelectField id="provider-api" v-model="draft.api" label="默认接口格式" :options="formats" />
+      <p id="provider-api-help" class="hint">
+        普通提供商和自定义网关的所有模型使用此接口。选择内置模板并使用其官方 Base URL
+        时，已知模型自动采用对应的接口和地址；未知模型使用默认配置，无需逐个设置。
+      </p>
       <label for="provider-url">Base URL</label
       ><input
         id="provider-url"
