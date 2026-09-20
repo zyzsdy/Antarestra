@@ -72,7 +72,9 @@ try {
           const chat = entries.find((item) => item.id === 'chat-webui')
           const admin = entries.find((item) => item.id === 'admin-console')
           const panel = entries.find((item) => item.id === 'config-panel')
-          healthy = entry?.config.path === '/auth/user/' && !!chat && !!admin && !!panel
+          const providers = entries.find((item) => item.id === 'ai-provider')
+          healthy =
+            entry?.config.path === '/auth/user/' && !!chat && !!admin && !!panel && !!providers
           if (healthy) {
             const resource = await fetch('http://127.0.0.1:' + port + entry.url)
             healthy =

@@ -20,3 +20,4 @@ log/
 /plugins/features/admin-console/public/
 
 /plugins/features/config-panel/public/
+/plugins/features/ai-provider/public/

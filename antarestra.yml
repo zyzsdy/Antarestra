@@ -20,6 +20,7 @@ plugins:
     # bootstrapEmail: admin@ikp.yt
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
   admin-console: {}
+  ai-provider: {}
   config-panel: {}
   chat-webui: {}
 pluginPanel:

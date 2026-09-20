@@ -6,6 +6,8 @@ packages:
   - plugins/features/*
   - plugins/adapters/*
 allowBuilds:
+  '@google/genai': false
   better-sqlite3: true
   esbuild: true
+  protobufjs: false
   vue-demi: true

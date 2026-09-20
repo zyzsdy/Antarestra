@@ -46,6 +46,9 @@
     },
     {
       "path": "../../plugins/features/config-panel"
+    },
+    {
+      "path": "../../plugins/features/ai-provider"
     }
   ]
 }

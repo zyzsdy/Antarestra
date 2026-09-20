@@ -1,0 +1,316 @@
+.ai-providers {
+  color: #263047;
+  --provider-primary: #315ed1;
+  --provider-border: #e0e5ee;
+}
+.ai-providers h1 {
+  margin: 0;
+  font-size: 27px;
+}
+.ai-providers h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+.ai-providers .page-heading,
+.ai-providers .model-heading,
+.ai-providers .provider-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.ai-providers .page-heading {
+  margin-bottom: 28px;
+}
+.ai-providers .muted,
+.ai-providers .hint {
+  color: #647087;
+}
+.ai-providers .hint {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ai-providers .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-providers button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--provider-border);
+  border-radius: 7px;
+  padding: 9px 13px;
+  min-height: 38px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ai-providers button:hover:not(:disabled) {
+  background: #eef3ff;
+  border-color: #b4c6ee;
+}
+.ai-providers button:active:not(:disabled) {
+  background: #dfe9fc;
+}
+.ai-providers button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.ai-providers button.primary {
+  background: var(--provider-primary);
+  border-color: var(--provider-primary);
+  color: #fff;
+}
+.ai-providers button.primary:hover:not(:disabled) {
+  background: #244daf;
+}
+.ai-providers button.danger {
+  color: #b42338;
+}
+.ai-providers .search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
+.ai-providers .search-row input {
+  flex: 1;
+  max-width: 360px;
+  min-width: 130px;
+}
+.ai-providers input:not([type='checkbox']),
+.ai-providers textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd3e0;
+  border-radius: 7px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  min-height: 40px;
+}
+.ai-providers input:disabled {
+  background: #f4f6fa;
+}
+.ai-providers input[aria-invalid='true'],
+.ai-providers textarea[aria-invalid='true'] {
+  border-color: #b42338;
+}
+.ai-providers textarea {
+  resize: none;
+  field-sizing: content;
+}
+.ai-providers .provider-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+.ai-providers button.provider-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 22px;
+  border-radius: 10px;
+  gap: 9px;
+  min-height: 180px;
+  overflow-wrap: anywhere;
+}
+.ai-providers .card-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.ai-providers .card-meta {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+  font-size: 12px;
+}
+.ai-providers .card-meta strong {
+  color: var(--provider-primary);
+}
+.ai-providers code {
+  display: block;
+  font-size: 12px;
+  color: #647087;
+  overflow-wrap: anywhere;
+}
+.ai-providers .provider-detail {
+  padding: 22px;
+  background: #fff;
+  border: 1px solid var(--provider-border);
+  border-radius: 10px;
+  margin: 16px 0 28px;
+}
+.ai-providers .endpoint {
+  margin-bottom: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ai-providers .count {
+  font-size: 14px;
+  font-weight: 400;
+  color: #647087;
+}
+.ai-providers .table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--provider-border);
+  border-radius: 10px;
+  background: #fff;
+}
+.ai-providers table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.ai-providers th {
+  background: #f4f6fa;
+  color: #647087;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ai-providers th,
+.ai-providers td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e9edf4;
+}
+.ai-providers td {
+  min-width: 85px;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+.ai-providers td code,
+.ai-providers td small {
+  display: block;
+  margin-top: 5px;
+  color: #647087;
+}
+.ai-providers .state {
+  padding: 36px 20px;
+  text-align: center;
+  color: #647087;
+}
+.ai-providers .pagination {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.ai-providers .provider-form {
+  margin-top: 20px;
+}
+.ai-providers fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.ai-providers .provider-form label {
+  display: block;
+  margin: 16px 0 7px;
+  font-size: 13px;
+}
+.ai-providers .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.ai-providers .secret-field {
+  position: relative;
+}
+.ai-providers .secret-field input {
+  padding-right: 52px;
+}
+.ai-providers .secret-field button {
+  position: absolute;
+  right: 3px;
+  top: 2px;
+  border: 0;
+  background: transparent;
+}
+.ai-providers .error {
+  color: #b42338;
+  min-height: 22px;
+  line-height: 1.5;
+}
+.ai-providers .warning {
+  background: #fff7e6;
+  color: #79521a;
+  padding: 12px;
+  border-radius: 7px;
+  line-height: 1.6;
+}
+.ai-providers .checks {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.ai-providers .checks legend {
+  font-size: 13px;
+}
+.ai-providers .checks label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 10px 0 0;
+}
+.ai-providers input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--provider-primary);
+  cursor: pointer;
+}
+.ai-providers input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+.ai-providers .sync-panel {
+  margin-top: 16px;
+}
+.ai-providers .sync-panel table {
+  min-width: 440px;
+}
+.ai-providers .sync-panel footer {
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+@media (max-width: 760px) {
+  .ai-providers h1 {
+    font-size: 23px;
+  }
+  .ai-providers .page-heading,
+  .ai-providers .provider-detail {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .ai-providers .form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .ai-providers .model-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .ai-providers .sync-panel footer {
+    justify-content: stretch;
+  }
+  .ai-providers .sync-panel footer button {
+    flex: 1;
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI 提供商接入",
+  "description": "在控制台的提供商接入页面管理连接与模型，配置保存在数据库中。",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
