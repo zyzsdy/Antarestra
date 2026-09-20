@@ -84,7 +84,7 @@
   max-width: 360px;
   min-width: 130px;
 }
-.ai-providers input:not([type='checkbox']),
+.ai-providers input:not([type='checkbox']):not(.ui-select input),
 .ai-providers textarea {
   box-sizing: border-box;
   width: 100%;
