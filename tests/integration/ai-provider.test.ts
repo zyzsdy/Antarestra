@@ -227,6 +227,43 @@ it('真实 HTTP 目录合并内置与远端同 ID，发送密钥和 Header，失
   expect(fallback.models).toEqual(candidates(record))
   expect(JSON.stringify(fallback)).not.toContain(input.apiKey)
 })
+it.each(['', 'openai'])(
+  'API 模型使用 pi-ai 内置参数，兼容自定义提供商和不同接口（%s）',
+  async (builtin) => {
+    const reference = candidates(
+      validateProvider({ ...input, builtin: 'openai', api: 'openai-responses' }),
+    ).find((model) => model.thinkingLevels.length > 0 && model.input.includes('image'))!
+    expect(reference).toBeDefined()
+    const baseUrl = await remote((_req, res) => {
+      res.setHeader('content-type', 'application/json')
+      res.end(
+        JSON.stringify({
+          data: [
+            { id: reference.id, context_length: 123, max_output_tokens: 45 },
+            { id: reference.id },
+            { id: 'remote-only', context_length: 65536, max_output_tokens: 8192 },
+          ],
+        }),
+      )
+    })
+    const result = await discover(
+      validateProvider({ ...input, builtin, baseUrl }),
+      new AbortController().signal,
+    )
+    expect(result.warning).toBe('')
+    expect(result.models.filter((model) => model.id === reference.id)).toEqual([
+      { ...reference, source: 'both' },
+    ])
+    expect(result.models.find((model) => model.id === 'remote-only')).toMatchObject({
+      source: 'remote',
+      contextWindow: 65536,
+      maxOutputTokens: 8192,
+      input: ['text'],
+      thinkingLevels: [],
+    })
+    if (!builtin) expect(result.models).toHaveLength(2)
+  },
+)
 it('拒绝不安全 URL、Header 注入和未知接口，注册失败不留下数据库记录', async () => {
   const app = await setup()
   for (const changes of [

@@ -16,19 +16,37 @@ export function catalog() {
 export function candidates(provider: ProviderRecord): Candidate[] {
   return builtinModels(provider.builtin)
     .filter((model) => model.api === provider.api)
-    .map((model) => ({
-      id: model.id,
-      title: model.name,
-      contextWindow: model.contextWindow,
-      maxOutputTokens: Math.min(model.maxTokens, model.contextWindow),
-      thinkingLevels: model.reasoning
-        ? getSupportedThinkingLevels(model).filter((level) => level !== 'off')
-        : [],
-      input: [...model.input],
-      output: ['text'],
-      tools: true,
-      source: 'builtin',
-    }))
+    .map(candidate)
+}
+function candidate(model: Model<Api>): Candidate {
+  return {
+    id: model.id,
+    title: model.name,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: Math.min(model.maxTokens, model.contextWindow),
+    thinkingLevels: model.reasoning
+      ? getSupportedThinkingLevels(model).filter((level) => level !== 'off')
+      : [],
+    input: [...model.input],
+    output: ['text'],
+    tools: true,
+    source: 'builtin',
+  }
+}
+function builtinParameters(provider: ProviderRecord): Map<string, Candidate> {
+  const selected = builtinModels(provider.builtin)
+  const all = getBuiltinProviders().flatMap((id) => builtinModels(id))
+  const models = new Map<string, Candidate>()
+  // 完整 ID 匹配；所选提供商优先，其次相同接口，最后跨接口补全模型能力。
+  for (const model of [
+    ...selected.filter((model) => model.api === provider.api),
+    ...selected,
+    ...all.filter((model) => model.api === provider.api),
+    ...all,
+  ]) {
+    if (!models.has(model.id)) models.set(model.id, candidate(model))
+  }
+  return models
 }
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -129,12 +147,10 @@ export async function discover(provider: ProviderRecord, signal: AbortSignal): P
       cursors.add(next)
       url.searchParams.set(provider.api === 'google-generative-ai' ? 'pageToken' : 'after_id', next)
     }
+    const parameters = builtinParameters(provider)
     for (const model of remote) {
-      const builtin = merged.get(model.id)
-      merged.set(
-        model.id,
-        builtin && builtin.source !== 'remote' ? { ...builtin, source: 'both' } : model,
-      )
+      const builtin = parameters.get(model.id)
+      merged.set(model.id, builtin ? { ...builtin, source: 'both' } : model)
     }
     return { models: [...merged.values()], warning: '' }
   } catch {
