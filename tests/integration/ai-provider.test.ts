@@ -14,11 +14,16 @@ import local from '@antarestra/plugin-auth-local'
 import ai from '@antarestra/ai'
 import provider from '@antarestra/plugin-ai-provider'
 import type { ProviderView } from '@antarestra/plugin-ai-provider'
-import { discover, candidates } from '../../plugins/features/ai-provider/src/catalog.js'
-import { driver } from '../../plugins/features/ai-provider/src/driver.js'
+import {
+  builtinModels,
+  discover,
+  candidates,
+} from '../../plugins/features/ai-provider/src/catalog.js'
+import { driver, resolveModel } from '../../plugins/features/ai-provider/src/driver.js'
 import { syncModels } from '../../plugins/features/ai-provider/client/models.js'
 import {
   publicProvider,
+  validateModel,
   validateProvider,
 } from '../../plugins/features/ai-provider/src/validation.js'
 import type { Tables } from '../../plugins/features/ai-provider/src/store.js'
@@ -201,6 +206,60 @@ async function remote(handler: RequestListener) {
   if (!address || typeof address === 'string') throw new Error('监听失败')
   return `http://127.0.0.1:${address.port}`
 }
+it.each(['anthropic-messages', 'openai-completions', 'openai-responses'])(
+  'opencode-go 内置目录包含所有协议的模型（当前接口 %s）',
+  async (api) => {
+    const record = validateProvider({ ...input, builtin: 'opencode-go', api })
+    const builtin = builtinModels('opencode-go')
+    expect(new Set(builtin.map((model) => model.api)).size).toBe(3)
+    expect(builtin.length).toBeGreaterThan(2)
+    const expected = [...new Set(builtin.map((model) => model.id))].sort()
+    const models = candidates(record)
+    expect(models.map((model) => model.id).sort()).toEqual(expected)
+    expect(models.every((model) => model.source === 'builtin')).toBe(true)
+    record.baseUrl = await remote((_req, res) => {
+      res.statusCode = 503
+      res.end()
+    })
+    const fallback = await discover(record, new AbortController().signal)
+    expect(fallback.warning).toContain('失败')
+    expect(fallback.models).toEqual(models)
+  },
+)
+it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和用户能力配置', () => {
+  const record = validateProvider({
+    ...input,
+    builtin: 'opencode-go',
+    api: 'anthropic-messages',
+    baseUrl: 'https://opencode.ai/zen/go',
+  })
+  for (const builtin of builtinModels('opencode-go')) {
+    const definition = candidates(record).find((model) => model.id === builtin.id)!
+    const resolved = resolveModel(record, { ...definition, maxOutputTokens: 1024 }, record.baseUrl)
+    expect(resolved).toMatchObject({
+      id: builtin.id,
+      api: builtin.api,
+      baseUrl: builtin.baseUrl,
+      cost: builtin.cost,
+      maxTokens: 1024,
+    })
+    expect(resolved.compat).toEqual(builtin.compat)
+    expect(resolved.thinkingLevelMap).toEqual(builtin.thinkingLevelMap)
+    expect(resolveModel(record, definition, record.baseUrl + '/').api).toBe(builtin.api)
+  }
+  const unknown = resolveModel(record, validateModel(model), record.baseUrl)
+  expect(unknown.api).toBe(record.api)
+  expect(unknown.baseUrl).toBe(record.baseUrl)
+})
+it('自定义网关不被内置模型的协议和端点覆盖', () => {
+  const record = validateProvider({ ...input, builtin: 'opencode-go', api: 'anthropic-messages' })
+  const builtin = builtinModels('opencode-go').find((model) => model.api === 'openai-completions')!
+  const definition = candidates(record).find((model) => model.id === builtin.id)!
+  const resolved = resolveModel(record, definition, record.baseUrl)
+  expect(resolved.api).toBe(record.api)
+  expect(resolved.baseUrl).toBe(input.baseUrl)
+  expect(resolved.compat).toBeUndefined()
+})
 it('真实 HTTP 目录合并内置与远端同 ID，发送密钥和 Header，失败保留内置目录', async () => {
   const record = validateProvider({ ...input, builtin: 'openai', api: 'openai-responses' })
   const builtin = candidates(record)[0]!

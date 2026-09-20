@@ -15,9 +15,12 @@ export function catalog() {
   })
 }
 export function candidates(provider: ProviderRecord): Candidate[] {
-  return builtinModels(provider.builtin)
-    .filter((model) => model.api === provider.api)
-    .map(candidate)
+  const models = new Map<string, Candidate>()
+  const builtin = builtinModels(provider.builtin)
+  for (const model of [...builtin.filter((model) => model.api === provider.api), ...builtin]) {
+    if (!models.has(model.id)) models.set(model.id, candidate(model))
+  }
+  return [...models.values()]
 }
 function candidate(model: Model<Api>): Candidate {
   return {
