@@ -62,6 +62,7 @@ components:
 
 - Logo：`@antarestra/webui/components` 的 `AntarestraLogo`，默认宽 36px；`size` 调整宽度，`decorative` 用于已有品牌文字的场景。
 - 图标：`@antarestra/webui/icons` 的 Heroicons 24px 线性图标，默认通过 `ui-icon` 显示为 20px，继承文字色；图标按钮保留可访问名称，菜单仍带文字。
+- 侧栏图标：`@antarestra/webui/components` 的 `SidebarIcon` 为自绘 SVG，以圆角矩形和左侧竖线表示侧栏，沿用 Heroicons 的 24px 画布、1.5px 描边与圆角端点；控制台折叠按钮显示为 20px。
 - 导航：`ConsoleLayout.vue` 为共享外壳，选中项有底色和 `aria-current`。分组标题是可折叠按钮，默认只展开当前分区，并保留当前页面会话内的手工开合。折叠按钮位于品牌右侧，整栏折叠后 Logo 作为恢复入口；图标菜单通过标题与可访问名称保留含义。
 - 账号菜单：用户名与头像固定在侧栏底部，整栏折叠后只显示头像。头像菜单向上展开，统一提供用户中心、返回聊天和退出登录，并支持方向键、Home、End 与 Escape。
 - 反馈：继续使用 `FeedbackHost.vue`；加载、错误、拒绝访问用中文文字说明，错误提供恢复路径。焦点始终可见，禁用操作保留禁用语义。

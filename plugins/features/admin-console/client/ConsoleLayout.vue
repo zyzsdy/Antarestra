@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { AntarestraLogo } from '@antarestra/webui/components'
+import { AntarestraLogo, SidebarIcon } from '@antarestra/webui/components'
 import {
   ArrowTopRightOnSquareIcon,
   ArrowRightStartOnRectangleIcon,
   ChevronDownIcon,
-  ChevronDoubleLeftIcon,
   UserCircleIcon,
 } from '@antarestra/webui/icons'
 import type { ClientContext } from '@antarestra/webui/client'
@@ -166,7 +165,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', onDocumentPointerD
           title="折叠菜单"
           @click="$emit('toggle')"
         >
-          <ChevronDoubleLeftIcon class="nav-icon" aria-hidden="true" />
+          <SidebarIcon class="nav-icon" />
         </button>
       </div>
       <nav aria-label="后台导航">
