@@ -2,7 +2,7 @@
 import { PaginationField, SelectField } from '@antarestra/webui/components'
 import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
-import { ArrowPathIcon } from '@antarestra/webui/icons'
+import { ArrowPathIcon, PlusIcon } from '@antarestra/webui/icons'
 import { useApi } from './api.js'
 import RoleAssignment from './RoleAssignment.vue'
 import UserCreateDialog from './UserCreateDialog.vue'
@@ -161,9 +161,6 @@ async function resetPassword(user: User) {
       <div class="list-summary">
         <span>共 {{ total }} 位用户</span><span v-if="busy" role="status">正在加载…</span>
         <div class="list-actions">
-          <button v-if="canCreate" class="primary" :disabled="busy" @click="creating = true">
-            新建用户
-          </button>
           <button
             class="icon-button"
             type="button"
@@ -173,6 +170,9 @@ async function resetPassword(user: User) {
             @click="run(() => load())"
           >
             <ArrowPathIcon class="ui-icon" aria-hidden="true" />
+          </button>
+          <button v-if="canCreate" class="primary" :disabled="busy" @click="creating = true">
+            <PlusIcon class="ui-icon" aria-hidden="true" />新建用户
           </button>
         </div>
       </div>

@@ -23,7 +23,6 @@ function restoreFocus(event: Event) {
       <DialogOverlay class="ui-dialog-overlay" />
       <DialogContent
         class="ui-editor-dialog"
-        :class="{ 'ui-editor-dialog-with-footer': !!$slots.footer }"
         :aria-describedby="undefined"
         @close-auto-focus="restoreFocus"
         @interact-outside.prevent
@@ -41,8 +40,7 @@ function restoreFocus(event: Event) {
             <XMarkIcon class="ui-icon" aria-hidden="true" />
           </DialogClose>
         </header>
-        <div v-if="$slots.footer" class="ui-editor-dialog-body"><slot /></div>
-        <slot v-else />
+        <div class="ui-editor-dialog-body"><slot /></div>
         <footer v-if="$slots.footer" class="ui-editor-dialog-footer"><slot name="footer" /></footer>
       </DialogContent>
     </DialogPortal>
@@ -62,12 +60,14 @@ function restoreFocus(event: Event) {
   left: 50%;
   transform: translate(-50%, -50%);
   box-sizing: border-box;
-  width: min(648px, calc(100vw - 32px));
+  width: min(800px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
   border: 1px solid #e4e9f1;
   border-radius: 12px;
-  padding: 24px;
+  padding: 0;
   background: #fff;
   color: #263047;
 }
@@ -106,39 +106,34 @@ function restoreFocus(event: Event) {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.ui-editor-dialog-with-footer {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0;
-}
-.ui-editor-dialog-with-footer > header,
+.ui-editor-dialog > header,
 .ui-editor-dialog-footer {
   flex-shrink: 0;
   padding: 16px 24px;
 }
-.ui-editor-dialog-with-footer > header {
+.ui-editor-dialog > header {
   border-bottom: 1px solid #e4e9f1;
 }
 .ui-editor-dialog-body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0 24px;
+  padding: 0 24px 24px;
 }
 .ui-editor-dialog-footer {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   border-top: 1px solid #e4e9f1;
 }
 @media (max-width: 760px) {
-  .ui-editor-dialog-with-footer > header,
+  .ui-editor-dialog > header,
   .ui-editor-dialog-footer {
     padding: 16px;
   }
   .ui-editor-dialog-body {
-    padding: 0 16px;
+    padding: 0 16px 16px;
   }
 }
 </style>

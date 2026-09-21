@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { Toggle, SelectField } from '@antarestra/webui/components'
-import { computed, ref } from 'vue'
+import { SecretInput, SelectField } from '@antarestra/webui/components'
+import { computed } from 'vue'
 import type { Schema } from './types.js'
 const props = defineProps<{ schema: Schema; value: Record<string, unknown>; prefix?: string }>()
 const emit = defineEmits<{ change: [path: string[], value: unknown, remove?: boolean] }>()
-const visible = ref<Record<string, boolean>>({})
 const fields = computed(() =>
   Object.entries(props.schema.properties ?? {}).sort(
     ([, a], [, b]) => (a['x-order'] ?? 0) - (b['x-order'] ?? 0),
@@ -76,10 +75,23 @@ function input(key: string, field: Schema, raw: string) {
             empty-text="没有匹配选项，可保留手动输入的值或 $环境变量。"
             @update:model-value="input(key, field, $event)"
           />
+          <SecretInput
+            v-else-if="field['x-sensitive']"
+            :id="(prefix ?? 'config') + '-' + key"
+            :label="field.title ?? key"
+            :model-value="
+              Array.isArray(value[key]) ? JSON.stringify(value[key]) : String(value[key] ?? '')
+            "
+            :placeholder="
+              field.default === undefined ? '未设置' : '默认：' + JSON.stringify(field.default)
+            "
+            autocomplete="new-password"
+            @update:model-value="input(key, field, $event)"
+          />
           <input
             v-else
             :id="`${prefix ?? 'config'}-${key}`"
-            :type="field['x-sensitive'] && !visible[key] ? 'password' : 'text'"
+            type="text"
             :value="Array.isArray(value[key]) ? JSON.stringify(value[key]) : (value[key] ?? '')"
             :placeholder="
               field.default === undefined ? '未设置' : `默认：${JSON.stringify(field.default)}`
@@ -87,15 +99,6 @@ function input(key: string, field: Schema, raw: string) {
             :autocomplete="field['x-sensitive'] ? 'new-password' : 'off'"
             @input="input(key, field, ($event.target as HTMLInputElement).value)"
           />
-          <Toggle
-            v-if="field['x-sensitive']"
-            type="button"
-            :aria-label="visible[key] ? '隐藏敏感值' : '显示敏感值'"
-            :model-value="!!visible[key]"
-            @update:model-value="visible[key] = $event"
-          >
-            {{ visible[key] ? '隐藏' : '显示' }}
-          </Toggle>
           <button
             type="button"
             :aria-label="`移除 ${field.title ?? key}`"
@@ -127,7 +130,8 @@ function input(key: string, field: Schema, raw: string) {
   gap: 6px;
 }
 .field-input input,
-.field-input .ui-select {
+.field-input .ui-select,
+.field-input .ui-secret-input {
   min-width: 0;
   flex: 1;
 }

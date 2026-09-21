@@ -446,20 +446,19 @@ a {
 .account-button[aria-expanded='true'] .account-chevron {
   transform: rotate(180deg);
 }
-.account-menu {
+:deep(.account-menu) {
   z-index: var(--z-dropdown);
-  width: 220px;
+  width: var(--reka-dropdown-menu-trigger-width);
   max-width: calc(100vw - 24px);
-  min-width: 196px;
   padding: 6px;
-  border: 1px solid #dfe5ef;
+  border: 1px solid #344560;
   border-radius: 10px;
-  background: #fff;
-  color: #34415a;
+  background: #1f304b;
+  color: #d9e1ed;
   box-shadow: 0 16px 38px #07112033;
 }
-.account-menu a,
-.account-menu button {
+:deep(.account-menu) a,
+:deep(.account-menu) button {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -472,18 +471,18 @@ a {
   color: inherit;
   text-align: left;
 }
-.account-menu [data-highlighted],
-.account-menu a:hover,
-.account-menu button:hover,
-.account-menu a:focus-visible,
-.account-menu button:focus-visible {
-  background: #f0f4ff;
-  color: #315ed1;
+:deep(.account-menu) [data-highlighted],
+:deep(.account-menu) a:hover,
+:deep(.account-menu) button:hover,
+:deep(.account-menu) a:focus-visible,
+:deep(.account-menu) button:focus-visible {
+  background: #2c4263;
+  color: #fff;
 }
-.account-menu button:last-child {
-  color: #b03b4b;
+:deep(.account-menu) button:last-child {
+  color: #ff8393;
 }
-.account-menu button:disabled {
+:deep(.account-menu) button:disabled {
   color: #8d97a8;
 }
 .menu-icon {
@@ -524,7 +523,7 @@ a {
   justify-content: center;
   padding: 8px 5px;
 }
-.collapsed .account-menu {
+.collapsed :deep(.account-menu) {
   width: 208px;
 }
 .workspace {

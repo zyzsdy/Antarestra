@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowPathIcon, PlusIcon } from '@antarestra/webui/icons'
 import { PaginationField, EditorDialog } from '@antarestra/webui/components'
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
@@ -125,9 +126,10 @@ onUnmounted(() => {
         <p>配置助理的提示词、模型与能力范围。</p>
       </div>
       <div class="agents-actions">
-        <button :disabled="busy" @click="run(load)">刷新</button
+        <button :disabled="busy" aria-label="刷新 Agents" title="刷新 Agents" @click="run(load)">
+          <ArrowPathIcon class="ui-icon" aria-hidden="true" /></button
         ><button class="agents-primary" :disabled="busy || !loaded" @click="edit()">
-          新建 Agent
+          <PlusIcon class="ui-icon" aria-hidden="true" />新建 Agent
         </button>
       </div>
     </header>

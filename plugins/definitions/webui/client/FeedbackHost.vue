@@ -87,7 +87,9 @@ onUnmounted(() => {
         <AlertDialogDescription as="p">{{ current.message }}</AlertDialogDescription>
         <div class="feedback-actions">
           <AlertDialogCancel @click.prevent="finish(false)">取消</AlertDialogCancel>
-          <AlertDialogAction @click.prevent="finish(true)">确定</AlertDialogAction>
+          <AlertDialogAction class="feedback-confirm" @click.prevent="finish(true)"
+            >确定</AlertDialogAction
+          >
         </div>
       </AlertDialogContent>
     </AlertDialogPortal>
@@ -147,6 +149,30 @@ onUnmounted(() => {
   gap: 12px;
 }
 .feedback-actions button {
-  padding: 8px 20px;
+  min-height: 40px;
+  padding: 9px 20px;
+  border: 1px solid #d8dee9;
+  border-radius: 7px;
+  background: #f4f6fa;
+  color: #263047;
+  font: inherit;
+  cursor: pointer;
+}
+.feedback-actions button:hover {
+  background: #e4e9f1;
+}
+.feedback-actions button:active {
+  background: #d8dee9;
+}
+.feedback-actions .feedback-confirm {
+  background: #315ed1;
+  border-color: #315ed1;
+  color: #fff;
+}
+.feedback-actions .feedback-confirm:hover {
+  background: #244bb0;
+}
+.feedback-actions .feedback-confirm:active {
+  background: #1d3e95;
 }
 </style>

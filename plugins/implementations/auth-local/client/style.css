@@ -417,9 +417,6 @@
   .auth-ui .filter-bar {
     grid-template-columns: 1fr;
   }
-  .auth-ui .ui-editor-dialog {
-    padding: 18px;
-  }
   .auth-ui .credentials div {
     grid-template-columns: 1fr;
     gap: 4px;

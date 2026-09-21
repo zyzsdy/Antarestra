@@ -522,14 +522,14 @@ onUnmounted(() => {
           class="pagination"
           label="候选模型分页"
         />
-        <footer class="actions">
-          <button :disabled="busy || !candidates.length" @click="sync(true)">
-            同步并覆盖全部（{{ candidates.length }}）</button
-          ><button class="primary" :disabled="busy || !selection.length" @click="sync(false)">
-            同步并覆盖所选（{{ selection.length }}）
-          </button>
-        </footer>
       </div>
+      <template #footer>
+        <button :disabled="busy || !candidates.length" @click="sync(true)">
+          同步并覆盖全部（{{ candidates.length }}）</button
+        ><button class="primary" :disabled="busy || !selection.length" @click="sync(false)">
+          同步并覆盖所选（{{ selection.length }}）
+        </button>
+      </template>
     </EditorDialog>
   </section>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
-import { EditorDialog } from '@antarestra/webui/components'
+import { EditorDialog, SecretInput } from '@antarestra/webui/components'
 import { useApi } from '@antarestra/webui/api'
 const { api, run, busy, message, session, router } = useApi()
 const props = defineProps<{ beforeOpen?: () => Promise<boolean> }>()
@@ -13,7 +13,6 @@ function close() {
 }
 const open = ref(false)
 const password = ref('')
-const show = ref(false)
 const progress = ref('')
 let alive = true
 onUnmounted(() => {
@@ -68,14 +67,13 @@ async function restart() {
         </p>
         <label for="restart-password">当前账号密码</label>
         <div class="password-row">
-          <input
+          <SecretInput
             id="restart-password"
+            label="当前账号密码"
+            :disabled="busy"
             v-model="password"
-            :type="show ? 'text' : 'password'"
             autocomplete="current-password"
-          /><button type="button" :aria-pressed="show" @click="show = !show">
-            {{ show ? '隐藏' : '显示' }}密码
-          </button>
+          />
         </div>
         <p v-if="message" role="alert">{{ message }}</p>
         <div class="actions">
@@ -95,7 +93,7 @@ async function restart() {
   padding: 9px 14px;
   cursor: pointer;
 }
-.restart-action input {
+.restart-action :deep(input) {
   min-width: 0;
   flex: 1;
   padding: 10px;

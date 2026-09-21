@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { CheckboxField } from '@antarestra/webui/components'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue'
 import {
   SelectField,
   CollapsibleRoot,
   CollapsibleTrigger,
   CollapsibleContent,
 } from '@antarestra/webui/components'
+import { ChevronRightIcon } from '@antarestra/webui/icons'
 import type { ModelRef, JsonObject } from '@antarestra/ai'
 import { newAgent, defaultAgentId } from '../src/types.js'
 import type { AgentRecord, Capabilities } from '../src/types.js'
@@ -33,6 +34,43 @@ watch(
     ),
   { deep: true },
 )
+const systemInput = ref<HTMLTextAreaElement>()
+let resizeObserver: ResizeObserver | undefined
+function resizeSystem() {
+  const input = systemInput.value
+  if (!input) return
+  const style = getComputedStyle(input)
+  const line = parseFloat(style.lineHeight)
+  const extra =
+    parseFloat(style.paddingTop) +
+    parseFloat(style.paddingBottom) +
+    parseFloat(style.borderTopWidth) +
+    parseFloat(style.borderBottomWidth)
+  const scrollTop = input.closest('.ui-editor-dialog-body')?.scrollTop ?? 0
+  input.style.height = 'auto'
+  input.style.height =
+    Math.min(
+      line * 60 + extra,
+      Math.max(
+        line * 4 + extra,
+        input.scrollHeight + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth),
+      ),
+    ) + 'px'
+  const body = input.closest('.ui-editor-dialog-body')
+  if (body) body.scrollTop = scrollTop
+}
+watch(() => draft.systemTemplate, resizeSystem, { flush: 'post' })
+onMounted(() => {
+  resizeSystem()
+  let width = systemInput.value?.clientWidth
+  resizeObserver = new ResizeObserver(() => {
+    if (systemInput.value?.clientWidth === width) return
+    width = systemInput.value?.clientWidth
+    resizeSystem()
+  })
+  if (systemInput.value) resizeObserver.observe(systemInput.value)
+})
+onUnmounted(() => resizeObserver?.disconnect())
 const invalid = ref('')
 const validation = ref('')
 const modelKey = (m: ModelRef) => JSON.stringify([m.providerId, m.modelId])
@@ -171,10 +209,10 @@ function save(event: Event) {
       </div>
       <label for="agent-system">系统提示词模板</label>
       <textarea
-        style="resize: none"
+        ref="systemInput"
         id="agent-system"
         v-model="draft.systemTemplate"
-        rows="14"
+        rows="4"
         maxlength="65536"
       />
       <p class="agents-hint">
@@ -251,7 +289,9 @@ function save(event: Event) {
         </p>
       </section>
       <CollapsibleRoot class="agents-advanced">
-        <CollapsibleTrigger class="agents-advanced-trigger">高级配置</CollapsibleTrigger>
+        <CollapsibleTrigger class="agents-advanced-trigger" type="button"
+          ><ChevronRightIcon class="ui-icon" aria-hidden="true" />高级配置</CollapsibleTrigger
+        >
         <CollapsibleContent>
           <label for="agent-backend">执行后端</label
           ><SelectField

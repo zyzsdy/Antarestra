@@ -48,6 +48,35 @@ const groupId = ref('')
 const groupName = ref('')
 const collapsed = ref(new Set<string>())
 const dragging = ref('')
+const insertion = ref<{ group: string; before?: string }>()
+function endDrag() {
+  dragging.value = ''
+  insertion.value = undefined
+}
+function dragOver(event: DragEvent, group: string, row?: Instance) {
+  if (!dragging.value || busy.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  let before = row?.instanceId
+  if (row && event.currentTarget instanceof HTMLElement) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    if (event.clientY >= rect.top + rect.height / 2) {
+      const items = rows.value.filter((item) => item.group === group)
+      before = items[items.findIndex((item) => item.instanceId === row.instanceId) + 1]?.instanceId
+    }
+  }
+  insertion.value = before ? { group, before } : { group }
+}
+function leaveGroup(event: DragEvent) {
+  if (
+    event.currentTarget instanceof HTMLElement &&
+    event.relatedTarget instanceof Node &&
+    event.currentTarget.contains(event.relatedTarget)
+  )
+    return
+  insertion.value = undefined
+}
 let alive = true
 let request = 0
 const draft = () =>
@@ -339,7 +368,11 @@ async function moveGroup(id: string, direction: number) {
 }
 function drop(group: string, before?: string) {
   const row = snapshot.value?.instances.find((item) => item.instanceId === dragging.value)
-  dragging.value = ''
+  if (before === row?.instanceId) {
+    endDrag()
+    return
+  }
+  endDrag()
   if (row && !busy.value) void move(row, group, 0, before)
 }
 const stopGuard = router.beforeEach(async () => await discard())
@@ -408,8 +441,10 @@ onUnmounted(() => {
           v-for="group in groups"
           :key="group.id"
           class="plugin-group"
-          @dragover.prevent
-          @drop.prevent.stop="drop(group.id)"
+          :class="{ 'drop-at-end': insertion?.group === group.id && !insertion.before }"
+          @dragover="dragOver($event, group.id)"
+          @dragleave="leaveGroup"
+          @drop.prevent.stop="drop(group.id, insertion?.before)"
         >
           <div class="group-heading">
             <CollapsibleTrigger>
@@ -442,9 +477,12 @@ onUnmounted(() => {
               :key="row.instanceId"
               :draggable="!busy"
               @dragstart="dragging = row.instanceId"
-              @dragend="dragging = ''"
-              @dragover.prevent
-              @drop.prevent.stop="drop(group.id, row.instanceId)"
+              :class="{
+                'drop-before': insertion?.group === group.id && insertion.before === row.instanceId,
+              }"
+              @dragend="endDrag"
+              @dragover="dragOver($event, group.id, row)"
+              @drop.prevent.stop="drop(group.id, insertion?.before)"
             >
               <button
                 class="instance"
@@ -941,5 +979,27 @@ onUnmounted(() => {
     flex-direction: column;
     gap: 8px;
   }
+}
+.config-page .plugin-group,
+.config-page .plugin-group li {
+  position: relative;
+}
+.config-page .drop-before::before,
+.config-page .drop-at-end::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: #315ed1;
+  pointer-events: none;
+  z-index: 1;
+}
+.config-page .drop-before::before {
+  top: -2px;
+}
+.config-page .drop-at-end::after {
+  bottom: -2px;
 }
 </style>

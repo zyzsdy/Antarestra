@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowPathIcon, PlusIcon } from '@antarestra/webui/icons'
 import { PaginationField, CheckboxField } from '@antarestra/webui/components'
 import { computed, inject, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
@@ -134,8 +135,12 @@ function clearPermissions() {
           <p class="muted">选择角色，查看并调整它的操作权限。</p>
         </div>
         <div class="actions">
-          <button :disabled="busy" @click="refresh">刷新列表</button>
-          <button class="primary" :disabled="busy" @click="edit()">创建角色</button>
+          <button :disabled="busy" aria-label="刷新角色列表" title="刷新角色列表" @click="refresh">
+            <ArrowPathIcon class="ui-icon" aria-hidden="true" />
+          </button>
+          <button class="primary" :disabled="busy" @click="edit()">
+            <PlusIcon class="ui-icon" aria-hidden="true" />创建角色
+          </button>
         </div>
       </div>
       <label

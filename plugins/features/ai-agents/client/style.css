@@ -194,7 +194,10 @@
   font: inherit;
   color: #263047;
   cursor: pointer;
-  padding: 10px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
 }
 .agents-form .agents-advanced-trigger:hover {
   color: #315ed1;
@@ -222,4 +225,18 @@
   .agents-toolbar input {
     flex-basis: 100%;
   }
+}
+
+.agents-form #agent-system {
+  resize: vertical;
+  min-height: calc(4lh + 22px);
+  max-height: calc(60lh + 22px);
+}
+.agents-advanced-trigger[data-state='open'] .ui-icon {
+  transform: rotate(90deg);
+}
+.agents-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

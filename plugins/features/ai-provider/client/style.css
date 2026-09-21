@@ -285,10 +285,6 @@
 .ai-providers .sync-panel table {
   min-width: 440px;
 }
-.ai-providers .sync-panel footer {
-  margin-top: 20px;
-  justify-content: flex-end;
-}
 @media (max-width: 760px) {
   .ai-providers h1 {
     font-size: 23px;
@@ -307,10 +303,10 @@
     align-items: flex-start;
     flex-wrap: wrap;
   }
-  .ai-providers .sync-panel footer {
+  .ai-providers .ui-editor-dialog-footer {
     justify-content: stretch;
   }
-  .ai-providers .sync-panel footer button {
+  .ai-providers .ui-editor-dialog-footer button {
     flex: 1;
   }
 }
