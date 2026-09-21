@@ -90,6 +90,21 @@ function restoreFocus(event: Event) {
   width: 40px;
   height: 40px;
   padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.ui-editor-dialog > header button.ui-editor-dialog-close:not(:disabled) {
+  background: transparent;
+}
+.ui-editor-dialog > header button.ui-editor-dialog-close:hover:not(:disabled) {
+  background: #edf2ff;
+}
+.ui-editor-dialog > header .ui-editor-dialog-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .ui-editor-dialog-with-footer {
   display: flex;
