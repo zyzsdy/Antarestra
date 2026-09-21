@@ -1,5 +1,25 @@
 type RGB = readonly [number, number, number]
 
+const prefixColors = {
+  time: { rgb: [140, 140, 140], indexed: 245, basic: 90 },
+  debug: { rgb: [160, 140, 180], indexed: 139, basic: 35 },
+  info: { rgb: [130, 160, 180], indexed: 109, basic: 36 },
+  warn: { rgb: [180, 165, 120], indexed: 143, basic: 33 },
+  error: { rgb: [190, 130, 130], indexed: 138, basic: 31 },
+} as const
+
+export function colorizePrefix(text: string, kind: string, depth: number): string {
+  if (depth < 4 || !Object.hasOwn(prefixColors, kind)) return text
+  const color = prefixColors[kind as keyof typeof prefixColors]
+  const code =
+    depth >= 24
+      ? `38;2;${color.rgb.join(';')}`
+      : depth >= 8
+        ? `38;5;${color.indexed}`
+        : `${color.basic}`
+  return `\x1b[${code}m${text}\x1b[0m`
+}
+
 function hsl(hue: number, saturation: number, lightness: number): RGB {
   const a = saturation * Math.min(lightness, 1 - lightness)
   const channel = (offset: number) => {

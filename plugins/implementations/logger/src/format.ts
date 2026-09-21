@@ -1,6 +1,7 @@
 import { Logger } from '@antarestra/plugin-sdk'
 import type { Message } from '@antarestra/plugin-sdk'
 import { inspect, stripVTControlCharacters } from 'node:util'
+import { colorizePrefix } from './colors.js'
 
 const pad = (value: number) => String(value).padStart(2, '0')
 
@@ -9,7 +10,7 @@ export function localDate(timestamp: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-export function formatMessage(message: Message, label = `[${message.name}]`): string {
+export function formatMessage(message: Message, label = `[${message.name}]`, depth = 1): string {
   const date = new Date(message.ts)
   const time = `${localDate(message.ts)} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   let content: string
@@ -25,7 +26,8 @@ export function formatMessage(message: Message, label = `[${message.name}]`): st
       )
       .join(' ')
   }
-  const prefix = `[${message.type}] ${time} ${label}`
+  const level = colorizePrefix(`[${message.type}]`, message.type, depth)
+  const prefix = `${level} ${colorizePrefix(time, 'time', depth)} ${label}`
   return stripVTControlCharacters(content)
     .split(/\r\n|\r|\n/)
     .map((line) => `${prefix} ${line}\n`)

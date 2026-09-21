@@ -18,7 +18,7 @@ export function apply(ctx: Context) {
 [info] 2026-09-11 12:31:35 [server] [http-req] GET /api/health 200
 ```
 
-时间使用消息产生时的本地时间，显示到秒。支持 Cordis 格式化、Error 和多行正文，每行补齐前缀。文件为无 ANSI 颜色的 UTF-8 文本。只有终端的插件名称标签着色，正文保持终端默认颜色。
+时间使用消息产生时的本地时间，显示到秒。支持 Cordis 格式化、Error 和多行正文，每行补齐前缀。文件为无 ANSI 颜色的 UTF-8 文本。终端时间显示为灰色，等级标签使用柔和配色：debug 为紫色、info 为蓝色、warn 为黄色、error 为红色。等级颜色只作用于方括号标签，插件名称保留独立配色，正文保持终端默认颜色。
 
 ## 配置
 

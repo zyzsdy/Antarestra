@@ -22,12 +22,13 @@ export async function apply(ctx: Context, input: Config = {}): Promise<void> {
     const disposers: (() => Promise<void>)[] = []
     try {
       if (config.console) {
-        const colorize = createColorizer(colorDepth(process.stdout))
+        const depth = colorDepth(process.stdout)
+        const colorize = createColorizer(depth)
         disposers.push(
           ctx.logger.exporter({
             levels: threshold(levels[config.consoleLevel]),
             export(message) {
-              process.stdout.write(formatMessage(message, colorize(cleanName(message.name))))
+              process.stdout.write(formatMessage(message, colorize(cleanName(message.name)), depth))
             },
           }),
         )
