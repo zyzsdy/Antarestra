@@ -41,7 +41,13 @@ import ChatHistory from './ChatHistory.vue'
 import ChatMessage from './ChatMessage.vue'
 import { useChat } from './useChat.js'
 
-const props = defineProps<{ session: Session | undefined; failure: string; signal: AbortSignal }>()
+const props = defineProps<{
+  session: Session | undefined
+  failure: string
+  signal: AbortSignal
+  canAdmin: boolean
+  logout: () => Promise<void>
+}>()
 const feedback = inject(feedbackKey)!
 const {
   catalog,
@@ -91,6 +97,18 @@ const title = ref('')
 const renameError = ref('')
 const saving = ref(false)
 const archivedConversation = computed(() => detail.value?.conversation.archivedAt != null)
+function thinkingLabel(level: string | null | undefined) {
+  const labels: Record<string, string> = {
+    off: '关闭',
+    minimal: '最低',
+    low: '轻度',
+    medium: '中',
+    high: '高',
+    xhigh: '极高',
+    max: '最大',
+  }
+  return level ? (labels[level] ?? level) : ''
+}
 const intensity = computed({
   get: () => [Math.max(0, levels.value.indexOf(thinking.value ?? ''))],
   set: (value: number[] | undefined) => {
@@ -261,6 +279,8 @@ onUnmounted(() => {
         /></DialogClose>
         <ChatHistory
           :session="session"
+          :can-admin="canAdmin"
+          :logout="logout"
           :items="conversations"
           :current-id="currentId"
           :archived="archived"
@@ -269,7 +289,7 @@ onUnmounted(() => {
           :error="listError"
           @new="select()"
           @select="select"
-          @toggle="archived = !archived"
+          @toggle="(value) => (archived = value)"
           @more="list(true)"
           @refresh="list()"
           @rename="edit"
@@ -357,7 +377,7 @@ onUnmounted(() => {
               style="resize: none"
               aria-label="消息输入框"
               :disabled="archivedConversation"
-              placeholder="向助理发送消息"
+              placeholder="随意问些什么"
               @keydown="keydown"
             />
             <div class="chat-composer-toolbar">
@@ -391,14 +411,15 @@ onUnmounted(() => {
                     type="button"
                     :disabled="!!activeRunId || sending || archivedConversation"
                     aria-label="选择推理强度"
-                    >{{ thinking }}<ChevronDownIcon class="ui-icon" /></PopoverTrigger
+                    >{{ thinkingLabel(thinking)
+                    }}<ChevronDownIcon class="ui-icon" /></PopoverTrigger
                   ><PopoverPortal
                     ><PopoverContent
                       class="chat-popover chat-thinking-popover"
                       side="top"
                       :side-offset="12"
                       :collision-padding="12"
-                      ><p>推理强度：{{ thinking }}</p>
+                      ><p>推理强度：{{ thinkingLabel(thinking) }}</p>
                       <SliderRoot
                         v-model="intensity"
                         class="chat-slider"
@@ -410,17 +431,17 @@ onUnmounted(() => {
                         ><SliderThumb
                           class="chat-slider-thumb"
                           aria-label="推理强度"
-                          :aria-valuetext="thinking ?? ''"
+                          :aria-valuetext="thinkingLabel(thinking)"
                       /></SliderRoot>
                       <div class="chat-slider-labels">
-                        <span>{{ levels[0] }}</span
-                        ><span>{{ levels.at(-1) }}</span>
+                        <span>{{ thinkingLabel(levels[0]) }}</span
+                        ><span>{{ thinkingLabel(levels.at(-1)) }}</span>
                       </div></PopoverContent
                     ></PopoverPortal
                   ></PopoverRoot
                 >
                 <span v-else-if="levels.length === 1" class="chat-thinking-single">{{
-                  thinking
+                  thinkingLabel(thinking)
                 }}</span>
                 <button
                   v-if="activeRunId"

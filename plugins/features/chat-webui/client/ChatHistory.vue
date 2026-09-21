@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { Conversation } from '@antarestra/contracts'
 import type { Session } from './session.js'
 import {
@@ -13,13 +14,18 @@ import {
 } from '@antarestra/webui/components'
 import {
   PlusIcon,
-  EllipsisHorizontalIcon,
+  EllipsisVerticalIcon,
   ArchiveBoxIcon,
   PencilSquareIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowRightStartOnRectangleIcon,
+  ChevronUpIcon,
+  UserCircleIcon,
 } from '@antarestra/webui/icons'
-defineProps<{
+const props = defineProps<{
   session: Session
+  canAdmin: boolean
+  logout: () => Promise<void>
   items: Conversation[]
   currentId: string
   archived: boolean
@@ -30,20 +36,34 @@ defineProps<{
 defineEmits<{
   select: [id: string]
   new: []
-  toggle: []
+  toggle: [archived: boolean]
   more: []
   refresh: []
   rename: [item: Conversation]
   archive: [item: Conversation]
 }>()
+const loggingOut = ref(false)
+const logoutError = ref('')
+async function logout() {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  logoutError.value = ''
+  try {
+    await props.logout()
+  } catch (cause) {
+    logoutError.value = cause instanceof Error ? cause.message : '退出登录失败，请重试。'
+  } finally {
+    loggingOut.value = false
+  }
+}
 </script>
 
 <template>
   <a class="chat-brand" href="/"><AntarestraLogo decorative />Antarestra</a>
   <button class="chat-new" @click="$emit('new')"><PlusIcon class="ui-icon" />新对话</button>
   <div class="chat-history-heading">
-    <h2>{{ archived ? '已归档对话' : '你的对话' }}</h2>
-    <button class="chat-text-button" :disabled="loading" @click="$emit('refresh')">刷新</button>
+    <h2>{{ archived ? '已归档对话' : '对话' }}</h2>
+    <button v-if="archived" class="chat-text-button" @click="$emit('toggle', false)">返回</button>
   </div>
   <nav class="chat-history" aria-label="对话历史">
     <div
@@ -64,7 +84,7 @@ defineEmits<{
         <DropdownMenuTrigger
           class="chat-icon-button chat-history-actions"
           :aria-label="`${item.title || '新对话'}的操作`"
-          ><EllipsisHorizontalIcon class="ui-icon"
+          ><EllipsisVerticalIcon class="ui-icon"
         /></DropdownMenuTrigger>
         <DropdownMenuPortal
           ><DropdownMenuContent class="chat-popover" :side-offset="5" :collision-padding="12">
@@ -95,13 +115,41 @@ defineEmits<{
       加载更多
     </button>
   </nav>
-  <button class="chat-archive-link" @click="$emit('toggle')">
-    <ArchiveBoxIcon class="ui-icon" />{{ archived ? '返回历史对话' : '已归档对话' }}
-  </button>
-  <a class="chat-profile" :href="session.accountPath"
-    ><AvatarRoot class="chat-avatar"
-      ><AvatarFallback>{{ session.displayName.slice(0, 1) }}</AvatarFallback></AvatarRoot
-    ><span>{{ session.displayName }}</span
-    ><ArrowTopRightOnSquareIcon class="ui-icon"
-  /></a>
+  <DropdownMenuRoot>
+    <DropdownMenuTrigger class="chat-profile" aria-label="用户菜单"
+      ><AvatarRoot class="chat-avatar"
+        ><AvatarFallback>{{ session.displayName.slice(0, 1) }}</AvatarFallback></AvatarRoot
+      ><span>{{ session.displayName }}</span
+      ><ChevronUpIcon class="ui-icon"
+    /></DropdownMenuTrigger>
+    <DropdownMenuPortal>
+      <DropdownMenuContent
+        class="chat-popover chat-account-menu"
+        side="top"
+        align="start"
+        :side-offset="8"
+        :collision-padding="12"
+      >
+        <DropdownMenuItem class="chat-menu-item" @select="$emit('toggle', true)"
+          ><ArchiveBoxIcon class="ui-icon" />已归档对话</DropdownMenuItem
+        >
+        <DropdownMenuItem class="chat-menu-item" as-child
+          ><a :href="session.accountPath"
+            ><UserCircleIcon class="ui-icon" />个人中心</a
+          ></DropdownMenuItem
+        >
+        <DropdownMenuItem v-if="canAdmin" class="chat-menu-item" as-child
+          ><a href="/admin/"
+            ><ArrowTopRightOnSquareIcon class="ui-icon" />管理控制台</a
+          ></DropdownMenuItem
+        >
+        <DropdownMenuItem class="chat-menu-item" :disabled="loggingOut" @select.prevent="logout"
+          ><ArrowRightStartOnRectangleIcon class="ui-icon" />{{
+            loggingOut ? '正在退出…' : '退出登录'
+          }}</DropdownMenuItem
+        >
+        <p v-if="logoutError" class="chat-inline-error" role="alert">{{ logoutError }}</p>
+      </DropdownMenuContent>
+    </DropdownMenuPortal>
+  </DropdownMenuRoot>
 </template>

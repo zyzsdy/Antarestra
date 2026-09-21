@@ -163,6 +163,7 @@ function keydown(event: KeyboardEvent) {
       <ComboboxPortal v-if="portalTarget" :to="portalTarget">
         <ComboboxContent
           class="ui-select-content"
+          :class="{ 'ui-select-content-compact': compact }"
           position="popper"
           :side-offset="6"
           :collision-padding="12"
@@ -205,6 +206,7 @@ function keydown(event: KeyboardEvent) {
       <SelectPortal v-if="portalTarget" :to="portalTarget">
         <SelectContent
           class="ui-select-content"
+          :class="{ 'ui-select-content-compact': compact }"
           position="popper"
           :side-offset="6"
           :collision-padding="12"
@@ -390,5 +392,23 @@ function keydown(event: KeyboardEvent) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.ui-select-content-compact {
+  min-width: 220px;
+}
+.ui-select-content-compact .ui-select-option[data-highlighted] {
+  outline: none;
+  background: #efefec;
+}
+.ui-select-content-compact .ui-select-option:focus-visible {
+  outline: none;
+  background: #efefec;
+}
+.ui-select-content-compact .ui-select-group {
+  background: #f1f2f4;
+  color: #637089;
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 4px 0;
 }
 </style>

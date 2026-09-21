@@ -18,7 +18,25 @@ const apply: ClientPlugin = (ctx) => {
   ctx.page({
     path: '/',
     name: '聊天',
-    component: defineComponent(() => () => h(ChatPage, { ...state, signal: controller.signal })),
+    component: defineComponent(
+      () => () =>
+        h(ChatPage, {
+          ...state,
+          signal: controller.signal,
+          canAdmin: !!ctx.session.snapshot.value?.permissions.includes('admin.console.view'),
+          logout: async () => {
+            const response = await fetch('/api/auth/logout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}',
+              signal: controller.signal,
+            })
+            if (!response.ok) throw new Error('退出登录失败，请重试。')
+            ctx.session.clear()
+            await ctx.router.push(state.session?.accountPath ?? '/auth/user/')
+          },
+        }),
+    ),
     async beforeEnter() {
       state.session = undefined
       state.failure = ''
