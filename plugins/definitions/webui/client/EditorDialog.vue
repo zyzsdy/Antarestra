@@ -7,6 +7,7 @@ import {
   DialogTitle,
   DialogClose,
 } from 'reka-ui'
+import { XMarkIcon } from '../src/icons.js'
 
 defineProps<{ title: string; busy?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -30,7 +31,15 @@ function restoreFocus(event: Event) {
       >
         <header>
           <DialogTitle as="h2">{{ title }}</DialogTitle>
-          <DialogClose type="button" :disabled="busy" aria-label="关闭弹窗"> 关闭 </DialogClose>
+          <DialogClose
+            class="ui-editor-dialog-close"
+            type="button"
+            :disabled="busy"
+            aria-label="关闭弹窗"
+            title="关闭弹窗"
+          >
+            <XMarkIcon class="ui-icon" aria-hidden="true" />
+          </DialogClose>
         </header>
         <div v-if="$slots.footer" class="ui-editor-dialog-body"><slot /></div>
         <slot v-else />
@@ -72,6 +81,15 @@ function restoreFocus(event: Event) {
   margin: 0;
   overflow-wrap: anywhere;
   min-width: 0;
+}
+.ui-editor-dialog > header .ui-editor-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
 }
 .ui-editor-dialog-with-footer {
   display: flex;
