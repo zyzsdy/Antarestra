@@ -96,7 +96,7 @@ onUnmounted(() => {
   </AlertDialogRoot>
 </template>
 <style scoped>
-.feedback-messages {
+:deep(.feedback-messages) {
   position: fixed;
   right: 20px;
   top: 20px;
@@ -106,7 +106,7 @@ onUnmounted(() => {
   padding: 0;
   max-width: min(420px, calc(100vw - 40px));
 }
-.feedback-message {
+:deep(.feedback-message) {
   padding: 16px;
   margin-bottom: 8px;
   border: 1px solid #ddd;
@@ -115,7 +115,7 @@ onUnmounted(() => {
   box-shadow: 0 6px 24px #0001;
   overflow-wrap: anywhere;
 }
-.feedback-message button {
+:deep(.feedback-message button) {
   margin-left: 16px;
   border: 0;
   background: transparent;

@@ -53,8 +53,27 @@ function messages(request: RequestSnapshot, model: Model<Api>): Message[] {
     } else if (message.role === 'assistant') {
       const content: Extract<Message, { role: 'assistant' }>['content'] = []
       for (const block of message.content) {
-        if (block.type === 'text') content.push({ type: 'text', text: block.text })
-        if (block.type === 'thinking') content.push({ type: 'thinking', thinking: block.text })
+        if (block.type === 'text' || block.type === 'thinking') {
+          const continuation = block.continuation
+          const signature =
+            continuation?.model.providerId === request.model.providerId &&
+            continuation.model.modelId === request.model.modelId &&
+            continuation.driverId === `ai-provider:${request.model.providerId}`
+              ? continuation.signature
+              : undefined
+          if (block.type === 'text')
+            content.push({
+              type: 'text',
+              text: block.text,
+              ...(signature ? { textSignature: signature } : {}),
+            })
+          else
+            content.push({
+              type: 'thinking',
+              thinking: block.text,
+              ...(signature ? { thinkingSignature: signature } : {}),
+            })
+        }
         if (block.type === 'tool-call') {
           toolNames.set(block.id, block.name)
           content.push({
@@ -182,8 +201,32 @@ export function driver(provider: ProviderRecord): ModelDriver {
                 arguments: block.arguments as JsonObject,
               }
             : block.type === 'thinking'
-              ? { type: 'thinking' as const, text: block.thinking }
-              : { type: 'text' as const, text: block.text },
+              ? {
+                  type: 'thinking' as const,
+                  text: block.thinking,
+                  ...(block.thinkingSignature
+                    ? {
+                        continuation: {
+                          model: request.model,
+                          driverId: `ai-provider:${provider.id}`,
+                          signature: block.thinkingSignature,
+                        },
+                      }
+                    : {}),
+                }
+              : {
+                  type: 'text' as const,
+                  text: block.text,
+                  ...(block.textSignature
+                    ? {
+                        continuation: {
+                          model: request.model,
+                          driverId: `ai-provider:${provider.id}`,
+                          signature: block.textSignature,
+                        },
+                      }
+                    : {}),
+                },
         ),
         usage: {
           input: result.usage.input,

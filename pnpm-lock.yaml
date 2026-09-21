@@ -83,6 +83,9 @@ importers:
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0))
+      vue:
+        specifier: ^3.5.42
+        version: 3.5.42(typescript@6.0.3)
       ws:
         specifier: ^8.21.3
         version: 8.21.3
@@ -387,6 +390,9 @@ importers:
 
   plugins/features/chat-webui:
     dependencies:
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk

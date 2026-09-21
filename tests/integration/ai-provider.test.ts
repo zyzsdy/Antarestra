@@ -542,3 +542,91 @@ it.each([input.apiKey, ''])(
     expect(result.content).toContainEqual({ type: 'text', text: '接入成功' })
   },
 )
+it('思考续接信息经过项目 DTO 往返，仅回传给同一连接和模型', async () => {
+  const requests: { messages: { role: string; reasoning_content?: string }[] }[] = []
+  const baseUrl = await remote(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk.toString()
+    requests.push(JSON.parse(body))
+    res.setHeader('content-type', 'text/event-stream')
+    res.end(
+      'data: ' +
+        JSON.stringify({
+          id: 'test',
+          choices: [
+            {
+              index: 0,
+              delta: { role: 'assistant', reasoning_content: '用于下一轮的思考', content: '回答' },
+              finish_reason: null,
+            },
+          ],
+        }) +
+        '\n\ndata: ' +
+        JSON.stringify({ id: 'test', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }) +
+        '\n\ndata: [DONE]\n\n',
+    )
+  })
+  const record = validateProvider({ ...input, baseUrl })
+  record.models = [{ ...model, input: ['text'], output: ['text'] }]
+  const instance = driver(record)
+  const ref = { providerId: input.id, modelId: model.id }
+  const context = {
+    runId: 'test',
+    conversationId: 'test',
+    actorId: 'test',
+    workspaceId: 'test',
+    signal: new AbortController().signal,
+    agent: {
+      id: 'test',
+      version: '1',
+      title: '测试',
+      backendId: 'test',
+      systemTemplate: '',
+      userTemplate: '',
+      models: [ref],
+      defaultModel: ref,
+      toolIds: [],
+      skillIds: [],
+      extensions: {},
+    },
+  }
+  const request = { model: ref, thinking: null, parameters: {}, systemPrompt: '测试', tools: [] }
+  const first = await instance.generate(
+    { ...request, messages: [{ role: 'user', content: [{ type: 'text', text: '第一轮' }] }] },
+    { baseUrl, credential: input.apiKey },
+    context,
+    async () => {},
+  )
+  expect(first.content).toContainEqual({
+    type: 'thinking',
+    text: '用于下一轮的思考',
+    continuation: {
+      model: ref,
+      driverId: `ai-provider:${input.id}`,
+      signature: 'reasoning_content',
+    },
+  })
+  const history: import('@antarestra/ai').ChatMessage[] = [
+    { role: 'user', content: [{ type: 'text', text: '第一轮' }] },
+    { role: 'assistant', content: JSON.parse(JSON.stringify(first.content)) },
+    { role: 'user', content: [{ type: 'text', text: '第二轮' }] },
+  ]
+  await instance.generate(
+    { ...request, messages: history },
+    { baseUrl, credential: input.apiKey },
+    context,
+    async () => {},
+  )
+  expect(requests[1]?.messages.find((item) => item.role === 'assistant')?.reasoning_content).toBe(
+    '用于下一轮的思考',
+  )
+  await instance.generate(
+    { ...request, model: { ...ref, providerId: 'other' }, messages: history },
+    { baseUrl, credential: input.apiKey },
+    context,
+    async () => {},
+  )
+  expect(
+    requests[2]?.messages.find((item) => item.role === 'assistant')?.reasoning_content,
+  ).toBeUndefined()
+})

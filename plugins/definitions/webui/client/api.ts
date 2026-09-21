@@ -4,6 +4,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message)
   }
@@ -36,7 +37,12 @@ export function useApi() {
           query: { returnTo: router.currentRoute.value.fullPath },
         })
     }
-    if (!response.ok) throw new ApiError(data.error || '请求失败', response.status)
+    if (!response.ok)
+      throw new ApiError(
+        typeof data.error === 'string' ? data.error : data.error?.message || '请求失败',
+        response.status,
+        typeof data.error?.code === 'string' ? data.error.code : undefined,
+      )
     return data as T
   }
   async function run(action: () => Promise<void>) {

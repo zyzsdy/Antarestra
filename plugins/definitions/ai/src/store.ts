@@ -19,7 +19,7 @@ interface EventRow {
   payload: string
 }
 export interface Tables {
-  conversations: RecordRow
+  conversations: RecordRow & { last_activity_at: number | null; archived_at: number | null }
   nodes: RecordRow
   runs: RunRow
   events: EventRow
@@ -76,7 +76,33 @@ export const migrations = [
       },
     ],
   }),
+  defineMigration({
+    id: '002_conversation_history',
+    steps: [
+      {
+        kind: 'addColumn',
+        table: 'conversations',
+        column: { name: 'last_activity_at', type: 'timestamp' },
+      },
+      {
+        kind: 'addColumn',
+        table: 'conversations',
+        column: { name: 'archived_at', type: 'timestamp' },
+      },
+      {
+        kind: 'createIndex',
+        table: 'conversations',
+        name: 'workspace_history',
+        columns: ['workspace_id', 'archived_at', 'last_activity_at', 'id'],
+      },
+    ],
+  }),
 ]
+export const conversationFields = (value: Conversation) => ({
+  payload: JSON.stringify(value),
+  last_activity_at: value.lastActivityAt,
+  archived_at: value.archivedAt,
+})
 export const decode = <T>(row: { payload: string }): T => JSON.parse(row.payload) as T
 export const row = (value: Conversation | MessageNode | RunRecord, workspaceId: string) => ({
   id: value.id,

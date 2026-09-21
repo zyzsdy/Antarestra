@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { Conversation } from '@antarestra/contracts'
 import { feedbackKey } from '@antarestra/webui/client'
 import {
   AntarestraLogo,
@@ -10,42 +11,188 @@ import {
   DialogTrigger,
   DialogClose,
   VisuallyHidden,
-  AvatarRoot,
-  AvatarFallback,
+  EditorDialog,
+  SelectField,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  DropdownMenuPortal,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  PopoverRoot,
+  PopoverTrigger,
+  PopoverPortal,
+  PopoverContent,
+  SliderRoot,
+  SliderTrack,
+  SliderRange,
+  SliderThumb,
 } from '@antarestra/webui/components'
 import {
-  PencilSquareIcon,
-  MagnifyingGlassIcon,
-  ListBulletIcon,
   PlusIcon,
-  CubeIcon,
-  ArrowTopRightOnSquareIcon,
   Bars3Icon,
   ArrowUpIcon,
+  StopIcon,
+  ChevronDownIcon,
+  PaperClipIcon,
+  XMarkIcon,
 } from '@antarestra/webui/icons'
 import type { Session } from './session.js'
+import ChatHistory from './ChatHistory.vue'
+import ChatMessage from './ChatMessage.vue'
+import { useChat } from './useChat.js'
 
-const props = defineProps<{
-  session: Session | undefined
-  failure: string
-  signal: AbortSignal
-}>()
+const props = defineProps<{ session: Session | undefined; failure: string; signal: AbortSignal }>()
 const feedback = inject(feedbackKey)!
+const {
+  catalog,
+  conversations,
+  archived,
+  more,
+  listing,
+  loading,
+  sending,
+  stopping,
+  error,
+  listError,
+  detail,
+  runs,
+  draft,
+  agentId,
+  agent,
+  selectedModel,
+  modelOptions,
+  thinking,
+  levels,
+  activeRunId,
+  lastRun,
+  interrupted,
+  unavailable,
+  reply,
+  disconnected,
+  currentId,
+  pending,
+  list,
+  load,
+  navigate,
+  initialize,
+  send,
+  stop,
+  continuePrevious,
+  update,
+} = useChat(() => props.session)
 const sidebar = ref(false)
 const narrow = ref(false)
 const media = matchMedia('(max-width: 760px)')
+const input = ref<HTMLTextAreaElement>()
+const messages = ref<HTMLElement>()
+const following = ref(true)
+const rename = ref<Conversation>()
+const title = ref('')
+const renameError = ref('')
+const saving = ref(false)
+const archivedConversation = computed(() => detail.value?.conversation.archivedAt != null)
+const intensity = computed({
+  get: () => [Math.max(0, levels.value.indexOf(thinking.value ?? ''))],
+  set: (value: number[] | undefined) => {
+    thinking.value = levels.value[value?.[0] ?? 0] ?? null
+  },
+})
+const canSend = computed(
+  () =>
+    !loading.value &&
+    !sending.value &&
+    !activeRunId.value &&
+    !archivedConversation.value &&
+    !unavailable.value &&
+    (!!pending.get(currentId.value) || (!interrupted.value && !!draft.value.trim())),
+)
 function resize() {
   narrow.value = media.matches
   if (!narrow.value) sidebar.value = false
+  grow()
 }
-resize()
-onMounted(() => media.addEventListener('change', resize))
-onUnmounted(() => media.removeEventListener('change', resize))
-const suggestions = [
-  { icon: PencilSquareIcon, title: '写下一个想法', detail: '把零散的灵感整理成文字' },
-  { icon: MagnifyingGlassIcon, title: '探索一个问题', detail: '从不同角度看待新的可能' },
-  { icon: ListBulletIcon, title: '规划下一步', detail: '让想法成为清晰的行动' },
-]
+function grow() {
+  if (!input.value) return
+  input.value.style.height = '0px'
+  const max = Math.max(48, Math.min(16 * 24, window.innerHeight * 0.45))
+  input.value.style.height = `${Math.min(max, Math.max(48, input.value.scrollHeight))}px`
+}
+function scroll() {
+  if (messages.value)
+    following.value =
+      messages.value.scrollHeight - messages.value.scrollTop - messages.value.clientHeight < 100
+}
+function bottom() {
+  if (messages.value) messages.value.scrollTop = messages.value.scrollHeight
+  following.value = true
+}
+watch(draft, () => {
+  void nextTick(grow)
+})
+watch(
+  () => [reply.value.sequence, detail.value?.path.length],
+  async () => {
+    await nextTick()
+    if (following.value) bottom()
+  },
+)
+watch(currentId, () => {
+  following.value = true
+  sidebar.value = false
+})
+async function select(id = '') {
+  sidebar.value = false
+  await navigate(id)
+  await nextTick()
+  input.value?.focus()
+}
+async function submit() {
+  if (!canSend.value) return
+  following.value = true
+  await send()
+  await nextTick()
+  grow()
+  input.value?.focus()
+}
+function keydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+    event.preventDefault()
+    void submit()
+  }
+}
+function edit(item: Conversation) {
+  rename.value = item
+  title.value = item.title
+  renameError.value = ''
+}
+async function saveTitle() {
+  if (!rename.value || saving.value) return
+  if (!title.value.trim() || title.value.trim().length > 200) {
+    renameError.value = '请输入 1–200 个字符的标题'
+    return
+  }
+  saving.value = true
+  try {
+    await update(rename.value.id, { title: title.value.trim() })
+    rename.value = undefined
+  } catch (cause) {
+    renameError.value = cause instanceof Error ? cause.message : '保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+async function archive(item: Conversation) {
+  try {
+    await update(item.id, { archived: item.archivedAt === null })
+    feedback.toast(item.archivedAt === null ? '对话已归档，可在归档列表中恢复。' : '已取消归档')
+  } catch (cause) {
+    feedback.toast(cause instanceof Error ? cause.message : '归档操作失败')
+  }
+}
+async function retry() {
+  if (await feedback.modal('重试本轮对话', '将重新执行本轮请求，工具可能再次执行。'))
+    await send(true)
+}
 async function check() {
   try {
     const response = await fetch('/api/chat-webui/session', {
@@ -62,12 +209,32 @@ async function check() {
       fresh.workspaceId !== props.session?.workspaceId
     )
       location.reload()
+    else {
+      void list()
+    }
   } catch {
-    /* 下一次聚焦时重新验证；页面没有聊天数据或可执行请求。 */
+    /* 暂时离线时保留草稿，下一次聚焦重试。 */
   }
 }
-onMounted(() => window.addEventListener('focus', check))
-onUnmounted(() => window.removeEventListener('focus', check))
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (draft.value) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+resize()
+onMounted(() => {
+  media.addEventListener('change', resize)
+  window.addEventListener('resize', grow)
+  window.addEventListener('focus', check)
+  window.addEventListener('beforeunload', beforeUnload)
+})
+onUnmounted(() => {
+  media.removeEventListener('change', resize)
+  window.removeEventListener('resize', grow)
+  window.removeEventListener('focus', check)
+  window.removeEventListener('beforeunload', beforeUnload)
+})
 </script>
 
 <template>
@@ -77,90 +244,225 @@ onUnmounted(() => window.removeEventListener('focus', check))
     <a href="/">重试</a>
   </main>
   <DialogRoot v-else v-model:open="sidebar">
-    <div class="chat-app" :class="{ 'sidebar-open': sidebar }">
+    <div class="chat-app">
       <DialogOverlay v-if="narrow" class="chat-backdrop" />
       <component
         :is="narrow ? DialogContent : 'aside'"
         class="chat-sidebar"
-        aria-label="聊天记录"
         :aria-describedby="undefined"
+        aria-label="聊天记录"
       >
         <VisuallyHidden v-if="narrow"><DialogTitle>聊天记录</DialogTitle></VisuallyHidden>
-        <DialogClose v-if="narrow" class="chat-drawer-close" aria-label="关闭聊天记录"
-          >关闭</DialogClose
-        >
-        <a class="chat-brand" href="/"><AntarestraLogo decorative />Antarestra</a>
-        <button class="chat-new" @click="feedback.toast('聊天功能即将开放，敬请期待。')">
-          <PlusIcon class="ui-icon" aria-hidden="true" /><span>新对话</span>
-        </button>
-        <div class="chat-history">
-          <h2>你的对话</h2>
-          <p>还没有聊天记录</p>
-          <small>开始一段对话，让想法在这里延续。</small>
-        </div>
-        <div class="chat-workspace">
-          <CubeIcon class="ui-icon" aria-hidden="true" />
-          <div><strong>个人工作空间</strong><small>当前空间暂无对话</small></div>
-        </div>
-        <a class="chat-profile" :href="session.accountPath">
-          <AvatarRoot class="chat-avatar"
-            ><AvatarFallback>{{ session.displayName.slice(0, 1) }}</AvatarFallback></AvatarRoot
-          >
-          <div>
-            <strong>{{ session.displayName }}</strong>
-            <small>{{ session.roles.includes('admin') ? '管理员' : '已登录用户' }}</small>
-          </div>
-          <ArrowTopRightOnSquareIcon class="ui-icon" aria-hidden="true" />
-        </a>
+        <DialogClose
+          v-if="narrow"
+          class="chat-icon-button chat-drawer-close"
+          aria-label="关闭聊天记录"
+          ><XMarkIcon class="ui-icon"
+        /></DialogClose>
+        <ChatHistory
+          :session="session"
+          :items="conversations"
+          :current-id="currentId"
+          :archived="archived"
+          :loading="listing"
+          :more="more"
+          :error="listError"
+          @new="select()"
+          @select="select"
+          @toggle="archived = !archived"
+          @more="list(true)"
+          @refresh="list()"
+          @rename="edit"
+          @archive="archive"
+        />
       </component>
       <main class="chat-main">
         <header class="chat-header">
-          <div>
-            <DialogTrigger class="chat-menu" aria-label="打开聊天记录">
-              <Bars3Icon class="ui-icon" aria-hidden="true" />
-            </DialogTrigger>
-            <strong>新对话</strong>
-          </div>
-          <span class="chat-preview">预览版</span>
+          <DialogTrigger v-if="narrow" class="chat-icon-button" aria-label="打开聊天记录"
+            ><Bars3Icon class="ui-icon"
+          /></DialogTrigger>
+          <SelectField
+            v-if="!currentId"
+            v-model="agentId"
+            class="chat-agent"
+            :options="catalog.agents.map((item) => ({ id: item.id, name: item.title }))"
+            label="选择 Agent"
+            compact
+            :disabled="sending"
+            placeholder="选择 Agent"
+          />
+          <span v-else class="chat-agent-name">{{
+            agent?.title || detail?.conversation.agentId || '对话'
+          }}</span>
+          <span v-if="activeRunId" class="chat-header-status">正在生成</span>
         </header>
-        <section class="chat-welcome">
-          <AntarestraLogo class="chat-spark" :size="72" decorative />
-          <p class="chat-eyebrow">让灵感，从一次对话开始</p>
-          <h1>今天，有什么新想法？</h1>
-          <p class="chat-subtitle">整理思路、探索问题，或是聊聊你的下一个计划。</p>
-          <div class="chat-suggestions">
-            <button
-              v-for="item in suggestions"
-              :key="item.title"
-              @click="feedback.messagebox('当前为界面预览，暂未接入模型和聊天记录功能。')"
-            >
-              <component :is="item.icon" class="suggestion-icon ui-icon" aria-hidden="true" />
-              <strong>{{ item.title }}</strong>
-              <small>{{ item.detail }}</small>
-            </button>
+        <section ref="messages" class="chat-messages" aria-label="消息记录" @scroll="scroll">
+          <div v-if="loading" class="chat-loading" role="status">正在加载对话…</div>
+          <div v-else-if="!detail?.path.length" class="chat-welcome">
+            <AntarestraLogo :size="60" decorative />
+            <h1>今天，有什么新想法？</h1>
+            <p>从一次对话开始。</p>
+          </div>
+          <div v-else class="chat-transcript">
+            <ChatMessage
+              v-for="node in detail.path"
+              :key="node.id"
+              :node="node"
+              :run="runs.get(node.runId)"
+              :live="node.role === 'assistant' && node.runId === activeRunId ? reply : undefined"
+            />
           </div>
         </section>
+        <div v-if="!following" class="chat-bottom-link">
+          <button class="chat-text-button" @click="bottom">回到底部 ↓</button>
+        </div>
         <footer class="chat-composer-area">
-          <div class="chat-composer">
+          <p v-if="error" class="chat-inline-error" role="alert">
+            {{ error }}
+            <button
+              class="chat-text-button"
+              :disabled="sending"
+              @click="pending.has(currentId) ? send() : initialize()"
+            >
+              {{ pending.has(currentId) ? '核对并重试发送' : '重新加载' }}
+            </button>
+          </p>
+          <p v-if="disconnected" class="chat-inline-error" role="status">
+            连接已断开，生成可能仍在继续。<button class="chat-text-button" @click="load">
+              重新连接
+            </button>
+          </p>
+          <p v-if="archivedConversation" class="chat-inline-notice">
+            此对话已归档。<button
+              class="chat-text-button"
+              @click="detail && archive(detail.conversation)"
+            >
+              取消归档并继续
+            </button>
+          </p>
+          <div v-else-if="interrupted" class="chat-recovery">
+            <span>{{ lastRun?.status === 'cancelled' ? '本轮生成已停止。' : '本轮未完成。' }}</span
+            ><button class="chat-text-button" :disabled="sending || !!unavailable" @click="retry">
+              重试本轮</button
+            ><button class="chat-text-button" :disabled="sending" @click="continuePrevious">
+              从上一完整轮次继续
+            </button>
+          </div>
+          <p v-if="unavailable && !loading" class="chat-muted" role="status">{{ unavailable }}</p>
+          <form class="chat-composer" novalidate @submit.prevent="submit">
             <textarea
-              disabled
+              ref="input"
+              v-model="draft"
               rows="2"
               style="resize: none"
-              placeholder="聊天功能即将开放…"
               aria-label="消息输入框"
+              :disabled="archivedConversation"
+              placeholder="向助理发送消息"
+              @keydown="keydown"
             />
-            <div>
-              <span>当前为界面预览</span
-              ><button disabled aria-label="发送消息">
-                <ArrowUpIcon class="ui-icon" aria-hidden="true" />
-              </button>
+            <div class="chat-composer-toolbar">
+              <DropdownMenuRoot
+                ><DropdownMenuTrigger class="chat-icon-button" type="button" aria-label="添加内容"
+                  ><PlusIcon class="ui-icon" /></DropdownMenuTrigger
+                ><DropdownMenuPortal
+                  ><DropdownMenuContent
+                    class="chat-popover"
+                    side="top"
+                    :side-offset="8"
+                    :collision-padding="12"
+                    ><DropdownMenuItem class="chat-menu-item" disabled
+                      ><PaperClipIcon class="ui-icon" />添加图片或附件</DropdownMenuItem
+                    ><small class="chat-menu-note">暂未开放</small></DropdownMenuContent
+                  ></DropdownMenuPortal
+                ></DropdownMenuRoot
+              >
+              <div class="chat-model-controls">
+                <SelectField
+                  v-model="selectedModel"
+                  :options="modelOptions"
+                  label="选择模型"
+                  compact
+                  :disabled="!!activeRunId || sending || archivedConversation"
+                  placeholder="选择模型"
+                />
+                <PopoverRoot v-if="levels.length > 1"
+                  ><PopoverTrigger
+                    class="chat-thinking-button"
+                    type="button"
+                    :disabled="!!activeRunId || sending || archivedConversation"
+                    aria-label="选择推理强度"
+                    >{{ thinking }}<ChevronDownIcon class="ui-icon" /></PopoverTrigger
+                  ><PopoverPortal
+                    ><PopoverContent
+                      class="chat-popover chat-thinking-popover"
+                      side="top"
+                      :side-offset="12"
+                      :collision-padding="12"
+                      ><p>推理强度：{{ thinking }}</p>
+                      <SliderRoot
+                        v-model="intensity"
+                        class="chat-slider"
+                        :min="0"
+                        :max="levels.length - 1"
+                        :step="1"
+                        ><SliderTrack class="chat-slider-track"
+                          ><SliderRange class="chat-slider-range" /></SliderTrack
+                        ><SliderThumb
+                          class="chat-slider-thumb"
+                          aria-label="推理强度"
+                          :aria-valuetext="thinking ?? ''"
+                      /></SliderRoot>
+                      <div class="chat-slider-labels">
+                        <span>{{ levels[0] }}</span
+                        ><span>{{ levels.at(-1) }}</span>
+                      </div></PopoverContent
+                    ></PopoverPortal
+                  ></PopoverRoot
+                >
+                <span v-else-if="levels.length === 1" class="chat-thinking-single">{{
+                  thinking
+                }}</span>
+                <button
+                  v-if="activeRunId"
+                  type="button"
+                  class="chat-send"
+                  :disabled="stopping"
+                  :aria-label="stopping ? '正在停止生成' : '停止生成'"
+                  @click="stop"
+                >
+                  <StopIcon class="ui-icon" />
+                </button>
+                <button
+                  v-else
+                  type="submit"
+                  class="chat-send"
+                  :disabled="!canSend"
+                  :aria-label="sending ? '正在发送' : '发送消息'"
+                >
+                  <ArrowUpIcon class="ui-icon" />
+                </button>
+              </div>
             </div>
-          </div>
-          <p>对话将保存在当前工作空间。</p>
+          </form>
+          <p class="chat-hint">Enter 发送 · Shift+Enter 换行</p>
         </footer>
       </main>
+      <EditorDialog v-if="rename" title="重命名对话" :busy="saving" @close="rename = undefined"
+        ><form class="chat-rename-form" novalidate @submit.prevent="saveTitle">
+          <label for="chat-title">对话标题</label
+          ><input
+            id="chat-title"
+            v-model="title"
+            maxlength="200"
+            :aria-invalid="!!renameError"
+            aria-describedby="chat-title-error"
+          />
+          <p id="chat-title-error" class="chat-inline-error" role="alert">{{ renameError }}</p>
+          <button class="chat-save" :disabled="saving">{{ saving ? '正在保存…' : '保存' }}</button>
+        </form></EditorDialog
+      >
     </div>
   </DialogRoot>
 </template>
 
-<style scoped src="./chat.css"></style>
+<style src="./chat.css"></style>

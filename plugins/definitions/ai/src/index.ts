@@ -26,7 +26,15 @@ import type {
   Tool,
 } from './types.js'
 import { Registry } from './registry.js'
-import { appendEvent, decode, migrations, pluginId, row, saveRun } from './store.js'
+import {
+  appendEvent,
+  conversationFields,
+  decode,
+  migrations,
+  pluginId,
+  row,
+  saveRun,
+} from './store.js'
 import type { Tables } from './store.js'
 import { AiError, canonical, check, compile, freeze, identifier, json, payload } from './utils.js'
 import { Running } from './runtime.js'
@@ -285,13 +293,18 @@ export class AiService extends Service<Config> {
       selectedNodeId: null,
       activeRunId: null,
       createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      archivedAt: null,
     }
     await this.locked(async () => {
-      await this.db().insertInto('conversations').values(row(value, access.workspaceId)).execute()
+      await this.db()
+        .insertInto('conversations')
+        .values({ ...row(value, access.workspaceId), ...conversationFields(value) })
+        .execute()
     })
     return value
   }
-  async listConversations(access: Access, offset = 0, limit = 50) {
+  async listConversations(access: Access, offset = 0, limit = 50, archived = false) {
     await this.verify(access)
     check(
       Number.isSafeInteger(offset) &&
@@ -306,11 +319,70 @@ export class AiService extends Service<Config> {
         .selectFrom('conversations')
         .selectAll()
         .where('workspace_id', '=', access.workspaceId)
-        .orderBy('id')
+        .where('archived_at', archived ? 'is not' : 'is', null)
+        .orderBy('last_activity_at', 'desc')
+        .orderBy('id', 'desc')
         .offset(offset)
         .limit(limit)
         .execute()
     ).map(decode<Conversation>)
+  }
+  async updateConversation(
+    access: Access,
+    id: string,
+    changes: { title?: string; archived?: boolean },
+  ) {
+    await this.verify(access)
+    check(changes.title !== undefined || changes.archived !== undefined, '缺少会话更新内容')
+    if (changes.title !== undefined)
+      check(
+        typeof changes.title === 'string' &&
+          changes.title.trim().length > 0 &&
+          changes.title.trim().length <= 200,
+        '标题须为 1–200 个字符',
+      )
+    check(changes.archived === undefined || typeof changes.archived === 'boolean', '归档状态无效')
+    return this.locked(async () => {
+      const conversation = await this.conversation(access, id)
+      if (changes.archived === true && conversation.activeRunId)
+        throw new AiError('busy', '请等待生成结束后归档', 409)
+      if (changes.title !== undefined) conversation.title = changes.title.trim()
+      if (changes.archived !== undefined)
+        conversation.archivedAt = changes.archived ? (conversation.archivedAt ?? Date.now()) : null
+      await this.db()
+        .updateTable('conversations')
+        .set(conversationFields(conversation))
+        .where('id', '=', id)
+        .execute()
+      return conversation
+    })
+  }
+  async backfillHistory() {
+    await this.db().transaction(async (db) => {
+      const rows = await db
+        .selectFrom('conversations')
+        .selectAll()
+        .where('last_activity_at', 'is', null)
+        .execute()
+      for (const existing of rows) {
+        const conversation = decode<Conversation>(existing)
+        const runs = await db
+          .selectFrom('runs')
+          .selectAll()
+          .where('conversation_id', '=', conversation.id)
+          .execute()
+        conversation.lastActivityAt = runs.reduce((time, item) => {
+          const run = decode<RunRecord>(item)
+          return Math.max(time, run.createdAt, run.endedAt ?? 0)
+        }, conversation.createdAt)
+        conversation.archivedAt ??= null
+        await db
+          .updateTable('conversations')
+          .set(conversationFields(conversation))
+          .where('id', '=', conversation.id)
+          .execute()
+      }
+    })
   }
   private async conversation(access: Access, id: string) {
     const result = await this.db()
@@ -371,7 +443,7 @@ export class AiService extends Service<Config> {
       conversation.revision++
       await this.db()
         .updateTable('conversations')
-        .set({ payload: JSON.stringify(conversation) })
+        .set(conversationFields(conversation))
         .where('id', '=', id)
         .execute()
       return conversation
@@ -475,6 +547,8 @@ export class AiService extends Service<Config> {
           throw new AiError('conflict', '幂等键参数不一致', 409)
         return decode<RunRecord>(prior)
       }
+      if (conversation.archivedAt !== null)
+        throw new AiError('archived', '请先取消归档再继续对话', 409)
       this.expected(conversation, command.expectedRevision, command.expectedNodeId)
       const bound = this.bind(conversation.agentId)
       const nodes = await this.nodes(id)
@@ -567,7 +641,8 @@ export class AiService extends Service<Config> {
         status: 'running',
         agent,
         model: json(model),
-        thinking: command.thinking ?? agent.defaultThinking ?? null,
+        thinking:
+          command.thinking === undefined ? (agent.defaultThinking ?? null) : command.thinking,
         input: json(input),
         messages: [],
         requests: [],
@@ -582,6 +657,7 @@ export class AiService extends Service<Config> {
         history.flatMap((item) => item.messages),
       )
       live.validateSelection(model, run.thinking)
+      conversation.lastActivityAt = run.createdAt
       conversation.activeRunId = runId
       conversation.selectedNodeId = reply.id
       conversation.revision++
@@ -600,7 +676,7 @@ export class AiService extends Service<Config> {
           .execute()
         await db
           .updateTable('conversations')
-          .set({ payload: JSON.stringify(conversation) })
+          .set(conversationFields(conversation))
           .where('id', '=', id)
           .execute()
       })
@@ -642,11 +718,12 @@ export class AiService extends Service<Config> {
             .where('id', '=', live.record.conversationId)
             .executeTakeFirstOrThrow()
           const conversation = decode<Conversation>(existingConversation)
+          conversation.lastActivityAt = live.record.endedAt ?? Date.now()
           conversation.activeRunId = null
           conversation.revision++
           await db
             .updateTable('conversations')
-            .set({ payload: JSON.stringify(conversation) })
+            .set(conversationFields(conversation))
             .where('id', '=', conversation.id)
             .execute()
         }
@@ -692,10 +769,11 @@ export class AiService extends Service<Config> {
           .executeTakeFirstOrThrow()
         const conversation = decode<Conversation>(existingConversation)
         conversation.activeRunId = null
+        conversation.lastActivityAt = run.endedAt
         conversation.revision++
         await db
           .updateTable('conversations')
-          .set({ payload: JSON.stringify(conversation) })
+          .set(conversationFields(conversation))
           .where('id', '=', conversation.id)
           .execute()
       }
@@ -715,6 +793,7 @@ export default defineDatabasePlugin<Partial<Config>>({
     await ctx.plugin({
       inject: ['ai', 'server', 'rbac'],
       async apply(ctx: Context) {
+        await ctx.ai.backfillHistory()
         await ctx.ai.recover()
         routes(ctx)
       },

@@ -19,6 +19,7 @@
     }
   },
   "dependencies": {
+    "@antarestra/contracts": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",

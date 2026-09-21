@@ -126,6 +126,97 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('历史按活动排序并在数据库分页，重命名与归档不改变活动时间', async () => {
+    const app = await setup()
+    await delay(2)
+    const newer = await app.ctx.ai.createConversation(app.access, 'assistant', '第二个')
+    expect((await app.ctx.ai.listConversations(app.access, 0, 1))[0]?.id).toBe(newer.id)
+    await send(app)
+    const [first] = await app.ctx.ai.listConversations(app.access, 0, 1)
+    expect(first?.id).toBe(app.conversation.id)
+    expect((await app.ctx.ai.listConversations(app.access, 1, 1))[0]?.id).toBe(newer.id)
+    const renamed = await app.ctx.ai.updateConversation(app.access, app.conversation.id, {
+      title: ' 新标题 ',
+    })
+    expect(renamed.title).toBe('新标题')
+    expect(renamed.lastActivityAt).toBe(first?.lastActivityAt)
+    await app.ctx.ai.updateConversation(app.access, app.conversation.id, { archived: true })
+    expect(await app.ctx.ai.listConversations(app.access)).toHaveLength(1)
+    expect((await app.ctx.ai.listConversations(app.access, 0, 50, true))[0]?.id).toBe(
+      app.conversation.id,
+    )
+    await expect(send(app)).rejects.toMatchObject({ code: 'archived' })
+    await app.ctx.ai.updateConversation(app.access, app.conversation.id, { archived: false })
+    expect((await send(app)).status).toBe('completed')
+  })
+  it('会话元数据校验和跨空间拒绝访问', async () => {
+    const app = await setup()
+    for (const title of ['', '  ', '字'.repeat(201)])
+      await expect(
+        app.ctx.ai.updateConversation(app.access, app.conversation.id, { title }),
+      ).rejects.toThrow()
+    await expect(
+      app.ctx.ai.updateConversation(app.other, app.conversation.id, { archived: true }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+    await expect(
+      app.ctx.ai.updateConversation(app.other, app.conversation.id, { title: '越界' }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+    expect(await app.ctx.ai.listConversations(app.other)).toEqual([])
+  })
+  it('生成中可重命名但不能归档，终态保留最新标题', async () => {
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        async generate(_r, _c, context) {
+          await delay(10000, undefined, { signal: context.signal })
+          return { content: [] }
+        },
+      },
+    })
+    const run = await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id),
+    )
+    await expect(
+      app.ctx.ai.updateConversation(app.access, app.conversation.id, { archived: true }),
+    ).rejects.toMatchObject({ code: 'busy' })
+    await Promise.all([
+      app.ctx.ai.updateConversation(app.access, app.conversation.id, { title: '生成时的新标题' }),
+      app.ctx.ai.cancel(app.access, run.id),
+    ])
+    const { conversation } = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+    expect(conversation.title).toBe('生成时的新标题')
+    expect(conversation.activeRunId).toBeNull()
+    expect(conversation.lastActivityAt).toBe((await app.ctx.ai.getRun(app.access, run.id)).endedAt)
+  })
+  it('旧历史回填取最新运行时间，重复回填不覆盖归档', async () => {
+    const app = await setup()
+    const run = await send(app)
+    const db = app.ctx.database.scope<Tables>(app.ctx, '@antarestra/ai')
+    const { conversation } = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+    const { lastActivityAt: _activity, archivedAt: _archived, ...legacy } = conversation
+    await db
+      .updateTable('conversations')
+      .set({ payload: JSON.stringify(legacy), last_activity_at: null })
+      .where('id', '=', conversation.id)
+      .execute()
+    await app.ctx.ai.backfillHistory()
+    expect((await app.ctx.ai.listConversations(app.access))[0]?.lastActivityAt).toBe(run.endedAt)
+    const archived = await app.ctx.ai.updateConversation(app.access, conversation.id, {
+      archived: true,
+    })
+    await app.ctx.ai.backfillHistory()
+    expect((await app.ctx.ai.getConversation(app.access, conversation.id)).conversation).toEqual(
+      archived,
+    )
+  })
+  it('逐轮显式关闭推理不会继承 Agent 的默认强度', async () => {
+    const app = await setup({ agent: agent({ defaultThinking: 'high' }) })
+    const run = await send(app, { thinking: null })
+    expect(run.status).toBe('completed')
+    expect(run.thinking).toBeNull()
+  })
   it('具名扩展准备通过 Cordis 分发，未选择的扩展不运行，卸载后拒绝运行', async () => {
     const app = await setup({ agent: agent({ extensions: { selected: { enabled: true } } }) })
     const sequence: string[] = []
@@ -743,5 +834,29 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(text).not.toContain('secret-never-export')
     const final = await fetch(base + `/ai/runs/${run.id}`, { headers })
     expect(((await final.json()) as { status: string }).status).toBe('completed')
+    const changed = await fetch(base + `/ai/conversations/${conversation.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ title: 'HTTP 归档测试', archived: true }),
+    })
+    expect(changed.status).toBe(200)
+    expect(await changed.json()).toMatchObject({
+      title: 'HTTP 归档测试',
+      archivedAt: expect.any(Number),
+    })
+    expect(await (await fetch(base + '/ai/conversations', { headers })).json()).toEqual([])
+    expect(
+      await (await fetch(base + '/ai/conversations?archived=true', { headers })).json(),
+    ).toMatchObject([{ id: conversation.id }])
+    expect((await fetch(base + '/ai/conversations?archived=invalid', { headers })).status).toBe(400)
+    expect(
+      (
+        await fetch(base + `/ai/conversations/${conversation.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ title: ' ' }),
+        })
+      ).status,
+    ).toBe(400)
   })
 })

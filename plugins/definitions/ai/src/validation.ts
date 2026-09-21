@@ -46,7 +46,7 @@ export const validateCommand = compile({
     targetNodeId: id,
     input,
     model: ref,
-    thinking: { type: 'string', minLength: 1 },
+    thinking: { anyOf: [{ type: 'string', minLength: 1 }, { type: 'null' }] },
   },
   allOf: [
     {

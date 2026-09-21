@@ -1,7 +1,12 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 export type JsonObject = { [key: string]: Json }
 export type ContentBlock =
-  | { type: 'text' | 'thinking'; text: string }
+  | {
+      type: 'text' | 'thinking'
+      text: string
+      /** 驱动生成的不透明续接信息，仅能由相同连接、模型和驱动使用。 */
+      continuation?: { model: ModelRef; driverId: string; signature: string }
+    }
   | { type: 'image' | 'file'; resourceId: string; mimeType: string }
   | { type: 'tool-call'; id: string; name: string; arguments: JsonObject }
   | { type: 'tool-result'; id: string; content: Json; isError: boolean }
@@ -52,6 +57,8 @@ export interface Conversation {
   revision: number
   activeRunId: string | null
   createdAt: number
+  lastActivityAt: number
+  archivedAt: number | null
 }
 export interface MessageNode {
   id: string
@@ -100,7 +107,7 @@ export interface RunCommand {
   targetNodeId?: string
   input?: UserInput
   model?: ModelRef
-  thinking?: string
+  thinking?: string | null
 }
 export interface AiEvent {
   runId: string

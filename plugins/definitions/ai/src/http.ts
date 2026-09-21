@@ -49,10 +49,15 @@ export function routes(ctx: Context) {
     http.body = await ctx.ai.catalog(access)
   })
   route('GET', '/conversations', async (http, access) => {
+    check(
+      http.query.archived === undefined || ['true', 'false'].includes(String(http.query.archived)),
+      '归档筛选无效',
+    )
     http.body = await ctx.ai.listConversations(
       access,
       Number(http.query.offset ?? 0),
       Number(http.query.limit ?? 50),
+      http.query.archived === 'true',
     )
   })
   route('POST', '/conversations', async (http, access) => {
@@ -64,6 +69,15 @@ export function routes(ctx: Context) {
   })
   route('GET', '/conversations/:id', async (http, access) => {
     http.body = await ctx.ai.getConversation(access, id(http))
+  })
+  route('PATCH', '/conversations/:id', async (http, access) => {
+    const body = await readJson(http)
+    check(body.title === undefined || typeof body.title === 'string', '标题无效')
+    check(body.archived === undefined || typeof body.archived === 'boolean', '归档状态无效')
+    http.body = await ctx.ai.updateConversation(access, id(http), {
+      ...(typeof body.title === 'string' ? { title: body.title } : {}),
+      ...(typeof body.archived === 'boolean' ? { archived: body.archived } : {}),
+    })
   })
   route('PATCH', '/conversations/:id/selection', async (http, access) => {
     const body = await readJson(http)

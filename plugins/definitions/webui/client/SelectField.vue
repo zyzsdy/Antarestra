@@ -10,6 +10,8 @@ import {
   ComboboxTrigger,
   ComboboxViewport,
   SelectContent,
+  SelectGroup,
+  SelectLabel,
   SelectItem,
   SelectItemText,
   SelectPortal,
@@ -22,8 +24,15 @@ import { CheckIcon, ChevronDownIcon, XMarkIcon } from '@heroicons/vue/24/outline
 
 const props = withDefaults(
   defineProps<{
+    compact?: boolean
     id?: string
-    options: { id: string; name: string; description?: string; disabled?: boolean }[]
+    options: {
+      id: string
+      name: string
+      description?: string
+      disabled?: boolean
+      group?: string
+    }[]
     label: string
     placeholder?: string
     searchable?: boolean
@@ -34,6 +43,12 @@ const props = withDefaults(
     emptyText?: string
   }>(),
   { placeholder: '请选择', emptyText: '没有匹配选项，请尝试其他关键词。' },
+)
+const groups = computed(() =>
+  [...new Set(props.options.map((item) => item.group ?? ''))].map((name) => ({
+    name,
+    options: props.options.filter((item) => (item.group ?? '') === name),
+  })),
 )
 const value = defineModel<string>({ required: true })
 const host = ref<HTMLElement>()
@@ -99,7 +114,12 @@ function keydown(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <div ref="host" class="ui-select" @keydown.capture="keydown">
+  <div
+    ref="host"
+    class="ui-select"
+    :class="{ 'ui-select-compact': compact }"
+    @keydown.capture="keydown"
+  >
     <ComboboxRoot
       v-if="searchable || editable"
       v-model:open="open"
@@ -191,16 +211,19 @@ function keydown(event: KeyboardEvent) {
           @escape-key-down.stop
         >
           <SelectViewport>
-            <SelectItem
-              v-for="item in options"
-              :key="item.id"
-              :value="`value:${item.id}`"
-              :disabled="!!item.disabled"
-              class="ui-select-option"
-            >
-              <SelectItemText class="ui-select-option-text">{{ item.name }}</SelectItemText>
-              <CheckIcon v-if="item.id === value" class="ui-icon" aria-hidden="true" />
-            </SelectItem>
+            <SelectGroup v-for="group in groups" :key="group.name">
+              <SelectLabel v-if="group.name" class="ui-select-group">{{ group.name }}</SelectLabel>
+              <SelectItem
+                v-for="item in group.options"
+                :key="item.id"
+                :value="`value:${item.id}`"
+                :disabled="!!item.disabled"
+                class="ui-select-option"
+              >
+                <SelectItemText class="ui-select-option-text">{{ item.name }}</SelectItemText>
+                <CheckIcon v-if="item.id === value" class="ui-icon" aria-hidden="true" />
+              </SelectItem>
+            </SelectGroup>
             <p v-if="!options.length" class="ui-select-empty" role="status">暂无可选项。</p>
           </SelectViewport>
         </SelectContent>
@@ -347,5 +370,25 @@ function keydown(event: KeyboardEvent) {
   margin: 0;
   line-height: 1.6;
   color: #637089;
+}
+.ui-select-group {
+  padding: 10px;
+  color: #637089;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ui-select.ui-select-compact .ui-select-trigger {
+  min-height: 36px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+}
+.ui-select.ui-select-compact .ui-select-trigger:hover:not(:disabled) {
+  background: #f1f2f4;
+}
+.ui-select-compact .ui-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
