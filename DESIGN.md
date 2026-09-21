@@ -52,7 +52,7 @@ components:
 
 ## 层次与深度
 
-以表面颜色和细边框区分区域，移动侧栏和通知可使用现有阴影；普通卡片不增加浮动效果。弹窗由 WebUI 的原生 dialog 进入顶层，避免手工模拟焦点约束。
+以表面颜色和细边框区分区域，移动侧栏和通知可使用现有阴影；普通卡片不增加浮动效果。弹窗由 WebUI 基于 Reka UI Dialog / AlertDialog 统一管理焦点隔离与关闭顺序。编辑弹窗保留业务样式继承，固定定位的遮罩与内容层级为 300/301；确认弹窗挂载到 body，层级为 500/501；通知层级为 1000。
 
 ## 形状
 
@@ -81,7 +81,7 @@ components:
 
 初始登录信息使用共享编辑弹窗呈现，密码采用 Cascadia Mono、Consolas、Courier New 的等宽字体栈以方便打印辨认；复制操作复制完整交付文本，但通知不重复显示密码。登录、注册与修改密码共用输入框内的眼睛图标显示/隐藏密码控件，默认保持遮罩，图标按钮提供随状态变化的中文可访问名称。登录与注册使用下划线标签页切换，不使用实心操作按钮，避免与表单提交按钮混淆。用户列表的创建和刷新操作在摘要栏右侧成组展示，刷新使用带提示和可访问名称的图标按钮。
 
-下拉框由 WebUI 的 SelectField.vue 统一维护，基于 Reka UI Select/Combobox 处理普通选择、筛选选择和自由输入建议；EditableSelect.vue 仅封装角色业务文案。触发框与弹层复用组件内的边框、7px 圆角和白色表面变量，选中项带勾选图标，高亮使用既有蓝色焦点与浅蓝背景。弹层与触发框等宽、自动避让视口、最高 300px 并可滚动；弹窗内挂载到所属 dialog，长包名换行显示。表单弹窗由 EditorDialog.vue 维护，原生 dialog 负责焦点隔离，内容超高时在弹窗内滚动。
+下拉框由 WebUI 的 SelectField.vue 统一维护，基于 Reka UI Select/Combobox 处理普通选择、筛选选择和自由输入建议；EditableSelect.vue 仅封装角色业务文案。触发框与弹层复用组件内的边框、7px 圆角和白色表面变量，选中项带勾选图标，高亮使用既有蓝色焦点与浅蓝背景。弹层与触发框等宽、自动避让视口、最高 300px 并可滚动；弹窗内挂载到所属 Dialog 内容元素，长包名换行显示。表单弹窗由 EditorDialog.vue 维护，Reka UI Dialog 负责焦点隔离与 Escape 处理，内容超高时在弹窗内滚动。
 
 ## 插件设置
 
@@ -101,4 +101,17 @@ components:
 
 ## Agents 编辑
 
-Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认”文字标记。表格每页 20 项；编辑采用共享 EditorDialog，模型单选沿用 SelectField，能力多选使用原生复选框。系统提示词提供 14 行编辑区，长表单在弹窗内滚动；窄屏名称和 ID 改为单列。样式由 ai-agents/client/style.css 维护，不新增全局令牌。
+Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认”文字标记。表格每页 20 项；编辑采用共享 EditorDialog，模型单选沿用 SelectField，能力多选使用基于 Reka UI Checkbox 的共享 CheckboxField。系统提示词提供 14 行编辑区，长表单在弹窗内滚动；窄屏名称和 ID 改为单列。样式由 ai-agents/client/style.css 维护，不新增全局令牌。
+
+## Reka UI 组件优先策略
+
+所有 UI 插件必须优先复用 Reka UI：只要库中已有对应交互组件，就使用该组件或 WebUI 对它的共享封装，不再自行实现同类键盘导航、焦点约束、弹层关闭、选中状态与无障碍角色。保留既有蓝白配色、间距及业务文案；Reka UI 是无样式基础组件，视觉样式仍由本文件及共享组件维护。官方组件说明见 [Reka UI](https://reka-ui.com/docs/overview/introduction)。
+
+- 统一从 `@antarestra/webui/components` 具名导入，该入口完整再导出 Reka UI 的组件、工具和类型。仅 WebUI 直接依赖 `reka-ui`，业务插件不重复安装或直接导入。
+- 优先使用已有封装：`SelectField` / `EditableSelect`、`EditorDialog`、`CheckboxField`、`NumberField`、`PaginationField`；通知与确认通过 `FeedbackHost` 的反馈接口使用。新增重复场景先扩展共享封装，避免页面局部复制。
+- 账号菜单用 DropdownMenu；登录与配置编辑切换用 Tabs；分组与高级配置用 Collapsible；复选用 Checkbox；密码可见性用 Toggle；纯数字输入用 NumberField（中文区域、上下限、方向键，禁用滚轮修改）；头像用 Avatar；窄屏聊天抽屉用 Dialog。后续出现工具提示、滑块、日期选择等需求时，同样先采用对应的 Reka UI 组件。
+- 原生按钮、链接、文本输入、textarea、表格、语义标签和品牌图标在没有对应 Reka UI 交互组件时继续使用，不为了包装而改变语义。业务校验、授权、保存、分页数据请求和草稿确认仍由所属插件负责。
+- 所有扩展保留 `@antarestra/webui/vite` 构建入口。页面壳提供唯一的 Vue 与 Reka UI 运行时，避免跨插件 Dialog、Select 和确认框各自维护不一致的弹层栈。完整公开导出由页面壳承担一次加载成本，扩展只引用共享实例。
+- 新增或迁移组件须验证键盘、禁用/忙碌、错误和空状态，常规窗口及窄屏；特别验证弹窗内下拉、关闭后焦点恢复、确认取消后草稿保留、复选框数组更新及分页边界。不能以通过类型检查代替浏览器验证。
+
+此次规范调整：原生编辑/确认弹窗改为 Reka UI，手写菜单和标签键盘逻辑删除，通知计时及暂停交给 Toast；CheckboxField 统一承载布尔、数组及部分选中状态，PaginationField 统一承载上一页/下一页行为。此为用户明确要求的组件策略变更，不修改产品视觉方向。

@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { PaginationField, CheckboxField, EditorDialog } from '@antarestra/webui/components'
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from '@antarestra/webui/api'
-import { EditorDialog } from '@antarestra/webui/components'
 import { PlusIcon, ArrowPathIcon, ArrowLeftIcon } from '@antarestra/webui/icons'
 import type { ModelDefinition } from '@antarestra/ai'
 import type { ProviderView, Candidate, Discovery } from '../src/types.js'
@@ -237,9 +237,9 @@ function sync(all: boolean) {
     feedback.toast(`已同步 ${selected.length} 个模型`)
   })
 }
-function checkPage(event: Event) {
+function checkPage(checked: boolean) {
   const ids = visibleCandidates.value.map((item) => item.id)
-  selection.value = (event.target as HTMLInputElement).checked
+  selection.value = checked
     ? [...new Set([...selection.value, ...ids])]
     : selection.value.filter((id) => !ids.includes(id))
 }
@@ -317,11 +317,15 @@ onUnmounted(() => {
             : '尚未接入提供商，点击“新增提供商”开始配置。'
         }}
       </p>
-      <nav v-if="providerRows.length > size" class="pagination" aria-label="提供商分页">
-        <button :disabled="page === 1" @click="page--">上一页</button
-        ><span>{{ page }} / {{ Math.ceil(providerRows.length / size) }}</span
-        ><button :disabled="page * size >= providerRows.length" @click="page++">下一页</button>
-      </nav>
+      <PaginationField
+        v-if="providerRows.length > size"
+        v-model:page="page"
+        :total="providerRows.length"
+        :page-size="size"
+        :disabled="busy"
+        class="pagination"
+        label="提供商分页"
+      />
     </template>
     <template v-else>
       <button class="back" :disabled="busy" @click="select('')">
@@ -386,11 +390,15 @@ onUnmounted(() => {
         </table>
         <p v-if="!models.length" class="state">暂无模型，可同步模型目录或手动添加。</p>
       </div>
-      <nav v-if="models.length > size" class="pagination" aria-label="模型分页">
-        <button :disabled="modelPage === 1" @click="modelPage--">上一页</button
-        ><span>{{ modelPage }} / {{ Math.ceil(models.length / size) }}</span
-        ><button :disabled="modelPage * size >= models.length" @click="modelPage++">下一页</button>
-      </nav>
+      <PaginationField
+        v-if="models.length > size"
+        v-model:page="modelPage"
+        :total="models.length"
+        :page-size="size"
+        :disabled="busy"
+        class="pagination"
+        label="模型分页"
+      />
     </template>
     <EditorDialog
       v-if="providerDialog"
@@ -448,13 +456,16 @@ onUnmounted(() => {
             <thead>
               <tr>
                 <th>
-                  <input
-                    type="checkbox"
+                  <CheckboxField
                     aria-label="选择本页模型"
                     :disabled="busy || !visibleCandidates.length"
                     :checked="
                       visibleCandidates.length > 0 &&
                       visibleCandidates.every((item) => selection.includes(item.id))
+                    "
+                    :indeterminate="
+                      visibleCandidates.some((item) => selection.includes(item.id)) &&
+                      !visibleCandidates.every((item) => selection.includes(item.id))
                     "
                     @change="checkPage"
                   />
@@ -467,9 +478,8 @@ onUnmounted(() => {
             <tbody>
               <tr v-for="model in visibleCandidates" :key="model.id">
                 <td>
-                  <input
+                  <CheckboxField
                     v-model="selection"
-                    type="checkbox"
                     :value="model.id"
                     :aria-label="`选择 ${model.title}`"
                     :disabled="busy"
@@ -504,18 +514,14 @@ onUnmounted(() => {
             }}
           </p>
         </div>
-        <nav class="pagination" aria-label="候选模型分页">
-          <button :disabled="candidatePage === 1" @click="candidatePage--">上一页</button
-          ><span
-            >{{ candidatePage }} /
-            {{ Math.max(1, Math.ceil(filteredCandidates.length / size)) }}</span
-          ><button
-            :disabled="candidatePage * size >= filteredCandidates.length"
-            @click="candidatePage++"
-          >
-            下一页
-          </button>
-        </nav>
+        <PaginationField
+          v-model:page="candidatePage"
+          :total="filteredCandidates.length"
+          :page-size="size"
+          :disabled="busy"
+          class="pagination"
+          label="候选模型分页"
+        />
         <footer class="actions">
           <button :disabled="busy || !candidates.length" @click="sync(true)">
             同步并覆盖全部（{{ candidates.length }}）</button

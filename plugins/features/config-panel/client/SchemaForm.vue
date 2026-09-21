@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Toggle, SelectField } from '@antarestra/webui/components'
 import { computed, ref } from 'vue'
-import { SelectField } from '@antarestra/webui/components'
 import type { Schema } from './types.js'
 const props = defineProps<{ schema: Schema; value: Record<string, unknown>; prefix?: string }>()
 const emit = defineEmits<{ change: [path: string[], value: unknown, remove?: boolean] }>()
@@ -87,15 +87,15 @@ function input(key: string, field: Schema, raw: string) {
             :autocomplete="field['x-sensitive'] ? 'new-password' : 'off'"
             @input="input(key, field, ($event.target as HTMLInputElement).value)"
           />
-          <button
+          <Toggle
             v-if="field['x-sensitive']"
             type="button"
             :aria-label="visible[key] ? '隐藏敏感值' : '显示敏感值'"
-            :aria-pressed="!!visible[key]"
-            @click="visible[key] = !visible[key]"
+            :model-value="!!visible[key]"
+            @update:model-value="visible[key] = $event"
           >
             {{ visible[key] ? '隐藏' : '显示' }}
-          </button>
+          </Toggle>
           <button
             type="button"
             :aria-label="`移除 ${field.title ?? key}`"

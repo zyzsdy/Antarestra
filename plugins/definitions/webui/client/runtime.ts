@@ -1,4 +1,5 @@
 import * as vue from 'vue'
+import * as reka from 'reka-ui'
 import { createRouter, createWebHistory, createMemoryHistory } from 'vue-router'
 import type { ClientContext, ClientPlugin, EntryManifest, Page } from '../src/client.js'
 import { createClientSession, sessionStorageKey } from './session.js'
@@ -14,6 +15,11 @@ export const session = createClientSession(storage)
 // 扩展的编译产物通过统一构建插件读取此共享运行时。
 Object.defineProperty(globalThis, Symbol.for('antarestra.webui.vue'), {
   value: vue,
+  configurable: true,
+})
+
+Object.defineProperty(globalThis, Symbol.for('antarestra.webui.reka'), {
+  value: reka,
   configurable: true,
 })
 

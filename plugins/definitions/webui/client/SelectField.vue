@@ -61,7 +61,7 @@ const options = computed(() => {
   )
 })
 onMounted(() => {
-  portalTarget.value = host.value?.closest('dialog') ?? document.body
+  portalTarget.value = host.value?.closest('[role="dialog"], [role="alertdialog"]') ?? document.body
 })
 watch(open, (isOpen) => {
   if (isOpen) return

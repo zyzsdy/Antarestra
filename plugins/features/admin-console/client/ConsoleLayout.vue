@@ -1,6 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { AntarestraLogo, SidebarIcon } from '@antarestra/webui/components'
+import { computed, ref } from 'vue'
+import {
+  AntarestraLogo,
+  SidebarIcon,
+  CollapsibleRoot,
+  CollapsibleTrigger,
+  CollapsibleContent,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  AvatarRoot,
+  AvatarFallback,
+} from '@antarestra/webui/components'
 import {
   ArrowTopRightOnSquareIcon,
   ArrowRightStartOnRectangleIcon,
@@ -27,9 +39,6 @@ const groupOverrides = ref(new Map<string, boolean>())
 const accountOpen = ref(false)
 const accountBusy = ref(false)
 const accountError = ref('')
-const accountButton = ref<HTMLButtonElement>()
-const accountMenu = ref<HTMLElement>()
-
 function groupExpanded(group: string) {
   return groupOverrides.value.get(group) ?? group === props.page.group
 }
@@ -55,55 +64,8 @@ function openAccount() {
   void props.router.push(props.accountPath)
 }
 
-function toggleAccount() {
-  accountOpen.value = !accountOpen.value
-  accountError.value = ''
-  if (accountOpen.value)
-    void nextTick(() => accountMenu.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus())
-}
-
-function closeAccount(restoreFocus = false) {
-  if (!accountOpen.value) return
+function closeAccount() {
   accountOpen.value = false
-  if (restoreFocus) void nextTick(() => accountButton.value?.focus())
-}
-
-function onDocumentPointerDown(event: PointerEvent) {
-  if (
-    accountOpen.value &&
-    event.target instanceof Node &&
-    !accountMenu.value?.contains(event.target) &&
-    !accountButton.value?.contains(event.target)
-  )
-    closeAccount()
-}
-
-function onMenuKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closeAccount(true)
-    return
-  }
-  if (event.key === 'Tab') {
-    void nextTick(() => {
-      if (!accountMenu.value?.contains(document.activeElement)) closeAccount()
-    })
-    return
-  }
-  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-  const entries = [...(accountMenu.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])]
-  if (!entries.length) return
-  event.preventDefault()
-  const current = entries.indexOf(document.activeElement as HTMLElement)
-  const index =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? entries.length - 1
-        : event.key === 'ArrowDown'
-          ? (current + 1) % entries.length
-          : (current - 1 + entries.length) % entries.length
-  entries[index]?.focus()
 }
 
 async function logout() {
@@ -118,9 +80,6 @@ async function logout() {
     accountBusy.value = false
   }
 }
-
-onMounted(() => document.addEventListener('pointerdown', onDocumentPointerDown))
-onUnmounted(() => document.removeEventListener('pointerdown', onDocumentPointerDown))
 </script>
 
 <template>
@@ -169,19 +128,19 @@ onUnmounted(() => document.removeEventListener('pointerdown', onDocumentPointerD
         </button>
       </div>
       <nav aria-label="后台导航">
-        <section v-for="group in groups" :key="group" class="nav-group">
-          <button
-            v-if="!collapsed"
-            class="group-title"
-            type="button"
-            :aria-expanded="groupExpanded(group)"
-            :aria-controls="`admin-group-${group}`"
-            @click="toggleGroup(group)"
-          >
+        <CollapsibleRoot
+          v-for="group in groups"
+          :key="group"
+          class="nav-group"
+          as="section"
+          :open="groupExpanded(group)"
+          @update:open="toggleGroup(group)"
+        >
+          <CollapsibleTrigger v-if="!collapsed" class="group-title" type="button">
             <span>{{ group }}</span>
             <ChevronDownIcon class="group-chevron" aria-hidden="true" />
-          </button>
-          <div v-if="groupExpanded(group)" :id="`admin-group-${group}`" class="group-items">
+          </CollapsibleTrigger>
+          <CollapsibleContent class="group-items">
             <a
               v-for="item in items.filter((entry) => entry.group === group)"
               :key="item.id"
@@ -195,51 +154,58 @@ onUnmounted(() => document.removeEventListener('pointerdown', onDocumentPointerD
               <component :is="item.icon" class="nav-icon" aria-hidden="true" />
               <span class="nav-label">{{ item.title }}</span>
             </a>
-          </div>
-        </section>
+          </CollapsibleContent>
+        </CollapsibleRoot>
       </nav>
       <div class="sidebar-bottom">
-        <button
-          ref="accountButton"
-          class="account-button"
-          type="button"
-          aria-haspopup="menu"
-          :aria-expanded="accountOpen"
-          aria-controls="admin-account-menu"
-          :aria-label="`账号菜单：${displayName}`"
-          :title="collapsed ? displayName : '打开账号菜单'"
-          @click="toggleAccount"
-        >
-          <span class="avatar">{{ displayName.slice(0, 1) }}</span>
-          <span class="account-copy nav-label">
-            <strong>{{ displayName }}</strong>
-            <small>管理控制台</small>
-          </span>
-          <ChevronDownIcon class="account-chevron nav-label" aria-hidden="true" />
-        </button>
-        <div
-          v-if="accountOpen"
-          id="admin-account-menu"
-          ref="accountMenu"
-          class="account-menu"
-          role="menu"
-          aria-label="账号菜单"
-          @keydown="onMenuKeydown"
-        >
-          <p v-if="accountError" class="account-error" role="alert">{{ accountError }}</p>
-          <a :href="accountPath" role="menuitem" @click.prevent="openAccount">
-            <UserCircleIcon class="menu-icon" aria-hidden="true" />
-            用户中心
-          </a>
-          <a href="/" role="menuitem" @click.prevent="returnToChat">
-            <ArrowTopRightOnSquareIcon class="menu-icon" aria-hidden="true" />
-            返回聊天
-          </a>
-          <button role="menuitem" type="button" :disabled="accountBusy" @click="logout">
-            <ArrowRightStartOnRectangleIcon class="menu-icon" aria-hidden="true" />
-            {{ accountBusy ? '正在退出…' : '退出登录' }}
-          </button>
-        </div>
+        <DropdownMenuRoot v-model:open="accountOpen" :modal="false">
+          <DropdownMenuTrigger
+            class="account-button"
+            type="button"
+            :aria-label="`账号菜单：${displayName}`"
+            :title="collapsed ? displayName : '打开账号菜单'"
+          >
+            <AvatarRoot class="avatar"
+              ><AvatarFallback>{{ displayName.slice(0, 1) }}</AvatarFallback></AvatarRoot
+            >
+            <span class="account-copy nav-label">
+              <strong>{{ displayName }}</strong>
+              <small>管理控制台</small>
+            </span>
+            <ChevronDownIcon class="account-chevron nav-label" aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            :side="collapsed ? 'right' : 'top'"
+            align="end"
+            :side-offset="8"
+            :collision-padding="12"
+            class="account-menu"
+            aria-label="账号菜单"
+          >
+            <p v-if="accountError" class="account-error" role="alert">{{ accountError }}</p>
+            <DropdownMenuItem as-child @select="openAccount"
+              ><a :href="accountPath" @click.prevent>
+                <UserCircleIcon class="menu-icon" aria-hidden="true" />
+                用户中心
+              </a></DropdownMenuItem
+            >
+            <DropdownMenuItem as-child @select="returnToChat"
+              ><a href="/" @click.prevent>
+                <ArrowTopRightOnSquareIcon class="menu-icon" aria-hidden="true" />
+                返回聊天
+              </a></DropdownMenuItem
+            >
+            <DropdownMenuItem
+              as="button"
+              type="button"
+              :disabled="accountBusy"
+              @select.prevent="logout"
+            >
+              <ArrowRightStartOnRectangleIcon class="menu-icon" aria-hidden="true" />
+              {{ accountBusy ? '正在退出…' : '退出登录' }}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenuRoot>
       </div>
     </aside>
     <div class="workspace">
@@ -481,11 +447,9 @@ a {
   transform: rotate(180deg);
 }
 .account-menu {
-  position: absolute;
   z-index: var(--z-dropdown);
-  bottom: calc(100% + 8px);
-  left: 0;
-  width: 100%;
+  width: 220px;
+  max-width: calc(100vw - 24px);
   min-width: 196px;
   padding: 6px;
   border: 1px solid #dfe5ef;
@@ -508,6 +472,7 @@ a {
   color: inherit;
   text-align: left;
 }
+.account-menu [data-highlighted],
 .account-menu a:hover,
 .account-menu button:hover,
 .account-menu a:focus-visible,
@@ -560,8 +525,6 @@ a {
   padding: 8px 5px;
 }
 .collapsed .account-menu {
-  left: 54px;
-  bottom: 0;
   width: 208px;
 }
 .workspace {

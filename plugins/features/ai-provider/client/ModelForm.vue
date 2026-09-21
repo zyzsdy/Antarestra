@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CheckboxField, NumberField } from '@antarestra/webui/components'
 import { reactive, ref, watch } from 'vue'
 import type { ModelDefinition } from '@antarestra/ai'
 import { defaultModelLimits, thinkingLevels } from '../src/types.js'
@@ -62,22 +63,20 @@ function save(event: Event) {
       <div class="form-grid">
         <div>
           <label for="model-context">上下文（Token）</label
-          ><input
+          ><NumberField
             id="model-context"
-            v-model.number="draft.contextWindow"
-            type="number"
-            min="1"
+            v-model="draft.contextWindow"
+            :min="1"
             :aria-invalid="invalid === 'model-context'"
             aria-describedby="model-validation"
           />
         </div>
         <div>
           <label for="model-output">最大输出（Token）</label
-          ><input
+          ><NumberField
             id="model-output"
-            v-model.number="draft.maxOutputTokens"
-            type="number"
-            min="1"
+            v-model="draft.maxOutputTokens"
+            :min="1"
             :max="draft.contextWindow"
             :aria-invalid="invalid === 'model-output'"
             aria-describedby="model-validation"
@@ -86,14 +85,14 @@ function save(event: Event) {
       </div>
       <fieldset class="checks">
         <legend>模型功能</legend>
-        <label><input type="checkbox" checked disabled />文本输入 / 输出</label
-        ><label><input v-model="draft.input" type="checkbox" value="image" />图片输入</label
-        ><label><input v-model="draft.tools" type="checkbox" />工具调用</label>
+        <label><CheckboxField checked disabled />文本输入 / 输出</label
+        ><label><CheckboxField v-model="draft.input" value="image" />图片输入</label
+        ><label><CheckboxField v-model="draft.tools" />工具调用</label>
       </fieldset>
       <fieldset class="checks">
         <legend>支持的思考强度</legend>
         <label v-for="level in thinkingLevels" :key="level"
-          ><input v-model="draft.thinkingLevels" type="checkbox" :value="level" />{{ level }}</label
+          ><CheckboxField v-model="draft.thinkingLevels" :value="level" />{{ level }}</label
         >
       </fieldset>
       <p class="hint">

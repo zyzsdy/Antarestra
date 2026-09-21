@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -13,6 +13,15 @@ describe('WebUI SFC 构建', () => {
     const directory = await mkdtemp(join(tmpdir(), 'antarestra-sfc-'))
     const fixture = await mkdtemp(resolve('plugins/features/.sfc-test-'))
     await cp(resolve('templates/webui-plugin'), fixture, { recursive: true })
+    const fixtureEntry = join(fixture, 'client/index.ts')
+    await writeFile(
+      fixtureEntry,
+      "import * as components from '@antarestra/webui/components'\n" +
+        (await readFile(fixtureEntry, 'utf8')).replace(
+          '  ctx.page(',
+          "  ctx.contribute('test', 'components', components)\n  ctx.page(",
+        ),
+    )
     try {
       for (const source of [fixture, 'plugins/features/chat-webui']) {
         const outDir = join(directory, source === fixture ? 'template' : 'chat')
@@ -27,6 +36,7 @@ describe('WebUI SFC 构建', () => {
         const code = await readFile(join(outDir, 'index.js'), 'utf8')
         const css = await readFile(join(outDir, 'style.css'), 'utf8')
         expect(code).toContain('antarestra.webui.vue')
+        expect(code).toContain('antarestra.webui.reka')
         expect(code).not.toContain('function createRenderer(')
         expect(css).toMatch(/\[data-v-[a-f0-9]+\]/)
         const links: { rel: string; href: string; remove: () => void }[] = []
@@ -36,13 +46,17 @@ describe('WebUI SFC 构建', () => {
         })
         const effects: (() => void)[] = []
         const pages: Page[] = []
+        let components: Record<string, unknown> | undefined
         const ctx: ClientContext = {
           vue: Reflect.get(globalThis, Symbol.for('antarestra.webui.vue')),
           router,
           session,
           config: {},
           slot: () => new Map(),
-          contribute: () => () => {},
+          contribute: (_slot, _id, value) => {
+            components = value as Record<string, unknown>
+            return () => {}
+          },
           page: (page) => {
             pages.push(page)
             return () => {}
@@ -56,6 +70,15 @@ describe('WebUI SFC 构建', () => {
           /* @vite-ignore */ pathToFileURL(join(outDir, 'index.js')).href
         )) as { default: ClientPlugin }
         await module.default(ctx)
+        if (source === fixture) {
+          const reka = Reflect.get(globalThis, Symbol.for('antarestra.webui.reka')) as Record<
+            string,
+            unknown
+          >
+          for (const [name, value] of Object.entries(reka)) expect(components?.[name]).toBe(value)
+          expect(components?.EditorDialog).toBeDefined()
+          expect(components?.CheckboxField).toBeDefined()
+        }
         expect(pages).toHaveLength(1)
         expect(links).toHaveLength(1)
         expect(links[0]!.href).toBe(pathToFileURL(join(outDir, 'style.css')).href)

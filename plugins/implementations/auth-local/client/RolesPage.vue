@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PaginationField, CheckboxField } from '@antarestra/webui/components'
 import { computed, inject, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from './api.js'
@@ -188,15 +189,17 @@ function clearPermissions() {
       <p v-if="!roles.length" class="empty">
         {{ busy ? '正在加载角色…' : '没有符合条件的角色。' }}
       </p>
-      <div class="pagination">
-        <span class="muted">共 {{ roles.length }} 个角色</span>
-        <div class="actions">
-          <button :disabled="busy || !page" @click="page--">上一页</button
-          ><button :disabled="busy || (page + 1) * 20 >= roles.length" @click="page++">
-            下一页
-          </button>
-        </div>
-      </div>
+      <PaginationField
+        :page="page + 1"
+        :total="roles.length"
+        :page-size="20"
+        :disabled="busy"
+        class="pagination"
+        label="角色分页"
+        @update:page="page = $event - 1"
+      >
+        共 {{ roles.length }} 个角色
+      </PaginationField>
     </section>
     <section v-if="editing" ref="panel" class="panel role-editor" tabindex="-1">
       <div class="section-heading">
@@ -249,11 +252,10 @@ function clearPermissions() {
             :key="permission.key"
             class="check"
             :class="{ 'default-permission': defaults.includes(permission.key) }"
-            ><input
-              type="checkbox"
+            ><CheckboxField
               :checked="defaults.includes(permission.key) || permissions.includes(permission.key)"
               :disabled="busy || defaults.includes(permission.key)"
-              @change="toggle(permission.key, ($event.target as HTMLInputElement).checked)"
+              @change="toggle(permission.key, $event)"
             /><span
               ><strong>{{ permission.description }}</strong
               ><small class="mono">{{ permission.key }}</small

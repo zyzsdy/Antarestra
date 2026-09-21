@@ -1,8 +1,20 @@
 <script setup lang="ts">
+import {
+  CheckboxField,
+  NumberField,
+  EditorDialog,
+  SelectField,
+  CollapsibleRoot,
+  CollapsibleTrigger,
+  CollapsibleContent,
+  TabsRoot,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '@antarestra/webui/components'
 import { computed, inject, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { parseDocument } from 'yaml'
 import { feedbackKey, refreshExtensionsKey } from '@antarestra/webui/client'
-import { EditorDialog, SelectField } from '@antarestra/webui/components'
 import { PlusIcon, ArrowPathIcon } from '@antarestra/webui/icons'
 import { ApiError, useApi } from '@antarestra/webui/api'
 import SchemaForm from './SchemaForm.vue'
@@ -389,7 +401,10 @@ onUnmounted(() => {
           <span>{{ rows.length }} 个配置实例</span
           ><button :disabled="busy" @click="editGroup()">新建分组</button>
         </div>
-        <section
+        <CollapsibleRoot
+          as="section"
+          :open="!collapsed.has(group.id)"
+          @update:open="$event ? collapsed.delete(group.id) : collapsed.add(group.id)"
           v-for="group in groups"
           :key="group.id"
           class="plugin-group"
@@ -397,13 +412,8 @@ onUnmounted(() => {
           @drop.prevent.stop="drop(group.id)"
         >
           <div class="group-heading">
-            <button
-              :aria-expanded="!collapsed.has(group.id)"
-              @click="
-                collapsed.has(group.id) ? collapsed.delete(group.id) : collapsed.add(group.id)
-              "
-            >
-              {{ collapsed.has(group.id) ? '展开' : '收起' }} · {{ group.name }}</button
+            <CollapsibleTrigger>
+              {{ collapsed.has(group.id) ? '展开' : '收起' }} · {{ group.name }}</CollapsibleTrigger
             ><template v-if="group.id"
               ><button
                 :disabled="busy"
@@ -426,7 +436,7 @@ onUnmounted(() => {
               </button></template
             >
           </div>
-          <ul v-show="!collapsed.has(group.id)">
+          <CollapsibleContent as="ul">
             <li
               v-for="row in rows.filter((item) => item.group === group.id)"
               :key="row.instanceId"
@@ -453,8 +463,8 @@ onUnmounted(() => {
                 >
               </button>
             </li>
-          </ul>
-        </section>
+          </CollapsibleContent>
+        </CollapsibleRoot>
         <p v-if="!rows.length" class="empty">
           {{ search ? '没有匹配的插件。' : '尚未添加插件配置。' }}
         </p>
@@ -485,19 +495,9 @@ onUnmounted(() => {
           <h2>加载器设置</h2>
           <p>加载器是系统固定入口，不能停用或删除。修改仅在下次重启后生效。</p>
           <label for="init-timeout">初始化超时（毫秒）</label
-          ><input
-            id="init-timeout"
-            v-model.number="settings.initializationTimeoutMs"
-            type="number"
-            min="1"
-          />
+          ><NumberField id="init-timeout" v-model="settings.initializationTimeoutMs" :min="1" />
           <label for="dispose-timeout">清理超时（毫秒）</label
-          ><input
-            id="dispose-timeout"
-            v-model.number="settings.disposalTimeoutMs"
-            type="number"
-            min="1"
-          />
+          ><NumberField id="dispose-timeout" v-model="settings.disposalTimeoutMs" :min="1" />
           <label for="supervision">进程监督模式</label
           ><SelectField
             id="supervision"
@@ -546,7 +546,7 @@ onUnmounted(() => {
             placeholder="可选，用于列表显示"
           />
           <div class="instance-controls">
-            <label><input v-model="enabled" type="checkbox" /> 启用插件（保存后生效）</label>
+            <label><CheckboxField v-model="enabled" /> 启用插件（保存后生效）</label>
             <div v-if="current">
               <button type="button" :disabled="busy" @click="move(current, current.group, -1)">
                 上移</button
@@ -564,43 +564,41 @@ onUnmounted(() => {
             :disabled="busy"
             @update:model-value="current && move(current, $event)"
           />
-          <div class="editor-tabs" role="group" aria-label="配置编辑方式">
-            <button
-              type="button"
-              :aria-pressed="mode === 'form'"
-              :disabled="!supportsForm(detail.info?.schema) || !parsed"
-              @click="mode = 'form'"
-            >
-              自动表单</button
-            ><button type="button" :aria-pressed="mode === 'yaml'" @click="mode = 'yaml'">
-              YAML
-            </button>
-          </div>
-          <p class="muted">环境变量保留为 $变量名；禁用时可以保存未完成配置。</p>
-          <SchemaForm
-            v-if="mode === 'form' && detail.info?.schema && parsed"
-            :schema="detail.info.schema"
-            :value="parsed"
-            @change="field"
-          />
-          <template v-else
-            ><label for="plugin-yaml">插件配置 YAML</label
-            ><textarea
-              id="plugin-yaml"
-              style="resize: none"
-              v-model="yaml"
-              spellcheck="false"
-              :aria-invalid="!parsed"
-              aria-describedby="yaml-help"
-            />
-            <p id="yaml-help" :class="{ error: !parsed }">
-              {{
-                parsed
-                  ? '仅编辑当前插件配置；主配置其他部分保持不变。'
-                  : '请输入有效的 YAML 映射，不支持别名及重复键。'
-              }}
-            </p></template
-          >
+          <TabsRoot v-model="mode">
+            <TabsList class="editor-tabs" aria-label="配置编辑方式">
+              <TabsTrigger value="form" :disabled="!supportsForm(detail.info?.schema) || !parsed"
+                >自动表单</TabsTrigger
+              >
+              <TabsTrigger value="yaml">YAML</TabsTrigger>
+            </TabsList>
+            <TabsContent :key="mode" :value="mode">
+              <p class="muted">环境变量保留为 $变量名；禁用时可以保存未完成配置。</p>
+              <SchemaForm
+                v-if="mode === 'form' && detail.info?.schema && parsed"
+                :schema="detail.info.schema"
+                :value="parsed"
+                @change="field"
+              />
+              <template v-else
+                ><label for="plugin-yaml">插件配置 YAML</label
+                ><textarea
+                  id="plugin-yaml"
+                  style="resize: none"
+                  v-model="yaml"
+                  spellcheck="false"
+                  :aria-invalid="!parsed"
+                  aria-describedby="yaml-help"
+                />
+                <p id="yaml-help" :class="{ error: !parsed }">
+                  {{
+                    parsed
+                      ? '仅编辑当前插件配置；主配置其他部分保持不变。'
+                      : '请输入有效的 YAML 映射，不支持别名及重复键。'
+                  }}
+                </p></template
+              >
+            </TabsContent>
+          </TabsRoot>
           <p v-if="newAddress" class="notice">
             监听配置变更后请手动打开：<code>{{ newAddress }}</code>
           </p>
@@ -865,7 +863,7 @@ onUnmounted(() => {
   margin-top: 24px;
   border-top: 1px solid #e4e9f1;
 }
-.config-page .editor-tabs [aria-pressed='true'] {
+.config-page .editor-tabs [data-state='active'] {
   color: #315ed1;
   border-color: #315ed1;
 }

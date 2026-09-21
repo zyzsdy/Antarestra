@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { PaginationField, EditorDialog } from '@antarestra/webui/components'
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from '@antarestra/webui/api'
-import { EditorDialog } from '@antarestra/webui/components'
 import { defaultAgentId } from '../src/types.js'
 import type { AgentRecord, Capabilities } from '../src/types.js'
 import AgentForm from './AgentForm.vue'
@@ -197,11 +197,14 @@ onUnmounted(() => {
       <p v-if="loaded && !rows.length">
         {{ search ? '没有匹配的 Agent，请调整筛选条件。' : '暂无 Agent。' }}
       </p>
-      <nav class="agents-pagination" aria-label="Agents 分页">
-        <button :disabled="page <= 1 || busy" @click="page--">上一页</button
-        ><span>{{ page }} / {{ pages }}</span
-        ><button :disabled="page >= pages || busy" @click="page++">下一页</button>
-      </nav>
+      <PaginationField
+        v-model:page="page"
+        :total="filtered.length"
+        :page-size="20"
+        :disabled="busy"
+        class="agents-pagination"
+        label="Agents 分页"
+      />
     </section>
     <EditorDialog
       v-if="dialog"

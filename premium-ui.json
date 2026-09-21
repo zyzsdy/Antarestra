@@ -7,7 +7,8 @@
     "plugins/features/chat-webui/client",
     "plugins/implementations/auth-local/client",
     "plugins/features/config-panel/client",
-    "plugins/features/ai-provider/client"
+    "plugins/features/ai-provider/client",
+    "plugins/features/ai-agents/client"
   ],
   "canonicalMap": "UX-CONTRACT.md",
   "requiredCapabilities": ["Scrollbar", "Toast", "Select/Listbox", "Form", "CRUD"],

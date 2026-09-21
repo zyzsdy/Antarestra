@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import { inject, onMounted, onUnmounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
-import { AntarestraLogo } from '@antarestra/webui/components'
+import {
+  AntarestraLogo,
+  DialogRoot,
+  DialogOverlay,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+  VisuallyHidden,
+  AvatarRoot,
+  AvatarFallback,
+} from '@antarestra/webui/components'
 import {
   PencilSquareIcon,
   MagnifyingGlassIcon,
@@ -21,6 +32,15 @@ const props = defineProps<{
 }>()
 const feedback = inject(feedbackKey)!
 const sidebar = ref(false)
+const narrow = ref(false)
+const media = matchMedia('(max-width: 760px)')
+function resize() {
+  narrow.value = media.matches
+  if (!narrow.value) sidebar.value = false
+}
+resize()
+onMounted(() => media.addEventListener('change', resize))
+onUnmounted(() => media.removeEventListener('change', resize))
 const suggestions = [
   { icon: PencilSquareIcon, title: '写下一个想法', detail: '把零散的灵感整理成文字' },
   { icon: MagnifyingGlassIcon, title: '探索一个问题', detail: '从不同角度看待新的可能' },
@@ -56,83 +76,91 @@ onUnmounted(() => window.removeEventListener('focus', check))
     <p>{{ failure }}</p>
     <a href="/">重试</a>
   </main>
-  <div v-else class="chat-app" :class="{ 'sidebar-open': sidebar }">
-    <button v-if="sidebar" class="chat-backdrop" aria-label="关闭侧栏" @click="sidebar = false" />
-    <aside class="chat-sidebar" aria-label="聊天记录">
-      <a class="chat-brand" href="/"><AntarestraLogo decorative />Antarestra</a>
-      <button class="chat-new" @click="feedback.toast('聊天功能即将开放，敬请期待。')">
-        <PlusIcon class="ui-icon" aria-hidden="true" /><span>新对话</span>
-      </button>
-      <div class="chat-history">
-        <h2>你的对话</h2>
-        <p>还没有聊天记录</p>
-        <small>开始一段对话，让想法在这里延续。</small>
-      </div>
-      <div class="chat-workspace">
-        <CubeIcon class="ui-icon" aria-hidden="true" />
-        <div><strong>个人工作空间</strong><small>当前空间暂无对话</small></div>
-      </div>
-      <a class="chat-profile" :href="session.accountPath">
-        <span class="chat-avatar">{{ session.displayName.slice(0, 1) }}</span>
-        <div>
-          <strong>{{ session.displayName }}</strong>
-          <small>{{ session.roles.includes('admin') ? '管理员' : '已登录用户' }}</small>
+  <DialogRoot v-else v-model:open="sidebar">
+    <div class="chat-app" :class="{ 'sidebar-open': sidebar }">
+      <DialogOverlay v-if="narrow" class="chat-backdrop" />
+      <component
+        :is="narrow ? DialogContent : 'aside'"
+        class="chat-sidebar"
+        aria-label="聊天记录"
+        :aria-describedby="undefined"
+      >
+        <VisuallyHidden v-if="narrow"><DialogTitle>聊天记录</DialogTitle></VisuallyHidden>
+        <DialogClose v-if="narrow" class="chat-drawer-close" aria-label="关闭聊天记录"
+          >关闭</DialogClose
+        >
+        <a class="chat-brand" href="/"><AntarestraLogo decorative />Antarestra</a>
+        <button class="chat-new" @click="feedback.toast('聊天功能即将开放，敬请期待。')">
+          <PlusIcon class="ui-icon" aria-hidden="true" /><span>新对话</span>
+        </button>
+        <div class="chat-history">
+          <h2>你的对话</h2>
+          <p>还没有聊天记录</p>
+          <small>开始一段对话，让想法在这里延续。</small>
         </div>
-        <ArrowTopRightOnSquareIcon class="ui-icon" aria-hidden="true" />
-      </a>
-    </aside>
-    <main class="chat-main">
-      <header class="chat-header">
-        <div>
-          <button
-            class="chat-menu"
-            aria-label="打开聊天记录"
-            :aria-expanded="sidebar"
-            @click="sidebar = !sidebar"
+        <div class="chat-workspace">
+          <CubeIcon class="ui-icon" aria-hidden="true" />
+          <div><strong>个人工作空间</strong><small>当前空间暂无对话</small></div>
+        </div>
+        <a class="chat-profile" :href="session.accountPath">
+          <AvatarRoot class="chat-avatar"
+            ><AvatarFallback>{{ session.displayName.slice(0, 1) }}</AvatarFallback></AvatarRoot
           >
-            <Bars3Icon class="ui-icon" aria-hidden="true" />
-          </button>
-          <strong>新对话</strong>
-        </div>
-        <span class="chat-preview">预览版</span>
-      </header>
-      <section class="chat-welcome">
-        <AntarestraLogo class="chat-spark" :size="72" decorative />
-        <p class="chat-eyebrow">让灵感，从一次对话开始</p>
-        <h1>今天，有什么新想法？</h1>
-        <p class="chat-subtitle">整理思路、探索问题，或是聊聊你的下一个计划。</p>
-        <div class="chat-suggestions">
-          <button
-            v-for="item in suggestions"
-            :key="item.title"
-            @click="feedback.messagebox('当前为界面预览，暂未接入模型和聊天记录功能。')"
-          >
-            <component :is="item.icon" class="suggestion-icon ui-icon" aria-hidden="true" />
-            <strong>{{ item.title }}</strong>
-            <small>{{ item.detail }}</small>
-          </button>
-        </div>
-      </section>
-      <footer class="chat-composer-area">
-        <div class="chat-composer">
-          <textarea
-            disabled
-            rows="2"
-            style="resize: none"
-            placeholder="聊天功能即将开放…"
-            aria-label="消息输入框"
-          />
           <div>
-            <span>当前为界面预览</span
-            ><button disabled aria-label="发送消息">
-              <ArrowUpIcon class="ui-icon" aria-hidden="true" />
+            <strong>{{ session.displayName }}</strong>
+            <small>{{ session.roles.includes('admin') ? '管理员' : '已登录用户' }}</small>
+          </div>
+          <ArrowTopRightOnSquareIcon class="ui-icon" aria-hidden="true" />
+        </a>
+      </component>
+      <main class="chat-main">
+        <header class="chat-header">
+          <div>
+            <DialogTrigger class="chat-menu" aria-label="打开聊天记录">
+              <Bars3Icon class="ui-icon" aria-hidden="true" />
+            </DialogTrigger>
+            <strong>新对话</strong>
+          </div>
+          <span class="chat-preview">预览版</span>
+        </header>
+        <section class="chat-welcome">
+          <AntarestraLogo class="chat-spark" :size="72" decorative />
+          <p class="chat-eyebrow">让灵感，从一次对话开始</p>
+          <h1>今天，有什么新想法？</h1>
+          <p class="chat-subtitle">整理思路、探索问题，或是聊聊你的下一个计划。</p>
+          <div class="chat-suggestions">
+            <button
+              v-for="item in suggestions"
+              :key="item.title"
+              @click="feedback.messagebox('当前为界面预览，暂未接入模型和聊天记录功能。')"
+            >
+              <component :is="item.icon" class="suggestion-icon ui-icon" aria-hidden="true" />
+              <strong>{{ item.title }}</strong>
+              <small>{{ item.detail }}</small>
             </button>
           </div>
-        </div>
-        <p>对话将保存在当前工作空间。</p>
-      </footer>
-    </main>
-  </div>
+        </section>
+        <footer class="chat-composer-area">
+          <div class="chat-composer">
+            <textarea
+              disabled
+              rows="2"
+              style="resize: none"
+              placeholder="聊天功能即将开放…"
+              aria-label="消息输入框"
+            />
+            <div>
+              <span>当前为界面预览</span
+              ><button disabled aria-label="发送消息">
+                <ArrowUpIcon class="ui-icon" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <p>对话将保存在当前工作空间。</p>
+        </footer>
+      </main>
+    </div>
+  </DialogRoot>
 </template>
 
 <style scoped src="./chat.css"></style>

@@ -185,14 +185,18 @@
   border: 1px solid #e4e9f1;
   border-radius: 7px;
 }
-.agents-form details {
+.agents-form .agents-advanced {
   margin-top: 24px;
 }
-.agents-form summary {
+.agents-form .agents-advanced-trigger {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: #263047;
   cursor: pointer;
   padding: 10px 0;
 }
-.agents-form summary:hover {
+.agents-form .agents-advanced-trigger:hover {
   color: #315ed1;
 }
 .agents-error {

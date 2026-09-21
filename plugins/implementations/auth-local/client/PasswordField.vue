@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Toggle } from '@antarestra/webui/components'
 import { ref } from 'vue'
 import { EyeIcon, EyeSlashIcon } from '@antarestra/webui/icons'
 
@@ -30,18 +31,18 @@ const visible = ref(false)
         minlength="8"
         maxlength="128"
       />
-      <button
+      <Toggle
         class="password-toggle"
         type="button"
         :disabled="disabled"
         :aria-label="visible ? `隐藏${label}` : `显示${label}`"
-        :aria-pressed="visible"
+        :model-value="visible"
         :title="visible ? `隐藏${label}` : `显示${label}`"
-        @click="visible = !visible"
+        @update:model-value="visible = $event"
       >
         <EyeSlashIcon v-if="visible" class="ui-icon" aria-hidden="true" />
         <EyeIcon v-else class="ui-icon" aria-hidden="true" />
-      </button>
+      </Toggle>
     </span>
   </div>
 </template>

@@ -1,83 +1,97 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, provide, ref } from 'vue'
+import { onUnmounted, provide, ref } from 'vue'
+import {
+  AlertDialogRoot,
+  AlertDialogPortal,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+  ToastProvider,
+  ToastRoot,
+  ToastDescription,
+  ToastClose,
+  ToastViewport,
+} from 'reka-ui'
 import { feedbackKey } from '../src/client.js'
 import { XMarkIcon } from '../src/icons.js'
-const messages = ref<{ id: number; text: string }[]>([])
-const dialog = ref<HTMLDialogElement>()
-const current = ref<{ title: string; message: string }>()
+const messages = ref<{ id: number; text: string; duration: number }[]>([])
+const current = ref<{ id: number; title: string; message: string }>()
+let previous: Element | null = null
 let sequence = 0
-const timers = new Set<ReturnType<typeof setTimeout>>()
-const queue: { title: string; message: string; resolve: (value: boolean) => void }[] = []
-function notice(text: string) {
-  const id = ++sequence
-  messages.value.push({ id, text })
-  return () => {
-    messages.value = messages.value.filter((item) => item.id !== id)
-  }
+const queue: { id: number; title: string; message: string; resolve: (value: boolean) => void }[] =
+  []
+function remove(id: number) {
+  messages.value = messages.value.filter((item) => item.id !== id)
 }
-async function show() {
-  current.value = queue[0]
-  if (current.value) {
-    await nextTick()
-    dialog.value?.showModal()
-  }
+function notice(text: string, duration = Infinity) {
+  const id = ++sequence
+  messages.value.push({ id, text, duration })
+  return () => remove(id)
 }
 function finish(value: boolean) {
-  dialog.value?.close()
   queue.shift()?.resolve(value)
-  void show()
+  current.value = queue[0]
+}
+function restoreFocus(event: Event) {
+  event.preventDefault()
+  if (!current.value && previous instanceof HTMLElement && previous.isConnected) previous.focus()
 }
 function modal(title: string, message: string) {
   return new Promise<boolean>((resolve) => {
-    queue.push({ title, message, resolve })
-    if (queue.length === 1) void show()
+    queue.push({ id: ++sequence, title, message, resolve })
+    if (queue.length === 1) {
+      previous = document.activeElement
+      current.value = queue[0]
+    }
   })
 }
 provide(feedbackKey, {
   notice,
-  toast(text) {
-    const remove = notice(text)
-    const timer = setTimeout(() => {
-      remove()
-      timers.delete(timer)
-    }, 4000)
-    timers.add(timer)
-    return () => {
-      clearTimeout(timer)
-      timers.delete(timer)
-      remove()
-    }
-  },
+  toast: (text) => notice(text, 4000),
   modal,
   messagebox: (message) => modal('提示', message),
 })
 onUnmounted(() => {
-  for (const timer of timers) clearTimeout(timer)
   for (const item of queue.splice(0)) item.resolve(false)
 })
 </script>
 <template>
-  <slot />
-  <div class="feedback-messages" aria-live="polite">
-    <div v-for="item in messages" :key="item.id" class="feedback-message">
-      {{ item.text
-      }}<button
-        aria-label="关闭通知"
-        @click="messages = messages.filter((value) => value.id !== item.id)"
+  <ToastProvider label="通知" :duration="4000">
+    <slot />
+    <ToastRoot
+      v-for="item in messages"
+      :key="item.id"
+      :duration="item.duration"
+      class="feedback-message"
+      @update:open="!$event && remove(item.id)"
+    >
+      <ToastDescription>{{ item.text }}</ToastDescription>
+      <ToastClose aria-label="关闭通知"
+        ><XMarkIcon class="ui-icon" aria-hidden="true"
+      /></ToastClose>
+    </ToastRoot>
+    <ToastViewport class="feedback-messages" label="通知（F8）" />
+  </ToastProvider>
+  <AlertDialogRoot v-if="current" :key="current.id" :open="true">
+    <AlertDialogPortal>
+      <AlertDialogOverlay class="feedback-overlay" />
+      <AlertDialogContent
+        class="feedback-dialog"
+        @close-auto-focus="restoreFocus"
+        @escape-key-down.prevent="finish(false)"
       >
-        <XMarkIcon class="ui-icon" aria-hidden="true" />
-      </button>
-    </div>
-  </div>
-  <dialog ref="dialog" aria-labelledby="feedback-title" @cancel.prevent="finish(false)">
-    <template v-if="current">
-      <h2 id="feedback-title">{{ current.title }}</h2>
-      <p>{{ current.message }}</p>
-      <div class="feedback-actions">
-        <button @click="finish(false)">取消</button><button @click="finish(true)">确定</button>
-      </div>
-    </template>
-  </dialog>
+        <AlertDialogTitle as="h2">{{ current.title }}</AlertDialogTitle>
+        <AlertDialogDescription as="p">{{ current.message }}</AlertDialogDescription>
+        <div class="feedback-actions">
+          <AlertDialogCancel @click.prevent="finish(false)">取消</AlertDialogCancel>
+          <AlertDialogAction @click.prevent="finish(true)">确定</AlertDialogAction>
+        </div>
+      </AlertDialogContent>
+    </AlertDialogPortal>
+  </AlertDialogRoot>
 </template>
 <style scoped>
 .feedback-messages {
@@ -85,6 +99,9 @@ onUnmounted(() => {
   right: 20px;
   top: 20px;
   z-index: 1000;
+  list-style: none;
+  margin: 0;
+  padding: 0;
   max-width: min(420px, calc(100vw - 40px));
 }
 .feedback-message {
@@ -101,14 +118,27 @@ onUnmounted(() => {
   border: 0;
   background: transparent;
 }
-dialog {
+.feedback-dialog {
+  position: fixed;
+  z-index: 501;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
   border: 1px solid #ddd;
   border-radius: 18px;
   max-width: min(480px, calc(100vw - 32px));
   padding: 28px;
   overflow-wrap: anywhere;
 }
-dialog::backdrop {
+.feedback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
   background: #0005;
 }
 .feedback-actions {

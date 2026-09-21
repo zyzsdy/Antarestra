@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Toggle, SelectField } from '@antarestra/webui/components'
 import { computed, reactive, ref, watch } from 'vue'
-import { SelectField } from '@antarestra/webui/components'
 import { EyeIcon, EyeSlashIcon } from '@antarestra/webui/icons'
 import type { ProviderView } from '../src/types.js'
 const props = defineProps<{
@@ -142,14 +142,14 @@ function save(event: Event) {
           autocomplete="new-password"
           :placeholder="value?.apiKeyPlaceholder || '输入 API Key（无密钥服务可留空）'"
           aria-describedby="provider-key-help"
-        /><button
+        /><Toggle
           type="button"
           :aria-label="visible ? '隐藏新 API Key' : '显示新 API Key'"
-          :aria-pressed="visible"
-          @click="visible = !visible"
+          :model-value="visible"
+          @update:model-value="visible = $event"
         >
           <component :is="visible ? EyeSlashIcon : EyeIcon" class="ui-icon" aria-hidden="true" />
-        </button>
+        </Toggle>
       </div>
       <p id="provider-key-help" class="hint">
         {{

@@ -1,6 +1,12 @@
 <script setup lang="ts">
+import { CheckboxField } from '@antarestra/webui/components'
 import { computed, reactive, ref, watch } from 'vue'
-import { SelectField } from '@antarestra/webui/components'
+import {
+  SelectField,
+  CollapsibleRoot,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from '@antarestra/webui/components'
 import type { ModelRef, JsonObject } from '@antarestra/ai'
 import { newAgent, defaultAgentId } from '../src/types.js'
 import type { AgentRecord, Capabilities } from '../src/types.js'
@@ -158,7 +164,13 @@ function save(event: Event) {
         </div>
       </div>
       <label for="agent-system">系统提示词模板</label>
-      <textarea id="agent-system" v-model="draft.systemTemplate" rows="14" maxlength="65536" />
+      <textarea
+        style="resize: none"
+        id="agent-system"
+        v-model="draft.systemTemplate"
+        rows="14"
+        maxlength="65536"
+      />
       <p class="agents-hint">
         定义助理的职责、语气和行动规则。模板支持双花括号变量，如 <code v-pre>{{ input }}</code
         >；自定义变量须由调用方提供。
@@ -166,15 +178,14 @@ function save(event: Event) {
       <section class="agents-scope">
         <h3>可用模型</h3>
         <label class="agents-check"
-          ><input
-            type="checkbox"
+          ><CheckboxField
             :checked="draft.models === null"
-            @change="draft.models = ($event.target as HTMLInputElement).checked ? null : []"
+            @change="draft.models = $event ? null : []"
           />允许全部模型，包括以后新增的模型</label
         >
         <div v-if="draft.models !== null" class="agents-options">
           <label v-for="model in modelOptions" :key="model.id" class="agents-check"
-            ><input v-model="selectedModels" type="checkbox" :value="model.id" /><span
+            ><CheckboxField v-model="selectedModels" :value="model.id" /><span
               >{{ model.name }}<small>{{ model.description }}</small></span
             ></label
           >
@@ -195,15 +206,14 @@ function save(event: Event) {
       <section class="agents-scope">
         <h3>可用工具</h3>
         <label class="agents-check"
-          ><input
-            type="checkbox"
+          ><CheckboxField
             :checked="draft.toolIds === null"
-            @change="draft.toolIds = ($event.target as HTMLInputElement).checked ? null : []"
+            @change="draft.toolIds = $event ? null : []"
           />允许全部工具，包括以后新增的工具</label
         >
         <div v-if="draft.toolIds !== null" class="agents-options">
           <label v-for="id in toolOptions" :key="id" class="agents-check"
-            ><input v-model="draft.toolIds" type="checkbox" :value="id" /><span
+            ><CheckboxField v-model="draft.toolIds" :value="id" /><span
               >{{ id
               }}<small>{{
                 capabilities.tools.find((t) => t.id === id)?.description ?? '当前未注册'
@@ -218,15 +228,14 @@ function save(event: Event) {
       <section class="agents-scope">
         <h3>可用 Skill</h3>
         <label class="agents-check"
-          ><input
-            type="checkbox"
+          ><CheckboxField
             :checked="draft.skillIds === null"
-            @change="draft.skillIds = ($event.target as HTMLInputElement).checked ? null : []"
+            @change="draft.skillIds = $event ? null : []"
           />允许全部 Skill，包括以后新增的 Skill</label
         >
         <template v-if="draft.skillIds !== null"
           ><label for="agent-skills">允许的 Skill ID（每行一个）</label
-          ><textarea id="agent-skills" v-model="skillText" rows="4" />
+          ><textarea style="resize: none" id="agent-skills" v-model="skillText" rows="4" />
           <p class="agents-hint">
             留空表示禁用 Skill；具体 ID 与访问范围由 Skill 服务校验。
           </p></template
@@ -235,34 +244,43 @@ function save(event: Event) {
           当前未接入 Skill 服务。“全部”范围会在服务接入后自动生效。
         </p>
       </section>
-      <details>
-        <summary>高级配置</summary>
-        <label for="agent-backend">执行后端</label
-        ><SelectField
-          id="agent-backend"
-          v-model="draft.backendId"
-          label="执行后端"
-          :options="backends"
-          editable
-          :disabled="busy"
-        />
-        <label for="agent-thinking">默认思考等级</label
-        ><input
-          id="agent-thinking"
-          v-model="draft.defaultThinking"
-          placeholder="留空使用模型默认值"
-        />
-        <label for="agent-user">用户消息模板</label
-        ><textarea id="agent-user" v-model="draft.userTemplate" rows="4" maxlength="65536" />
-        <label for="agent-extensions">扩展配置（JSON）</label
-        ><textarea
-          id="agent-extensions"
-          v-model="extensionText"
-          rows="6"
-          :aria-invalid="invalid === 'agent-extensions'"
-          aria-describedby="agent-validation"
-        />
-      </details>
+      <CollapsibleRoot class="agents-advanced">
+        <CollapsibleTrigger class="agents-advanced-trigger">高级配置</CollapsibleTrigger>
+        <CollapsibleContent>
+          <label for="agent-backend">执行后端</label
+          ><SelectField
+            id="agent-backend"
+            v-model="draft.backendId"
+            label="执行后端"
+            :options="backends"
+            editable
+            :disabled="busy"
+          />
+          <label for="agent-thinking">默认思考等级</label
+          ><input
+            id="agent-thinking"
+            v-model="draft.defaultThinking"
+            placeholder="留空使用模型默认值"
+          />
+          <label for="agent-user">用户消息模板</label
+          ><textarea
+            style="resize: none"
+            id="agent-user"
+            v-model="draft.userTemplate"
+            rows="4"
+            maxlength="65536"
+          />
+          <label for="agent-extensions">扩展配置（JSON）</label
+          ><textarea
+            style="resize: none"
+            id="agent-extensions"
+            v-model="extensionText"
+            rows="6"
+            :aria-invalid="invalid === 'agent-extensions'"
+            aria-describedby="agent-validation"
+          />
+        </CollapsibleContent>
+      </CollapsibleRoot>
     </fieldset>
     <p id="agent-validation" class="agents-error" role="alert">{{ validation || error }}</p>
     <button class="agents-primary" type="submit" :disabled="busy" :aria-busy="busy">

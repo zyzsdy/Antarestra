@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useApi } from './api.js'
-import { AntarestraLogo } from '@antarestra/webui/components'
+import {
+  AntarestraLogo,
+  TabsRoot,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '@antarestra/webui/components'
 import type { SessionSnapshot } from '@antarestra/webui/client'
 import PasswordField from './PasswordField.vue'
 const props = defineProps<{
@@ -23,29 +29,11 @@ const displayName = ref('')
 const loading = ref(true)
 const form = ref<HTMLFormElement>()
 const invalid = ref('')
-function setMode(next: 'login' | 'register') {
+function setMode(next: string | number) {
+  if (next !== 'login' && next !== 'register') return
   mode.value = next
   invalid.value = ''
   message.value = ''
-}
-function moveTab(event: KeyboardEvent) {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-  const tabs = Array.from(
-    (event.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>(
-      '[role="tab"]',
-    ) ?? [],
-  )
-  if (!tabs.length) return
-  event.preventDefault()
-  const current = tabs.indexOf(event.currentTarget as HTMLButtonElement)
-  const next =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? tabs.length - 1
-        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
-  tabs[next]?.focus()
-  tabs[next]?.click()
 }
 onMounted(async () => {
   try {
@@ -150,86 +138,62 @@ function logout() {
         ><button :disabled="busy" @click="logout">退出登录</button>
       </div>
     </section>
-    <section v-else class="panel">
-      <nav class="auth-tabs" aria-label="账号操作" role="tablist">
-        <button
-          type="button"
-          id="account-login-tab"
-          role="tab"
-          aria-controls="account-form-panel"
-          :aria-selected="mode === 'login'"
-          :tabindex="mode === 'login' ? 0 : -1"
-          :class="{ active: mode === 'login' }"
-          @click="setMode('login')"
-          @keydown="moveTab"
-        >
-          登录</button
-        ><button
+    <TabsRoot v-else class="panel" :model-value="mode" @update:model-value="setMode">
+      <TabsList class="auth-tabs" aria-label="账号操作">
+        <TabsTrigger value="login" :class="{ active: mode === 'login' }">登录</TabsTrigger>
+        <TabsTrigger
           v-if="allowRegistration"
-          type="button"
-          id="account-register-tab"
-          role="tab"
-          aria-controls="account-form-panel"
-          :aria-selected="mode === 'register'"
-          :tabindex="mode === 'register' ? 0 : -1"
+          value="register"
           :class="{ active: mode === 'register' }"
-          @click="setMode('register')"
-          @keydown="moveTab"
+          >创建账号</TabsTrigger
         >
-          创建账号
-        </button>
-      </nav>
-      <form
-        id="account-form-panel"
-        ref="form"
-        role="tabpanel"
-        :aria-labelledby="`account-${mode}-tab`"
-        novalidate
-        @submit.prevent="submit"
-      >
-        <h2>{{ mode === 'login' ? '欢迎回来' : '创建你的账号' }}</h2>
-        <label v-if="mode === 'register'"
-          >显示名称<input
-            v-model="displayName"
-            name="displayName"
-            :aria-invalid="invalid === 'displayName'"
-            :aria-describedby="message ? 'account-message' : undefined"
-            autocomplete="nickname"
-            required
-            maxlength="128" /></label
-        ><label
-          >登录名<input
-            v-model="loginName"
-            name="loginName"
-            :aria-invalid="invalid === 'loginName'"
-            :aria-describedby="message ? 'account-message' : undefined"
-            autocomplete="username"
-            required
-            maxlength="254" /></label
-        ><PasswordField
-          v-model="password"
-          label="密码"
-          name="password"
-          :invalid="invalid === 'password'"
-          :describedby="message ? 'account-message' : undefined"
-          :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-          :disabled="busy"
-        />
-        <PasswordField
-          v-if="mode === 'register'"
-          v-model="confirmPassword"
-          label="重复密码"
-          name="confirmPassword"
-          :invalid="invalid === 'confirmPassword'"
-          :describedby="message ? 'account-message' : undefined"
-          autocomplete="new-password"
-          :disabled="busy"
-        />
-        <button class="primary" :disabled="busy">
-          {{ busy ? '处理中…' : mode === 'login' ? '登录' : '创建账号' }}
-        </button>
-      </form>
-    </section>
+      </TabsList>
+      <TabsContent :key="mode" :value="mode">
+        <form ref="form" novalidate @submit.prevent="submit">
+          <h2>{{ mode === 'login' ? '欢迎回来' : '创建你的账号' }}</h2>
+          <label v-if="mode === 'register'"
+            >显示名称<input
+              v-model="displayName"
+              name="displayName"
+              :aria-invalid="invalid === 'displayName'"
+              :aria-describedby="message ? 'account-message' : undefined"
+              autocomplete="nickname"
+              required
+              maxlength="128" /></label
+          ><label
+            >登录名<input
+              v-model="loginName"
+              name="loginName"
+              :aria-invalid="invalid === 'loginName'"
+              :aria-describedby="message ? 'account-message' : undefined"
+              autocomplete="username"
+              required
+              maxlength="254" /></label
+          ><PasswordField
+            v-model="password"
+            label="密码"
+            name="password"
+            :invalid="invalid === 'password'"
+            :describedby="message ? 'account-message' : undefined"
+            :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+            :disabled="busy"
+          />
+          <PasswordField
+            v-if="mode === 'register'"
+            v-model="confirmPassword"
+            label="重复密码"
+            name="confirmPassword"
+            :invalid="invalid === 'confirmPassword'"
+            :describedby="message ? 'account-message' : undefined"
+            autocomplete="new-password"
+            :disabled="busy"
+          />
+          <button class="primary" :disabled="busy">
+            {{ busy ? '处理中…' : mode === 'login' ? '登录' : '创建账号' }}
+          </button>
+        </form>
+      </TabsContent>
+    </TabsRoot>
   </main>
 </template>
 <style scoped>

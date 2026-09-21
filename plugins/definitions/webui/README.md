@@ -14,11 +14,17 @@
 
 ## 通用交互
 
+### Reka UI 公共入口
+
+`@antarestra/webui/components` 完整再导出 `reka-ui` 的组件、工具及类型，例如 `DialogRoot`、`TabsRoot`、`DropdownMenuRoot`。有对应 Reka UI 组件时必须复用，不在插件内手写同类交互。业务插件仅依赖 WebUI，继续通过 `@antarestra/webui/vite` 构建，复用页面壳提供的唯一 Reka UI 运行时。规范见根目录 `DESIGN.md`。
+
+常用组合优先使用共享封装：`EditorDialog`、`SelectField`、`EditableSelect`、`CheckboxField`、`NumberField`、`PaginationField`。CheckboxField 支持布尔或字符串数组 `v-model`、`value`、`checked`、`indeterminate`、`disabled`，`change` 事件接收布尔值。PaginationField 接收 `page`、`total`、`pageSize`、中文 `label` 和 `disabled`，通过 `update:page` 返回从 1 开始的页码。
+
 ### 下拉选择
 
 从 `@antarestra/webui/components` 导入 `SelectField`，使用字符串 `v-model`、中文 `label` 和 `{ id, name, description?, disabled? }[]` 形式的 `options`。传入 `id` 可关联外部 `<label for>`。默认是普通单选；`searchable` 开启本地输入筛选，只提交列表选项；`editable` 允许直接提交手动输入，适用于环境变量引用等配置字段。普通单选支持空字符串选项，例如“未分组”。
 
-组件统一处理选中标记、空结果、禁用、清空筛选、键盘导航和弹层避让；弹窗内的菜单挂载到所属 `dialog`。筛选文字与已选值独立，关闭菜单不修改已选值；可编辑模式直接保留输入。`placeholder`、`emptyText` 和 `maxlength` 可按字段设置。现有角色选择继续使用 `EditableSelect`，复用同一组件及样式。
+组件统一处理选中标记、空结果、禁用、清空筛选、键盘导航和弹层避让；弹窗内的菜单挂载到所属 Dialog 内容元素。筛选文字与已选值独立，关闭菜单不修改已选值；可编辑模式直接保留输入。`placeholder`、`emptyText` 和 `maxlength` 可按字段设置。现有角色选择继续使用 `EditableSelect`，复用同一组件及样式。
 
 ### 品牌与图标
 
@@ -72,7 +78,7 @@ export default apply
 - `toast(message)`：四秒后关闭，返回提前关闭函数。
 - `modal(title, message)`、`messagebox(message)`：排队显示对话框，返回确认结果；取消和 Escape 返回 `false`。
 
-通知支持辅助技术播报，对话框使用浏览器原生焦点约束。框架卸载时清理定时器并取消等待中的对话框。
+通知基于 Reka UI Toast，支持辅助技术播报与悬停/聚焦暂停；确认框基于 AlertDialog，编辑器基于 Dialog，统一处理焦点约束。框架卸载时回收通知并取消等待中的对话框。
 
 ## 构建与开发
 

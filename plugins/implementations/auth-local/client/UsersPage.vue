@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import { PaginationField, SelectField } from '@antarestra/webui/components'
 import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
-import { SelectField } from '@antarestra/webui/components'
 import { ArrowPathIcon } from '@antarestra/webui/icons'
 import { useApi } from './api.js'
 import RoleAssignment from './RoleAssignment.vue'
@@ -230,22 +230,17 @@ async function resetPassword(user: User) {
       <p v-if="!users.length" class="empty">
         {{ busy ? '正在加载用户…' : '没有符合条件的用户，请调整筛选条件。' }}
       </p>
-      <div class="pagination">
-        <span class="muted">第 {{ offset / 50 + 1 }} 页 · 每页 50 条</span>
-        <div class="actions">
-          <button
-            :disabled="busy || offset === 0"
-            @click="run(() => load(Math.max(0, offset - 50)))"
-          >
-            上一页</button
-          ><button
-            :disabled="busy || offset + users.length >= total"
-            @click="run(() => load(offset + 50))"
-          >
-            下一页
-          </button>
-        </div>
-      </div>
+      <PaginationField
+        :page="offset / 50 + 1"
+        :total="total"
+        :page-size="50"
+        :disabled="busy"
+        class="pagination"
+        label="用户分页"
+        @update:page="run(() => load(($event - 1) * 50))"
+      >
+        第 {{ offset / 50 + 1 }} 页 · 每页 50 条
+      </PaginationField>
     </section>
     <RoleAssignment
       v-if="selected"

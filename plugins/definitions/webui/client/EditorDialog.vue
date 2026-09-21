@@ -1,54 +1,66 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle } from 'reka-ui'
+
 defineProps<{ title: string; busy?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
-const dialog = ref<HTMLDialogElement>()
-let previous: HTMLElement | null = null
-onMounted(() => {
-  previous = document.activeElement as HTMLElement | null
-  dialog.value?.showModal()
-})
-onUnmounted(() => {
-  dialog.value?.close()
-  previous?.focus()
-})
+const previous = typeof document === 'undefined' ? null : document.activeElement
+function restoreFocus(event: Event) {
+  event.preventDefault()
+  if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
+}
 </script>
 <template>
-  <dialog
-    ref="dialog"
-    class="ui-editor-dialog"
-    aria-labelledby="ui-editor-title"
-    @cancel.prevent="!busy && emit('close')"
-  >
-    <header>
-      <h2 id="ui-editor-title">{{ title }}</h2>
-      <button type="button" :disabled="busy" aria-label="关闭弹窗" @click="emit('close')">
-        关闭
-      </button>
-    </header>
-    <slot />
-  </dialog>
+  <DialogRoot :open="true" @update:open="!$event && !busy && emit('close')">
+    <DialogPortal disabled>
+      <DialogOverlay class="ui-dialog-overlay" />
+      <DialogContent
+        class="ui-editor-dialog"
+        :aria-describedby="undefined"
+        @close-auto-focus="restoreFocus"
+        @interact-outside.prevent
+        @escape-key-down="busy && $event.preventDefault()"
+      >
+        <header>
+          <DialogTitle as="h2">{{ title }}</DialogTitle>
+          <button type="button" :disabled="busy" aria-label="关闭弹窗" @click="emit('close')">
+            关闭
+          </button>
+        </header>
+        <slot />
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>
-<style scoped>
+<style>
+.ui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #111d3266;
+}
 .ui-editor-dialog {
-  width: min(600px, calc(100vw - 32px));
+  position: fixed;
+  z-index: 301;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  width: min(648px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow: auto;
   border: 1px solid #e4e9f1;
   border-radius: 12px;
   padding: 24px;
-  color: inherit;
+  background: #fff;
+  color: #263047;
 }
-.ui-editor-dialog::backdrop {
-  background: #111d3266;
-}
-header {
+.ui-editor-dialog > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
-header h2 {
+.ui-editor-dialog > header h2 {
   margin: 0;
 }
 </style>
