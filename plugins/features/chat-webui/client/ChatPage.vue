@@ -427,7 +427,13 @@ onUnmounted(() => {
                         :max="levels.length - 1"
                         :step="1"
                         ><SliderTrack class="chat-slider-track"
-                          ><SliderRange class="chat-slider-range" /></SliderTrack
+                          ><SliderRange class="chat-slider-range" />
+                          <span class="chat-slider-marks" aria-hidden="true">
+                            <span
+                              v-for="level in levels"
+                              :key="level"
+                              class="chat-slider-mark"
+                            /> </span></SliderTrack
                         ><SliderThumb
                           class="chat-slider-thumb"
                           aria-label="推理强度"

@@ -468,18 +468,19 @@
   margin: 0 0 12px;
 }
 .chat-slider {
+  --chat-slider-size: 24px;
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
-  height: 24px;
+  height: var(--chat-slider-size);
   touch-action: none;
   cursor: pointer;
 }
 .chat-slider-track {
   position: relative;
   flex: 1;
-  height: 24px;
+  height: var(--chat-slider-size);
   border-radius: 12px;
   background: #e5e5e3;
 }
@@ -491,12 +492,34 @@
 }
 .chat-slider-thumb {
   display: block;
-  width: 24px;
-  height: 24px;
+  width: var(--chat-slider-size);
+  height: var(--chat-slider-size);
   border-radius: 50%;
   background: #fff;
   border: 2px solid #fff;
   box-shadow: 0 1px 4px #0002;
+}
+.chat-slider-marks {
+  position: absolute;
+  inset: 0 calc(var(--chat-slider-size) / 2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.chat-slider-mark {
+  position: relative;
+  width: 0;
+  height: 4px;
+}
+.chat-slider-mark::before {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a7aaa4;
+  transform: translateX(-50%);
 }
 .chat-slider-labels {
   display: flex;
@@ -587,10 +610,6 @@
 .chat-menu-item:focus-visible {
   outline: none;
   background: #efefec;
-}
-.chat-composer:has(textarea:focus-visible) {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
 }
 .chat-model-controls .ui-select-trigger {
   font-size: 12px;

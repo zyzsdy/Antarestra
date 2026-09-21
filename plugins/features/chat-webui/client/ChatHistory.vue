@@ -14,6 +14,7 @@ import {
 } from '@antarestra/webui/components'
 import {
   PlusIcon,
+  ArrowLeftIcon,
   EllipsisVerticalIcon,
   ArchiveBoxIcon,
   PencilSquareIcon,
@@ -63,7 +64,15 @@ async function logout() {
   <button class="chat-new" @click="$emit('new')"><PlusIcon class="ui-icon" />新对话</button>
   <div class="chat-history-heading">
     <h2>{{ archived ? '已归档对话' : '对话' }}</h2>
-    <button v-if="archived" class="chat-text-button" @click="$emit('toggle', false)">返回</button>
+    <button
+      v-if="archived"
+      class="chat-icon-button"
+      aria-label="返回对话"
+      title="返回对话"
+      @click="$emit('toggle', false)"
+    >
+      <ArrowLeftIcon class="ui-icon" />
+    </button>
   </div>
   <nav class="chat-history" aria-label="对话历史">
     <div
