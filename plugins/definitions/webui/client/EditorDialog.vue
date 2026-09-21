@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { DialogRoot, DialogPortal, DialogOverlay, DialogContent, DialogTitle } from 'reka-ui'
+import {
+  DialogRoot,
+  DialogPortal,
+  DialogOverlay,
+  DialogContent,
+  DialogTitle,
+  DialogClose,
+} from 'reka-ui'
 
 defineProps<{ title: string; busy?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -15,6 +22,7 @@ function restoreFocus(event: Event) {
       <DialogOverlay class="ui-dialog-overlay" />
       <DialogContent
         class="ui-editor-dialog"
+        :class="{ 'ui-editor-dialog-with-footer': !!$slots.footer }"
         :aria-describedby="undefined"
         @close-auto-focus="restoreFocus"
         @interact-outside.prevent
@@ -22,11 +30,11 @@ function restoreFocus(event: Event) {
       >
         <header>
           <DialogTitle as="h2">{{ title }}</DialogTitle>
-          <button type="button" :disabled="busy" aria-label="关闭弹窗" @click="emit('close')">
-            关闭
-          </button>
+          <DialogClose type="button" :disabled="busy" aria-label="关闭弹窗"> 关闭 </DialogClose>
         </header>
-        <slot />
+        <div v-if="$slots.footer" class="ui-editor-dialog-body"><slot /></div>
+        <slot v-else />
+        <footer v-if="$slots.footer" class="ui-editor-dialog-footer"><slot name="footer" /></footer>
       </DialogContent>
     </DialogPortal>
   </DialogRoot>
@@ -62,5 +70,42 @@ function restoreFocus(event: Event) {
 }
 .ui-editor-dialog > header h2 {
   margin: 0;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.ui-editor-dialog-with-footer {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.ui-editor-dialog-with-footer > header,
+.ui-editor-dialog-footer {
+  flex-shrink: 0;
+  padding: 16px 24px;
+}
+.ui-editor-dialog-with-footer > header {
+  border-bottom: 1px solid #e4e9f1;
+}
+.ui-editor-dialog-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 24px;
+}
+.ui-editor-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid #e4e9f1;
+}
+@media (max-width: 760px) {
+  .ui-editor-dialog-with-footer > header,
+  .ui-editor-dialog-footer {
+    padding: 16px;
+  }
+  .ui-editor-dialog-body {
+    padding: 0 16px;
+  }
 }
 </style>

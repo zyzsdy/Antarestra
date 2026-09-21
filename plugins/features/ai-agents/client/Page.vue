@@ -218,6 +218,18 @@ onUnmounted(() => {
         :error="message"
         @dirty="dirty = $event"
         @save="save"
-    /></EditorDialog>
+      />
+      <template #footer>
+        <button
+          class="agents-primary"
+          type="submit"
+          form="agent-editor-form"
+          :disabled="busy"
+          :aria-busy="busy"
+        >
+          保存 Agent
+        </button>
+      </template>
+    </EditorDialog>
   </div>
 </template>

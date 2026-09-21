@@ -135,7 +135,13 @@ function save(event: Event) {
 }
 </script>
 <template>
-  <form class="agents-form" novalidate autocomplete="off" @submit.prevent="save">
+  <form
+    id="agent-editor-form"
+    class="agents-form"
+    novalidate
+    autocomplete="off"
+    @submit.prevent="save"
+  >
     <p v-if="value?.id === defaultAgentId" class="agents-hint">
       所有用户未选定 Agent 时使用此助理。除固定标识和删除保护外，配置均可修改。
     </p>
@@ -283,8 +289,5 @@ function save(event: Event) {
       </CollapsibleRoot>
     </fieldset>
     <p id="agent-validation" class="agents-error" role="alert">{{ validation || error }}</p>
-    <button class="agents-primary" type="submit" :disabled="busy" :aria-busy="busy">
-      保存 Agent
-    </button>
   </form>
 </template>

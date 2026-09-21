@@ -101,7 +101,7 @@ components:
 
 ## Agents 编辑
 
-Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认”文字标记。表格每页 20 项；编辑采用共享 EditorDialog，模型单选沿用 SelectField，能力多选使用基于 Reka UI Checkbox 的共享 CheckboxField。系统提示词提供 14 行编辑区，长表单在弹窗内滚动；窄屏名称和 ID 改为单列。样式由 ai-agents/client/style.css 维护，不新增全局令牌。
+Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认”文字标记。表格每页 20 项；编辑采用共享 EditorDialog，模型单选沿用 SelectField，能力多选使用基于 Reka UI Checkbox 的共享 CheckboxField。系统提示词提供 14 行编辑区；EditorDialog 提供 footer 插槽时固定标题、关闭与底部操作，仅中间表单区域滚动，Agents 使用此布局保持“保存 Agent”可见。窄屏名称和 ID 改为单列，弹窗内边距缩为 16px。弹窗布局由 EditorDialog.vue 维护，业务样式由 ai-agents/client/style.css 维护，不新增全局令牌。
 
 ## Reka UI 组件优先策略
 
