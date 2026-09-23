@@ -70,6 +70,8 @@ const tools = computed(() =>
     <p
       v-else-if="node.role === 'assistant' && run && run.status !== 'completed'"
       class="chat-run-status"
+      :class="{ 'chat-run-error': run.status === 'failed' }"
+      :role="run.status === 'failed' ? 'alert' : 'status'"
     >
       {{
         run.status === 'cancelled'
@@ -80,6 +82,9 @@ const tools = computed(() =>
               ? (run.error?.message ?? '生成失败')
               : '正在生成…'
       }}
+      <span v-if="run.status === 'failed' && run.error" class="chat-error-code">
+        错误代码：{{ run.error.code }}
+      </span>
     </p>
   </article>
 </template>

@@ -7,6 +7,7 @@ import type {
   ProviderStreams,
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
+import { AiError } from '@antarestra/ai'
 import type { ModelDefinition, ModelDriver, RequestSnapshot, JsonObject } from '@antarestra/ai'
 import type { ProviderRecord } from './types.js'
 import { builtinModels } from './catalog.js'
@@ -143,6 +144,20 @@ export function resolveModel(
     cost: builtin?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   }
 }
+export function requestHeaders(
+  provider: ProviderRecord,
+  model: Model<Api>,
+  conversationId: string,
+  keyless: boolean,
+) {
+  const officialOpenCode =
+    provider.builtin === 'opencode-go' && new URL(model.baseUrl).hostname === 'opencode.ai'
+  return {
+    ...(keyless ? { authorization: null } : {}),
+    ...(officialOpenCode ? { 'x-opencode-session': conversationId } : {}),
+    ...provider.headers,
+  }
+}
 export function driver(provider: ProviderRecord): ModelDriver {
   return {
     id: `ai-provider:${provider.id}`,
@@ -156,6 +171,14 @@ export function driver(provider: ProviderRecord): ModelDriver {
         !connection.credential &&
         !provider.builtin &&
         ['openai-completions', 'openai-responses'].includes(provider.api)
+      const failure = (message: string) => {
+        const safe = message
+          .replaceAll(connection.credential || '\0', '[已隐藏]')
+          .replace(/https?:\/\/\S+/gi, '[请求地址已隐藏]')
+          .replace(/(?:Bearer|api[_-]?key)\s*[:=]?\s*\S+/gi, '[凭据已隐藏]')
+          .slice(0, 500)
+        return new AiError('provider_request_failed', safe || '模型请求失败')
+      }
       const stream = api.streamSimple(
         model,
         normalizeContext({
@@ -169,7 +192,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
         }),
         {
           apiKey: keyless ? 'unused' : (connection.credential ?? ''),
-          headers: { ...(keyless ? { authorization: null } : {}), ...provider.headers },
+          headers: requestHeaders(provider, model, context.conversationId, keyless),
           signal: context.signal,
           env: {},
           maxTokens: definition.maxOutputTokens,
@@ -177,7 +200,8 @@ export function driver(provider: ProviderRecord): ModelDriver {
         },
       )
       for await (const event of stream) {
-        if (event.type === 'error') throw new Error('模型请求失败，请检查提供商配置或稍后重试')
+        if (event.type === 'error')
+          throw failure(event.error.errorMessage ?? '模型请求失败，请检查提供商配置或稍后重试')
         await update(
           event.type === 'text_delta' || event.type === 'thinking_delta'
             ? {
@@ -190,7 +214,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
       }
       const result = await stream.result()
       if (result.stopReason === 'error' || result.stopReason === 'aborted')
-        throw new Error('模型请求失败或已取消')
+        throw failure(result.errorMessage ?? '模型请求失败或已取消')
       return {
         content: result.content.map((block) =>
           block.type === 'toolCall'

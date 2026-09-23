@@ -148,10 +148,22 @@ export class Running {
         this.controller.signal.reason instanceof AiError &&
         this.controller.signal.reason.code === 'cancelled'
       this.record.status = cancelled ? 'cancelled' : 'failed'
-      // 不持久化第三方异常文本，避免提供商将 URL 或凭据写入错误消息。
+      if (!cancelled)
+        this.service.context.logger.error(
+          'AI 运行失败（运行 %s，提供商 %s，模型 %s）：%s',
+          this.record.id,
+          this.record.model.providerId,
+          this.record.model.modelId,
+          error instanceof AiError ? `${error.code}: ${error.message}` : '未分类异常',
+        )
+      // 只持久化由本服务或驱动明确处理过的错误文本，不暴露未知异常中的凭据。
       this.record.error = {
         code: error instanceof AiError ? error.code : 'execution_failed',
-        message: cancelled ? '运行已取消' : '运行失败，请检查能力配置或插件状态',
+        message: cancelled
+          ? '运行已取消'
+          : error instanceof AiError
+            ? error.message
+            : '运行失败，请检查服务端日志',
       }
       this.controller.abort(error)
     }
@@ -161,8 +173,12 @@ export class Running {
         status: this.record.status,
         error: this.record.error,
       })
-    } catch {
-      this.service.context.logger.error('AI 运行终态持久化失败，将在下次启动标记为中断')
+    } catch (error) {
+      this.service.context.logger.error(
+        'AI 运行终态持久化失败（运行 %s），将于下次启动标记为中断：%s',
+        this.record.id,
+        error instanceof Error ? error.name : '未知异常',
+      )
     } finally {
       this.service.running.delete(this.record.id)
     }

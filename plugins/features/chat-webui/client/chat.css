@@ -270,6 +270,17 @@
   color: #777;
   margin: 8px 0;
 }
+.chat-run-error {
+  color: #a42e28;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.chat-error-code {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b5654;
+}
 .chat-composer-area {
   flex-shrink: 0;
   width: min(800px, 100%);

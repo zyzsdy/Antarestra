@@ -19,7 +19,11 @@ import {
   discover,
   candidates,
 } from '../../plugins/features/ai-provider/src/catalog.js'
-import { driver, resolveModel } from '../../plugins/features/ai-provider/src/driver.js'
+import {
+  driver,
+  requestHeaders,
+  resolveModel,
+} from '../../plugins/features/ai-provider/src/driver.js'
 import { syncModels } from '../../plugins/features/ai-provider/client/models.js'
 import {
   publicProvider,
@@ -246,6 +250,9 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     expect(resolved.compat).toEqual(builtin.compat)
     expect(resolved.thinkingLevelMap).toEqual(builtin.thinkingLevelMap)
     expect(resolveModel(record, definition, record.baseUrl + '/').api).toBe(builtin.api)
+    expect(requestHeaders(record, resolved, 'conversation-1', false)).toMatchObject({
+      'x-opencode-session': 'conversation-1',
+    })
   }
   const unknown = resolveModel(record, validateModel(model), record.baseUrl)
   expect(unknown.api).toBe(record.api)
@@ -259,6 +266,9 @@ it('自定义网关不被内置模型的协议和端点覆盖', () => {
   expect(resolved.api).toBe(record.api)
   expect(resolved.baseUrl).toBe(input.baseUrl)
   expect(resolved.compat).toBeUndefined()
+  expect(requestHeaders(record, resolved, 'conversation-1', false)).not.toHaveProperty(
+    'x-opencode-session',
+  )
 })
 it('自定义提供商即使使用内置模型 ID 和官方地址也始终使用默认接口', () => {
   const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/zen/go' })
@@ -480,10 +490,17 @@ it('卸载取消并等待正在进行的目录 HTTP 请求', async () => {
 it.each([input.apiKey, ''])(
   'pi-ai 通过 OpenAI 兼容流调用自定义服务，支持独立凭据与无密钥服务',
   async (credential) => {
+    let fail = false
     const baseUrl = await remote((req, res) => {
       expect(req.url).toBe('/chat/completions')
       expect(req.headers.authorization).toBe(credential ? `Bearer ${credential}` : undefined)
       expect(req.headers['x-extra']).toBe('header-value')
+      if (fail) {
+        res.statusCode = 401
+        res.setHeader('content-type', 'application/json')
+        res.end(JSON.stringify({ error: { message: `密钥无效 ${credential}` } }))
+        return
+      }
       res.setHeader('content-type', 'text/event-stream')
       res.end(
         'data: ' +
@@ -507,39 +524,46 @@ it.each([input.apiKey, ''])(
     const record = validateProvider({ ...input, baseUrl })
     record.models = [{ ...model, input: ['text'], output: ['text'] }]
     const instance = driver(record)
-    const result = await instance.generate(
-      {
-        model: { providerId: input.id, modelId: model.id },
-        thinking: null,
-        parameters: {},
-        systemPrompt: '测试',
-        messages: [{ role: 'user', content: [{ type: 'text', text: '你好' }] }],
-        tools: [],
+    const request: import('@antarestra/ai').RequestSnapshot = {
+      model: { providerId: input.id, modelId: model.id },
+      thinking: null,
+      parameters: {},
+      systemPrompt: '测试',
+      messages: [{ role: 'user', content: [{ type: 'text', text: '你好' }] }],
+      tools: [],
+    }
+    const context = {
+      runId: 'test',
+      conversationId: 'test',
+      actorId: 'test',
+      workspaceId: 'test',
+      signal: new AbortController().signal,
+      agent: {
+        id: 'test',
+        version: '1',
+        title: '测试',
+        backendId: 'test',
+        systemTemplate: '',
+        userTemplate: '',
+        models: [],
+        defaultModel: { providerId: input.id, modelId: model.id },
+        toolIds: [],
+        skillIds: [],
+        extensions: {},
       },
-      { baseUrl, credential },
-      {
-        runId: 'test',
-        conversationId: 'test',
-        actorId: 'test',
-        workspaceId: 'test',
-        signal: new AbortController().signal,
-        agent: {
-          id: 'test',
-          version: '1',
-          title: '测试',
-          backendId: 'test',
-          systemTemplate: '',
-          userTemplate: '',
-          models: [],
-          defaultModel: { providerId: input.id, modelId: model.id },
-          toolIds: [],
-          skillIds: [],
-          extensions: {},
-        },
-      },
-      async () => {},
-    )
+    }
+    const generate = () =>
+      instance.generate(request, { baseUrl, credential }, context, async () => {})
+    const result = await generate()
     expect(result.content).toContainEqual({ type: 'text', text: '接入成功' })
+    fail = true
+    await expect(generate()).rejects.toMatchObject({
+      code: 'provider_request_failed',
+      message: expect.stringContaining('401'),
+    })
+    await expect(generate()).rejects.toMatchObject({
+      message: expect.not.stringContaining(credential || 'abc-super-secret-1234'),
+    })
   },
 )
 it('思考续接信息经过项目 DTO 往返，仅回传给同一连接和模型', async () => {

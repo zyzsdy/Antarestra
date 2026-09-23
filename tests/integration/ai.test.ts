@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
 import DatabaseProvider from '@antarestra/database'
 import * as database from '@antarestra/plugin-database-kysely'
@@ -11,7 +11,7 @@ import Server from '@antarestra/plugin-server'
 import rbac from '@antarestra/rbac'
 import WebUI from '@antarestra/webui'
 import local from '@antarestra/plugin-auth-local'
-import ai from '@antarestra/ai'
+import ai, { AiError } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
 import type { Access, AgentPreset, Config, ModelDriver, RunCommand, Tool } from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
@@ -126,6 +126,41 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('运行失败记录安全详情并通过 logger.error 输出上下文', async () => {
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        async generate() {
+          throw new AiError('provider_request_failed', 'HTTP 401：密钥无效')
+        },
+      },
+    })
+    const logged = vi.spyOn(app.ctx.logger, 'error')
+    const failed = await send(app)
+    expect(failed.error).toEqual({ code: 'provider_request_failed', message: 'HTTP 401：密钥无效' })
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining('AI 运行失败'),
+      failed.id,
+      'provider',
+      'model',
+      'provider_request_failed: HTTP 401：密钥无效',
+    )
+    logged.mockRestore()
+
+    const unknown = await setup({
+      driver: {
+        id: 'driver',
+        async generate() {
+          throw new Error('secret-never-export')
+        },
+      },
+    })
+    const result = await send(unknown)
+    expect(result.error).toEqual({
+      code: 'execution_failed',
+      message: '运行失败，请检查服务端日志',
+    })
+  })
   it('历史按活动排序并在数据库分页，重命名与归档不改变活动时间', async () => {
     const app = await setup()
     await delay(2)
