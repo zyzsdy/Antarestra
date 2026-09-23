@@ -21,8 +21,8 @@ import {
 } from '../../plugins/features/ai-provider/src/catalog.js'
 import {
   driver,
-  requestHeaders,
   resolveModel,
+  useBuiltinAdapter,
 } from '../../plugins/features/ai-provider/src/driver.js'
 import { syncModels } from '../../plugins/features/ai-provider/client/models.js'
 import {
@@ -237,6 +237,7 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     api: 'anthropic-messages',
     baseUrl: 'https://opencode.ai/zen/go',
   })
+  expect(driver(record).id).toBe(`ai-provider:${record.id}`)
   for (const builtin of builtinModels('opencode-go')) {
     const definition = candidates(record).find((model) => model.id === builtin.id)!
     const resolved = resolveModel(record, { ...definition, maxOutputTokens: 1024 }, record.baseUrl)
@@ -250,13 +251,12 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     expect(resolved.compat).toEqual(builtin.compat)
     expect(resolved.thinkingLevelMap).toEqual(builtin.thinkingLevelMap)
     expect(resolveModel(record, definition, record.baseUrl + '/').api).toBe(builtin.api)
-    expect(requestHeaders(record, resolved, 'conversation-1', false)).toMatchObject({
-      'x-opencode-session': 'conversation-1',
-    })
+    expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(true)
   }
   const unknown = resolveModel(record, validateModel(model), record.baseUrl)
   expect(unknown.api).toBe(record.api)
   expect(unknown.baseUrl).toBe(record.baseUrl)
+  expect(useBuiltinAdapter(record, unknown.id, record.baseUrl)).toBe(false)
 })
 it('自定义网关不被内置模型的协议和端点覆盖', () => {
   const record = validateProvider({ ...input, builtin: 'opencode-go', api: 'anthropic-messages' })
@@ -266,9 +266,7 @@ it('自定义网关不被内置模型的协议和端点覆盖', () => {
   expect(resolved.api).toBe(record.api)
   expect(resolved.baseUrl).toBe(input.baseUrl)
   expect(resolved.compat).toBeUndefined()
-  expect(requestHeaders(record, resolved, 'conversation-1', false)).not.toHaveProperty(
-    'x-opencode-session',
-  )
+  expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(false)
 })
 it('自定义提供商即使使用内置模型 ID 和官方地址也始终使用默认接口', () => {
   const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/zen/go' })

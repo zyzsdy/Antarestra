@@ -9,6 +9,7 @@ import type {
 } from '@earendil-works/pi-ai'
 import { AiError } from '@antarestra/ai'
 import type { ModelDefinition, ModelDriver, RequestSnapshot, JsonObject } from '@antarestra/ai'
+import { builtinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { ProviderRecord } from './types.js'
 import { builtinModels } from './catalog.js'
 
@@ -144,28 +145,25 @@ export function resolveModel(
     cost: builtin?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   }
 }
-export function requestHeaders(
-  provider: ProviderRecord,
-  model: Model<Api>,
-  conversationId: string,
-  keyless: boolean,
-) {
-  const officialOpenCode =
-    provider.builtin === 'opencode-go' && new URL(model.baseUrl).hostname === 'opencode.ai'
-  return {
-    ...(keyless ? { authorization: null } : {}),
-    ...(officialOpenCode ? { 'x-opencode-session': conversationId } : {}),
-    ...provider.headers,
-  }
+export function useBuiltinAdapter(provider: ProviderRecord, modelId: string, baseUrl: string) {
+  const models = builtinModels(provider.builtin)
+  return (
+    models.some((model) => model.id === modelId) &&
+    models.some((model) => model.baseUrl.replace(/\/$/, '') === baseUrl.replace(/\/$/, ''))
+  )
 }
 export function driver(provider: ProviderRecord): ModelDriver {
+  const adapter = provider.builtin
+    ? builtinProviders().find((builtin) => builtin.id === provider.builtin)
+    : undefined
   return {
     id: `ai-provider:${provider.id}`,
     async generate(request, connection, context, update) {
       const definition = provider.models.find((model) => model.id === request.model.modelId)
       if (!definition) throw new Error('模型已不可用')
       const model = resolveModel(provider, definition, connection.baseUrl)
-      const api = apis[model.api]!()
+      const builtin = adapter && useBuiltinAdapter(provider, definition.id, connection.baseUrl)
+      const api = builtin ? adapter : apis[model.api]!()
       // OpenAI 兼容的本地服务可以不鉴权；仅满足 SDK 构造要求，不发送占位凭据。
       const keyless =
         !connection.credential &&
@@ -192,7 +190,8 @@ export function driver(provider: ProviderRecord): ModelDriver {
         }),
         {
           apiKey: keyless ? 'unused' : (connection.credential ?? ''),
-          headers: requestHeaders(provider, model, context.conversationId, keyless),
+          headers: { ...(keyless ? { authorization: null } : {}), ...provider.headers },
+          ...(builtin ? { sessionId: context.conversationId } : {}),
           signal: context.signal,
           env: {},
           maxTokens: definition.maxOutputTokens,
