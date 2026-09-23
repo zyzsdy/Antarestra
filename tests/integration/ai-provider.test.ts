@@ -237,6 +237,7 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     api: 'anthropic-messages',
     baseUrl: 'https://opencode.ai/zen/go',
   })
+  record.models = candidates(record).map(validateModel)
   expect(driver(record).id).toBe(`ai-provider:${record.id}`)
   for (const builtin of builtinModels('opencode-go')) {
     const definition = candidates(record).find((model) => model.id === builtin.id)!
@@ -253,15 +254,22 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     expect(resolveModel(record, definition, record.baseUrl + '/').api).toBe(builtin.api)
     expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(true)
   }
-  const unknown = resolveModel(record, validateModel(model), record.baseUrl)
-  expect(unknown.api).toBe(record.api)
-  expect(unknown.baseUrl).toBe(record.baseUrl)
-  expect(useBuiltinAdapter(record, unknown.id, record.baseUrl)).toBe(false)
+  const remote = validateModel({ ...model, id: 'mimo-v2.6-flash' })
+  record.models.push(remote)
+  const unknown = resolveModel(record, remote, record.baseUrl)
+  expect(unknown.api).toBe('openai-completions')
+  expect(unknown.baseUrl).toBe('https://opencode.ai/zen/go/v1')
+  expect(useBuiltinAdapter(record, unknown.id, record.baseUrl)).toBe(true)
+  const future = validateModel({ ...model, id: 'future-go-model' })
+  record.models.push(future)
+  expect(resolveModel(record, future, record.baseUrl).api).toBe(record.api)
+  expect(useBuiltinAdapter(record, future.id, record.baseUrl)).toBe(true)
 })
 it('自定义网关不被内置模型的协议和端点覆盖', () => {
   const record = validateProvider({ ...input, builtin: 'opencode-go', api: 'anthropic-messages' })
   const builtin = builtinModels('opencode-go').find((model) => model.api === 'openai-completions')!
   const definition = candidates(record).find((model) => model.id === builtin.id)!
+  record.models = [validateModel(definition)]
   const resolved = resolveModel(record, definition, record.baseUrl)
   expect(resolved.api).toBe(record.api)
   expect(resolved.baseUrl).toBe(input.baseUrl)

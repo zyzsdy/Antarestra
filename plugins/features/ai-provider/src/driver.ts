@@ -126,18 +126,27 @@ export function resolveModel(
   const builtin =
     models.find((model) => model.id === definition.id && model.api === provider.api) ??
     models.find((model) => model.id === definition.id)
+  // 远端目录可能早于 pi-ai 发布新模型；同系列端点一致时沿用其请求协议。
+  const family = definition.id.split('-')[0]
+  const relatives =
+    builtin || !provider.models.some((model) => model.id === definition.id)
+      ? []
+      : models.filter((model) => model.id.startsWith(`${family}-`))
+  const endpoints = new Set(relatives.map((model) => `${model.api} ${model.baseUrl}`))
+  const related = endpoints.size === 1 ? relatives[0] : undefined
+  const match = builtin ?? related
   // 内置提供商可能混用多种协议；仅在使用其官方地址时自动选择模型端点。
   // 自定义网关的协议和地址由管理员配置，不能将其凭据发送到内置端点。
   const native = models.some(
     (model) => model.baseUrl.replace(/\/$/, '') === baseUrl.replace(/\/$/, ''),
   )
   return {
-    ...(native || builtin?.api === provider.api ? builtin : undefined),
+    ...(native || builtin?.api === provider.api ? match : undefined),
     id: definition.id,
     name: definition.title,
     provider: provider.builtin || provider.id,
-    api: native && builtin ? builtin.api : provider.api,
-    baseUrl: native && builtin ? builtin.baseUrl : baseUrl,
+    api: native && match ? match.api : provider.api,
+    baseUrl: native && match ? match.baseUrl : baseUrl,
     reasoning: definition.thinkingLevels.length > 0,
     input: definition.input.filter((input) => input !== 'file'),
     contextWindow: definition.contextWindow,
@@ -146,10 +155,13 @@ export function resolveModel(
   }
 }
 export function useBuiltinAdapter(provider: ProviderRecord, modelId: string, baseUrl: string) {
-  const models = builtinModels(provider.builtin)
   return (
-    models.some((model) => model.id === modelId) &&
-    models.some((model) => model.baseUrl.replace(/\/$/, '') === baseUrl.replace(/\/$/, ''))
+    provider.models.some((model) => model.id === modelId) && officialBuiltinUrl(provider, baseUrl)
+  )
+}
+function officialBuiltinUrl(provider: ProviderRecord, baseUrl: string) {
+  return builtinModels(provider.builtin).some(
+    (model) => model.baseUrl.replace(/\/$/, '') === baseUrl.replace(/\/$/, ''),
   )
 }
 export function driver(provider: ProviderRecord): ModelDriver {
@@ -190,7 +202,10 @@ export function driver(provider: ProviderRecord): ModelDriver {
         }),
         {
           apiKey: keyless ? 'unused' : (connection.credential ?? ''),
-          headers: { ...(keyless ? { authorization: null } : {}), ...provider.headers },
+          headers: {
+            ...(keyless ? { authorization: null } : {}),
+            ...provider.headers,
+          },
           ...(builtin ? { sessionId: context.conversationId } : {}),
           signal: context.signal,
           env: {},
