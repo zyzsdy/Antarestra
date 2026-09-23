@@ -24,7 +24,7 @@
   "dependencies": {
     "@antarestra/ai": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
-    "@earendil-works/pi-agent-core": "^0.85.1",
-    "@earendil-works/pi-ai": "^0.85.1"
+    "@earendil-works/pi-agent-core": "^0.87.0",
+    "@earendil-works/pi-ai": "^0.87.0"
   }
 }

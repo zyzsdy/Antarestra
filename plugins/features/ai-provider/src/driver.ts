@@ -1,4 +1,4 @@
-import { lazyApi, Type } from '@earendil-works/pi-ai'
+import { lazyApi, normalizeContext, Type } from '@earendil-works/pi-ai'
 import type {
   Api,
   Model,
@@ -158,7 +158,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
         ['openai-completions', 'openai-responses'].includes(provider.api)
       const stream = api.streamSimple(
         model,
-        {
+        normalizeContext({
           systemPrompt: request.systemPrompt,
           messages: messages(request, model),
           tools: request.tools.map((tool) => ({
@@ -166,7 +166,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
             description: tool.description,
             parameters: Type.Unsafe(tool.parameters),
           })),
-        },
+        }),
         {
           apiKey: keyless ? 'unused' : (connection.credential ?? ''),
           headers: { ...(keyless ? { authorization: null } : {}), ...provider.headers },

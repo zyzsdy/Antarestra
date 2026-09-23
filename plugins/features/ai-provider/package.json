@@ -26,7 +26,7 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*",
-    "@earendil-works/pi-ai": "^0.85.1"
+    "@earendil-works/pi-ai": "^0.87.0"
   },
   "antarestra": {
     "configSchema": "./config.schema.json",
