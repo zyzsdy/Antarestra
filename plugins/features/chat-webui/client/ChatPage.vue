@@ -360,7 +360,7 @@ onUnmounted(() => {
               取消归档并继续
             </button>
           </p>
-          <div v-else-if="interrupted" class="chat-recovery">
+          <div v-else-if="interrupted" class="chat-recovery" role="status">
             <span>{{ lastRun?.status === 'cancelled' ? '本轮生成已停止。' : '本轮未完成。' }}</span
             ><button class="chat-text-button" :disabled="sending || !!unavailable" @click="retry">
               重试本轮</button

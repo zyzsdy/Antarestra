@@ -393,9 +393,24 @@
 }
 .chat-recovery {
   display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 12px;
+  margin: 0 auto 12px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: #fff7e6;
+  color: #79521a;
+  text-align: center;
+}
+.chat-recovery .chat-text-button {
+  color: inherit;
+}
+.chat-recovery .chat-text-button:hover:not(:disabled) {
+  background: #f8e9c8;
 }
 .chat-text-button {
   border: 0;
@@ -407,7 +422,6 @@
 }
 .chat-text-button:hover:not(:disabled) {
   background: #eceee9;
-  text-decoration: underline;
 }
 .chat-bottom-link {
   position: absolute;
