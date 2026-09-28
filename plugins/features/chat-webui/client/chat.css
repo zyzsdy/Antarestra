@@ -494,6 +494,7 @@
 }
 .chat-slider {
   --chat-slider-size: 24px;
+  --chat-slider-thumb-size: 28px;
   position: relative;
   display: flex;
   align-items: center;
@@ -513,22 +514,25 @@
   position: absolute;
   height: 100%;
   /* 与滑块保持在轨道内的中心偏移一致。 */
-  margin-right: calc(var(--chat-slider-size) * (var(--chat-slider-progress) - 0.5));
+  margin-right: calc(var(--chat-slider-thumb-size) * (var(--chat-slider-progress) - 0.5));
   background: #9d8df6;
   border-radius: 12px 0 0 12px;
 }
 .chat-slider-thumb {
   display: block;
-  width: var(--chat-slider-size);
-  height: var(--chat-slider-size);
+  width: var(--chat-slider-thumb-size);
+  height: var(--chat-slider-thumb-size);
   border-radius: 50%;
   background: #fff;
   border: 2px solid #fff;
   box-shadow: 0 1px 4px #0002;
+  /* Reka UI 已将滑块向左平移半径，缩放原点跟随定位后的中心。 */
+  transform-origin: 0 50%;
+  transition: scale 160ms ease-out;
 }
 .chat-slider-marks {
   position: absolute;
-  inset: 0 calc(var(--chat-slider-size) / 2);
+  inset: 0 calc(var(--chat-slider-thumb-size) / 2);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -660,7 +664,12 @@
   white-space: nowrap;
 }
 .chat-slider-thumb:hover {
-  transform: scale(1.1);
+  scale: 1.1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-slider-thumb {
+    transition: none;
+  }
 }
 .chat-slider-labels {
   margin-top: 10px;
