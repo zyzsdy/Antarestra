@@ -74,6 +74,7 @@ const {
   interrupted,
   unavailable,
   reply,
+  replies,
   disconnected,
   currentId,
   pending,
@@ -329,7 +330,7 @@ onUnmounted(() => {
               :key="node.id"
               :node="node"
               :run="runs.get(node.runId)"
-              :live="node.role === 'assistant' && node.runId === activeRunId ? reply : undefined"
+              :live="node.role === 'assistant' ? replies.get(node.runId) : undefined"
             />
           </div>
         </section>

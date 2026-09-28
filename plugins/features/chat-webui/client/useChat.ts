@@ -2,12 +2,14 @@ import { computed, onUnmounted, reactive, ref, shallowRef, shallowReactive, watc
 import { useApi, ApiError } from '@antarestra/webui/api'
 import type {
   AgentPreset,
+  ChatMessage,
   Conversation,
   MessageNode,
   ModelDefinition,
   ModelRef,
   RunCommand,
   RunRecord,
+  RunStatus,
 } from '@antarestra/contracts'
 import type { Session } from './session.js'
 import { applyEvent, emptyReply, readEvents } from './stream.js'
@@ -44,6 +46,7 @@ export function useChat(identity: () => Session | undefined) {
   const selectedModel = ref('')
   const thinking = ref<string | null>(null)
   const reply = shallowRef(emptyReply())
+  const replies = shallowReactive(new Map<string, ReturnType<typeof emptyReply>>())
   const disconnected = ref(false)
   const currentId = computed(() =>
     typeof router.currentRoute.value.query.conversation === 'string'
@@ -100,6 +103,62 @@ export function useChat(identity: () => Session | undefined) {
   let alive = true
   const message = (cause: unknown) => (cause instanceof Error ? cause.message : '请求失败，请重试')
   const same = (id: string, turn: number) => alive && turn === epoch && currentId.value === id
+  function remember(conversation: Conversation) {
+    conversations.value = conversations.value.filter((item) => item.id !== conversation.id)
+    if ((conversation.archivedAt !== null) === archived.value) {
+      conversations.value.push(conversation)
+      conversations.value.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    }
+  }
+  function acceptRun(history: History, run: RunRecord, command: RunCommand) {
+    let user = history.nodes.find((node) => node.id === run.userNodeId)
+    if (!user) {
+      user = {
+        id: run.userNodeId,
+        conversationId: run.conversationId,
+        parentId: command.expectedNodeId,
+        runId: run.id,
+        role: 'user',
+        content: [{ type: 'text', text: run.input.text }, ...(run.input.attachments ?? [])],
+        input: run.input,
+        createdAt: run.createdAt,
+        version: 1,
+        versionCount: 1,
+      }
+    }
+    const siblings = history.nodes.filter(
+      (node) => node.role === 'assistant' && node.parentId === user.id,
+    )
+    const node: MessageNode = {
+      id: run.replyNodeId,
+      conversationId: run.conversationId,
+      parentId: user.id,
+      runId: run.id,
+      role: 'assistant',
+      content: [],
+      createdAt: run.createdAt,
+      version: siblings.length + 1,
+      versionCount: siblings.length + 1,
+    }
+    const parentIndex = history.path.findIndex((item) => item.id === user.parentId)
+    const conversation = {
+      ...history.conversation,
+      selectedNodeId: node.id,
+      activeRunId: run.id,
+      revision: command.expectedRevision + 1,
+      lastActivityAt: run.createdAt,
+    }
+    detail.value = {
+      conversation,
+      nodes: [
+        ...history.nodes.filter((item) => item.id !== user.id && item.id !== node.id),
+        user,
+        node,
+      ],
+      path: [...history.path.slice(0, parentIndex + 1), user, node],
+    }
+    remember(conversation)
+  }
   function chooseModel(preferred?: ModelRef, preferredThinking?: string | null) {
     const key = preferred
       ? modelKey(preferred)
@@ -156,6 +215,7 @@ export function useChat(identity: () => Session | undefined) {
     disconnected.value = false
     detail.value = undefined
     reply.value = emptyReply()
+    replies.clear()
     error.value = ''
     if (!id) {
       loading.value = false
@@ -190,7 +250,9 @@ export function useChat(identity: () => Session | undefined) {
     const controller = new AbortController()
     stream = controller
     reply.value = emptyReply()
+    replies.set(runId, reply.value)
     disconnected.value = false
+    const messages: ChatMessage[] = []
     for (let attempt = 0; attempt < 4 && same(id, turn) && !controller.signal.aborted; attempt++) {
       try {
         const response = await fetch(
@@ -209,16 +271,45 @@ export function useChat(identity: () => Session | undefined) {
           response,
           (event) => {
             if (same(id, turn) && !controller.signal.aborted && event.runId === runId) {
+              if (event.sequence <= reply.value.sequence) return
               applyEvent(reply.value, event)
               reply.value = { ...reply.value }
+              replies.set(runId, reply.value)
+              if (event.type === 'message') messages.push(event.data as unknown as ChatMessage)
+              if (event.type === 'run-end') {
+                const run = runs.get(runId)
+                const history = detail.value
+                if (!run || !history) return
+                const result = event.data as { status: RunStatus; error?: RunRecord['error'] }
+                runs.set(runId, {
+                  ...run,
+                  status: result.status,
+                  error: result.error ?? null,
+                  endedAt: event.createdAt,
+                  messages,
+                })
+                const content = [...reply.value.completed, ...reply.value.pending]
+                const finish = (node: MessageNode) =>
+                  node.id === run.replyNodeId ? { ...node, content } : node
+                const conversation = {
+                  ...history.conversation,
+                  activeRunId: null,
+                  revision: history.conversation.revision + 1,
+                  lastActivityAt: event.createdAt,
+                }
+                detail.value = {
+                  conversation,
+                  nodes: history.nodes.map(finish),
+                  path: history.path.map(finish),
+                }
+                remember(conversation)
+              }
             }
           },
           controller.signal,
         )
         if (!same(id, turn) || controller.signal.aborted) return
         if (reply.value.ended) {
-          await load()
-          void list()
           return
         }
         throw new Error('回复连接已断开')
@@ -267,7 +358,7 @@ export function useChat(identity: () => Session | undefined) {
     }
   }
   watch(currentId, () => {
-    if (identity()) void load()
+    if (identity() && detail.value?.conversation.id !== currentId.value) void load()
   })
   watch(
     () => `${identity()?.actorId ?? ''}/${identity()?.workspaceId ?? ''}`,
@@ -279,6 +370,7 @@ export function useChat(identity: () => Session | undefined) {
       drafts.clear()
       pending.clear()
       runs.clear()
+      replies.clear()
       detail.value = undefined
       conversations.value = []
       void initialize()
@@ -305,6 +397,7 @@ export function useChat(identity: () => Session | undefined) {
     const text = draft.value
     const selected = { ...model.value.ref }
     const intensity = thinking.value
+    let history = detail.value
     try {
       if (!id) {
         const created = await api<Conversation>('/ai/conversations', {
@@ -313,13 +406,19 @@ export function useChat(identity: () => Session | undefined) {
         })
         if (!alive || owner !== identityEpoch) return
         id = created.id
+        history = { conversation: created, nodes: [], path: [] }
+        remember(created)
         drafts.set(id, text)
         if (drafts.get('') === text) drafts.delete('')
-        if (!currentId.value) await navigate(id)
+        if (!currentId.value) {
+          detail.value = history
+          await navigate(id)
+        }
       }
       let command = pending.get(id)
       if (!command) {
-        const fresh = await api<History>(`/ai/conversations/${encodeURIComponent(id)}`)
+        const fresh = history ?? (await api<History>(`/ai/conversations/${encodeURIComponent(id)}`))
+        history = fresh
         if (!alive || owner !== identityEpoch) return
         command = {
           operation: regenerate ? 'regenerate' : 'send',
@@ -342,8 +441,10 @@ export function useChat(identity: () => Session | undefined) {
       pending.delete(id)
       if (drafts.get(id) === command.input?.text) drafts.delete(id)
       runs.set(result.id, result)
-      if (currentId.value === id) await load()
-      void list()
+      if (currentId.value === id && history) {
+        acceptRun(history, result, command)
+        void connect(result.id)
+      }
     } catch (cause) {
       if (!alive || owner !== identityEpoch) return
       if (cause instanceof ApiError && cause.status < 500) pending.delete(id)
@@ -362,8 +463,6 @@ export function useChat(identity: () => Session | undefined) {
     stopping.value = true
     try {
       await api(`/ai/runs/${encodeURIComponent(runId)}/cancel`, {})
-      if (id === currentId.value) await load()
-      void list()
     } catch (cause) {
       if (id === currentId.value) error.value = message(cause)
     } finally {
@@ -438,6 +537,7 @@ export function useChat(identity: () => Session | undefined) {
     interrupted,
     unavailable,
     reply,
+    replies,
     disconnected,
     currentId,
     pending,

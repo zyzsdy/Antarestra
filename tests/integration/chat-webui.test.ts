@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AiEvent } from '@antarestra/ai'
+import type { AiEvent, RunCommand } from '@antarestra/ai'
 import {
   applyEvent,
   emptyReply,
@@ -90,7 +90,7 @@ vi.mock('@antarestra/webui/api', async () => {
     }),
   }
 })
-import { effectScope, nextTick } from 'vue'
+import { effectScope, nextTick, watch } from 'vue'
 import { useApi } from '@antarestra/webui/api'
 import { modelKey, useChat } from '../../plugins/features/chat-webui/client/useChat.js'
 
@@ -160,7 +160,7 @@ async function mount() {
   return chat
 }
 describe('聊天会话状态', () => {
-  it('断线后携带事件游标重连，最终读取持久历史', async () => {
+  it('断线后携带事件游标重连，结束时原地保存内容而不重载历史', async () => {
     vi.useFakeTimers()
     let completed = false
     const activeHistory = () => ({
@@ -181,7 +181,13 @@ describe('聊天会话状态', () => {
         : path.includes('?')
           ? []
           : path.includes('/runs/')
-            ? { id: 'run', model, thinking: 'high', status: completed ? 'completed' : 'running' }
+            ? {
+                id: 'run',
+                replyNodeId: 'reply',
+                model,
+                thinking: 'high',
+                status: completed ? 'completed' : 'running',
+              }
             : activeHistory(),
     )
     const fetcher = vi
@@ -195,7 +201,7 @@ describe('聊天会话状态', () => {
       .mockImplementationOnce(async () => {
         completed = true
         return new Response(
-          `data: ${JSON.stringify(event(2, 'run-end', { status: 'completed' }))}\n\n`,
+          `data: ${JSON.stringify(event(2, 'message', { role: 'assistant', content: [{ type: 'text', text: '最终回复' }] }))}\n\ndata: ${JSON.stringify(event(3, 'run-end', { status: 'completed' }))}\n\n`,
         )
       })
     vi.stubGlobal('fetch', fetcher)
@@ -210,7 +216,131 @@ describe('聊天会话状态', () => {
     ])
     expect(chat.activeRunId.value).toBeNull()
     expect(chat.detail.value?.path[0]?.content).toEqual([{ type: 'text', text: '最终回复' }])
+    expect(
+      harness.api.mock.calls.filter(([path]) => path === '/ai/conversations/one'),
+    ).toHaveLength(1)
   })
+  it.each(['completed', 'failed', 'cancelled'] as const)(
+    '新对话发送及 %s 终态不加载历史或列表，保留消息并支持下一轮',
+    async (status) => {
+      let source: ReadableStreamDefaultController<Uint8Array> | undefined
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  source = controller
+                },
+              }),
+            ),
+        ),
+      )
+      let count = 0
+      harness.api.mockImplementation(async (path: string, body?: RunCommand) => {
+        if (path === '/ai/catalog') return catalog
+        if (path.includes('?')) return []
+        if (path === '/ai/conversations')
+          return {
+            ...history('one').conversation,
+            title: '问题',
+            createdAt: 1,
+            lastActivityAt: 1,
+          }
+        if (path.endsWith('/runs')) {
+          count++
+          return {
+            id: `run-${count}`,
+            conversationId: 'one',
+            userNodeId: body?.operation === 'regenerate' ? 'user-1' : `user-${count}`,
+            replyNodeId: `reply-${count}`,
+            status: 'running',
+            model,
+            thinking: 'high',
+            input: body!.input ?? { text: '问题' },
+            messages: [],
+            requests: [],
+            error: null,
+            createdAt: count + 1,
+          }
+        }
+        if (path.endsWith('/cancel')) return {}
+        throw new Error(`不应发出请求：${path}`)
+      })
+      const chat = await mount()
+      const loading: boolean[] = []
+      const listing: boolean[] = []
+      const unwatch = watch(chat.loading, (value) => loading.push(value), { flush: 'sync' })
+      const unlist = watch(chat.listing, (value) => listing.push(value), { flush: 'sync' })
+      const initialCalls = harness.api.mock.calls.length
+      chat.draft.value = '问题'
+      await chat.send()
+      await tick()
+      const user = chat.detail.value!.path[0]
+      expect(chat.detail.value?.path.map((node) => node.id)).toEqual(['user-1', 'reply-1'])
+      expect(chat.activeRunId.value).toBe('run-1')
+      expect(chat.draft.value).toBe('')
+      if (status === 'cancelled') {
+        await chat.stop()
+        expect(chat.activeRunId.value).toBe('run-1')
+        expect(chat.detail.value?.path[0]).toBe(user)
+      }
+      const push = (item: AiEvent) =>
+        source!.enqueue(
+          new TextEncoder().encode(
+            `data: ${JSON.stringify({ ...item, runId: 'run-1', conversationId: 'one' })}\n\n`,
+          ),
+        )
+      push(event(1, 'message-delta', { kind: 'text', text: '保留回复' }))
+      await tick()
+      push(
+        event(2, 'run-end', {
+          status,
+          error: status === 'failed' ? { code: 'test', message: '测试错误' } : null,
+        }),
+      )
+      source!.close()
+      await tick()
+      expect(chat.activeRunId.value).toBeNull()
+      expect(chat.detail.value?.path[0]).toBe(user)
+      expect(chat.detail.value?.path[1]?.content).toEqual([{ type: 'text', text: '保留回复' }])
+      expect(chat.replies.get('run-1')?.ended).toBe(true)
+      expect(chat.runs.get('run-1')?.status).toBe(status)
+      expect(chat.interrupted.value).toBe(status !== 'completed')
+      expect(chat.detail.value?.conversation.revision).toBe(2)
+      expect(harness.api.mock.calls.slice(initialCalls).map(([path]) => path)).toEqual([
+        '/ai/conversations',
+        '/ai/conversations/one/runs',
+        ...(status === 'cancelled' ? ['/ai/runs/run-1/cancel'] : []),
+      ])
+      if (status === 'completed') {
+        chat.draft.value = '继续'
+        await chat.send()
+        expect(harness.api.mock.calls.at(-1)?.[1]).toMatchObject({
+          expectedRevision: 2,
+          expectedNodeId: 'reply-1',
+          input: { text: '继续' },
+        })
+        expect(chat.detail.value?.path).toHaveLength(4)
+        expect(chat.detail.value?.path[0]).toBe(user)
+      } else {
+        await chat.send(true)
+        expect(harness.api.mock.calls.at(-1)?.[1]).toMatchObject({
+          operation: 'regenerate',
+          expectedRevision: 2,
+          targetNodeId: 'reply-1',
+        })
+        expect(chat.detail.value?.path.map((node) => node.id)).toEqual(['user-1', 'reply-2'])
+        expect(chat.detail.value?.path[0]).toBe(user)
+      }
+      expect(loading).toEqual([])
+      expect(listing).toEqual([])
+      unwatch()
+      unlist()
+      source?.close()
+    },
+  )
   it('中断后回到上一完整节点并恢复原输入，不删除历史节点', async () => {
     let selected = 'reply'
     const nodes = [
