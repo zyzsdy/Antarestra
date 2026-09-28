@@ -282,6 +282,7 @@
   color: #6b5654;
 }
 .chat-composer-area {
+  position: relative;
   flex-shrink: 0;
   width: min(800px, 100%);
   margin: 0 auto;
@@ -436,7 +437,7 @@
 }
 .chat-bottom-link {
   position: absolute;
-  bottom: 210px;
+  bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
   border: 1px solid #ddd;

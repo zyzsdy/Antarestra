@@ -334,10 +334,10 @@ onUnmounted(() => {
             />
           </div>
         </section>
-        <div v-if="!following" class="chat-bottom-link">
-          <button class="chat-text-button" @click="bottom">回到底部 ↓</button>
-        </div>
         <footer class="chat-composer-area">
+          <div v-if="!following" class="chat-bottom-link">
+            <button class="chat-text-button" @click="bottom">回到底部 ↓</button>
+          </div>
           <p v-if="error" class="chat-inline-error" role="alert">
             {{ error }}
             <button
