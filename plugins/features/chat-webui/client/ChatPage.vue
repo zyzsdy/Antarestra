@@ -424,6 +424,10 @@ onUnmounted(() => {
                       <SliderRoot
                         v-model="intensity"
                         class="chat-slider"
+                        :style="{
+                          '--chat-slider-progress':
+                            (intensity[0] ?? 0) / Math.max(1, levels.length - 1),
+                        }"
                         :min="0"
                         :max="levels.length - 1"
                         :step="1"

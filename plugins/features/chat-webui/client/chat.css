@@ -512,8 +512,10 @@
 .chat-slider-range {
   position: absolute;
   height: 100%;
+  /* 与滑块保持在轨道内的中心偏移一致。 */
+  margin-right: calc(var(--chat-slider-size) * (var(--chat-slider-progress) - 0.5));
   background: #9d8df6;
-  border-radius: 12px;
+  border-radius: 12px 0 0 12px;
 }
 .chat-slider-thumb {
   display: block;
