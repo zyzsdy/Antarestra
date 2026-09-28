@@ -120,6 +120,8 @@ Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认�
 
 ## 聊天页面
 
+推理强度滑块以白色滑块为分界，左侧已选区间使用 Logo 中的紫色 #9d8df6（来源为 WebUI 的 assets/brand/logo.svg），右侧剩余区间使用 #e5e5e3；填充随档位变化，由 Reka UI SliderRange 和 chat.css 共同维护。
+
 聊天采用 ChatGPT 式浅中性布局，保留 Antarestra Logo。聊天样式仍由 `chat-webui/client/chat.css` 维护：侧栏 #f7f7f5，正文 #ffffff，文本 #28292c，历史悬浮与选中 #eaeae7，用户消息 #f0f0ee。系统字体不变，正文及输入 16px，辅助操作 12–14px。此为聊天局部视觉变体，不改变控制台主色与布局。
 
 桌面侧栏 268px，消息列与输入区最大宽度 800px；760px 以下侧栏使用 Reka UI Dialog 抽屉。聊天拥有自己的视口高度与消息滚动区，不改变控制台表单的自然滚动。输入区最多 16 行，短视口最多 45% 高度，底部操作栏始终可达。
