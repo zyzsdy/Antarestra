@@ -90,9 +90,11 @@ vi.mock('@antarestra/webui/api', async () => {
     }),
   }
 })
-import { effectScope, nextTick, watch } from 'vue'
+import { effectScope, nextTick, ref, watch } from 'vue'
 import { useApi } from '@antarestra/webui/api'
 import { modelKey, useChat } from '../../plugins/features/chat-webui/client/useChat.js'
+import { createChatPreferences } from '../../plugins/features/chat-webui/client/preferences.js'
+import type { Session } from '../../plugins/features/chat-webui/client/session.js'
 
 const scope = () => effectScope()
 let cleanup = () => {}
@@ -142,24 +144,176 @@ const history = (id: string) => ({
   nodes: [],
   path: [],
 })
-async function mount() {
+const session: Session = {
+  actorId: 'a',
+  workspaceId: 'w',
+  displayName: '测试',
+  roles: [],
+  accountPath: '/auth/user/',
+}
+async function mount(identity = () => session) {
   const router = useApi().router
   await router.push({ path: '/', query: {} })
   const effect = scope()
-  const chat = effect.run(() =>
-    useChat(() => ({
-      actorId: 'a',
-      workspaceId: 'w',
-      displayName: '测试',
-      roles: [],
-      accountPath: '/auth/user/',
-    })),
-  )!
+  const chat = effect.run(() => useChat(identity))!
   cleanup = () => effect.stop()
   await tick()
   return chat
 }
 describe('聊天会话状态', () => {
+  function setupPreferences() {
+    const data = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+    })
+    const source = structuredClone(catalog)
+    source.agents.push({ ...source.agents[0]!, id: 'other', title: '另一位助理' })
+    harness.api.mockImplementation(
+      async (path: string, body?: RunCommand & { agentId?: string }) => {
+        if (path === '/ai/catalog') return source
+        if (path.includes('?')) return []
+        if (path === '/ai/conversations')
+          return { ...history('new').conversation, agentId: body!.agentId }
+        if (path.endsWith('/runs'))
+          return {
+            id: 'run',
+            conversationId: 'new',
+            userNodeId: 'user',
+            replyNodeId: 'reply',
+            model: body!.model,
+            thinking: body!.thinking,
+            input: body!.input,
+            createdAt: 1,
+          }
+        if (path === '/ai/runs/old-run') return { model, thinking: 'high' }
+        return {
+          ...history('old'),
+          path: [{ id: 'old-reply', role: 'assistant', runId: 'old-run', content: [] }],
+        }
+      },
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(`data: ${JSON.stringify(event(1, 'run-end', { status: 'completed' }))}\n\n`),
+      ),
+    )
+    return { data, source }
+  }
+
+  it('各助理保存已提交的设置，新对话及重新挂载恢复，浏览历史不覆盖偏好', async () => {
+    setupPreferences()
+    let chat = await mount()
+    chat.thinking.value = 'low'
+    chat.draft.value = '问题'
+    await chat.send()
+    await chat.navigate()
+    await tick()
+    expect(chat.thinking.value).toBe('low')
+    chat.agentId.value = 'other'
+    await tick()
+    expect(chat.thinking.value).toBe('high')
+    const plain = modelKey({ providerId: 'p', modelId: 'plain' })
+    chat.selectedModel.value = plain
+    chat.draft.value = '另一位助理的问题'
+    await chat.send()
+    await chat.navigate()
+    await tick()
+    expect(chat.selectedModel.value).toBe(plain)
+    expect(chat.thinking.value).toBeNull()
+    chat.agentId.value = 'agent'
+    await tick()
+    expect(chat.selectedModel.value).toBe(modelKey(model))
+    expect(chat.thinking.value).toBe('low')
+    await chat.navigate('old')
+    await tick()
+    expect(chat.thinking.value).toBe('high')
+    await chat.navigate()
+    await tick()
+    expect(chat.thinking.value).toBe('low')
+    cleanup()
+    harness.cleanups.splice(0).forEach((fn) => fn())
+    chat = await mount()
+    expect(chat.thinking.value).toBe('low')
+    chat.agentId.value = 'other'
+    await tick()
+    expect(chat.selectedModel.value).toBe(plain)
+    expect(chat.thinking.value).toBeNull()
+  })
+
+  it('按用户与空间隔离偏好，身份切换不沿用其他用户的记录', async () => {
+    setupPreferences()
+    createChatPreferences().write(session, 'agent', { model, thinking: 'low' })
+    const identity = ref(session)
+    const chat = await mount(() => identity.value)
+    expect(chat.thinking.value).toBe('low')
+    for (const next of [
+      { ...session, actorId: 'b' },
+      { ...session, workspaceId: 'other-space' },
+    ]) {
+      identity.value = next
+      await tick()
+      expect(chat.thinking.value).toBe('high')
+    }
+    identity.value = session
+    await tick()
+    expect(chat.thinking.value).toBe('low')
+  })
+
+  it('失效模型回退到助理默认模型，失效档位回退到支持的默认档位', async () => {
+    const { source } = setupPreferences()
+    source.agents[0]!.defaultModel = { providerId: 'p', modelId: 'plain' }
+    const preferences = createChatPreferences()
+    preferences.write(session, 'agent', {
+      model: { providerId: 'deleted', modelId: 'm' },
+      thinking: 'low',
+    })
+    const chat = await mount()
+    expect(chat.selectedModel.value).toBe(modelKey(source.agents[0]!.defaultModel))
+    expect(chat.thinking.value).toBeNull()
+    preferences.write(session, 'agent', { model, thinking: 'removed-level' })
+    await chat.load()
+    expect(chat.selectedModel.value).toBe(modelKey(model))
+    expect(chat.thinking.value).toBe('high')
+  })
+
+  it('损坏记录和存储异常不阻断聊天，存储不可用时在页面内记忆', async () => {
+    const { data } = setupPreferences()
+    createChatPreferences().write(session, 'agent', { model, thinking: 'low' })
+    for (const key of data.keys()) data.set(key, '{broken')
+    const chat = await mount()
+    expect(chat.thinking.value).toBe('high')
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('禁用存储')
+      },
+      setItem: () => {
+        throw new Error('禁用存储')
+      },
+    })
+    chat.thinking.value = 'low'
+    chat.draft.value = '问题'
+    await chat.send()
+    await chat.navigate()
+    await tick()
+    expect(chat.thinking.value).toBe('low')
+    expect(chat.error.value).toBe('')
+  })
+
+  it('未发送的选择和被拒绝的请求不覆盖最后使用的设置', async () => {
+    setupPreferences()
+    createChatPreferences().write(session, 'agent', { model, thinking: 'low' })
+    const chat = await mount()
+    chat.thinking.value = 'high'
+    chat.draft.value = '问题'
+    harness.api.mockRejectedValueOnce(new Error('请求失败'))
+    await chat.send()
+    await chat.load()
+    expect(chat.thinking.value).toBe('low')
+  })
+
   it('断线后携带事件游标重连，结束时原地保存内容而不重载历史', async () => {
     vi.useFakeTimers()
     let completed = false

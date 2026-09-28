@@ -13,6 +13,7 @@ import type {
 } from '@antarestra/contracts'
 import type { Session } from './session.js'
 import { applyEvent, emptyReply, readEvents } from './stream.js'
+import { createChatPreferences } from './preferences.js'
 
 interface Catalog {
   agents: AgentPreset[]
@@ -28,6 +29,7 @@ export const modelKey = (model: ModelRef) => JSON.stringify([model.providerId, m
 
 export function useChat(identity: () => Session | undefined) {
   const { api, router } = useApi()
+  const preferences = createChatPreferences()
   const catalog = shallowRef<Catalog>({ agents: [], providers: [], defaultAgentId: null })
   const conversations = ref<Conversation[]>([])
   const archived = ref(false)
@@ -165,13 +167,30 @@ export function useChat(identity: () => Session | undefined) {
       : agent.value
         ? modelKey(agent.value.defaultModel)
         : ''
+    const preferredModel = modelOptions.value.find((item) => item.id === key)
     selectedModel.value =
-      modelOptions.value.find((item) => item.id === key)?.id ?? modelOptions.value[0]?.id ?? ''
-    const initial = preferredThinking ?? agent.value?.defaultThinking
-    thinking.value = initial && levels.value.includes(initial) ? initial : (levels.value[0] ?? null)
+      preferredModel?.id ??
+      modelOptions.value.find(
+        (item) => agent.value && item.id === modelKey(agent.value.defaultModel),
+      )?.id ??
+      modelOptions.value[0]?.id ??
+      ''
+    const initial = preferredModel ? preferredThinking : undefined
+    const fallback = agent.value?.defaultThinking
+    thinking.value =
+      initial && levels.value.includes(initial)
+        ? initial
+        : fallback && levels.value.includes(fallback)
+          ? fallback
+          : (levels.value[0] ?? null)
+  }
+  function chooseNewModel() {
+    const session = identity()
+    const saved = session && agent.value ? preferences.read(session, agent.value.id) : undefined
+    chooseModel(saved?.model, saved?.thinking)
   }
   watch(agentId, () => {
-    if (!currentId.value) chooseModel()
+    if (!currentId.value) chooseNewModel()
   })
   watch(
     selectedModel,
@@ -219,7 +238,7 @@ export function useChat(identity: () => Session | undefined) {
     error.value = ''
     if (!id) {
       loading.value = false
-      chooseModel()
+      chooseNewModel()
       return
     }
     loading.value = true
@@ -391,6 +410,8 @@ export function useChat(identity: () => Session | undefined) {
     if (!regenerate && !pending.has(currentId.value) && (!draft.value.trim() || interrupted.value))
       return
     const owner = identityEpoch
+    const session = identity()
+    const usedAgentId = agent.value.id
     sending.value = true
     error.value = ''
     let id = currentId.value
@@ -438,6 +459,8 @@ export function useChat(identity: () => Session | undefined) {
         command,
       )
       if (!alive || owner !== identityEpoch) return
+      if (session)
+        preferences.write(session, usedAgentId, { model: result.model, thinking: result.thinking })
       pending.delete(id)
       if (drafts.get(id) === command.input?.text) drafts.delete(id)
       runs.set(result.id, result)
