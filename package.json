@@ -12,7 +12,7 @@
     "startdevdb": "docker compose -p antarestra-dev -f compose.dev.yml up -d --wait",
     "dev": "pnpm --filter @antarestra/server dev",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tests.json",
+    "typecheck": "pnpm -r typecheck && vue-tsc -p tsconfig.tests.json --noEmit",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -23,7 +23,9 @@
   "devDependencies": {
     "@antarestra/ai": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
+    "@antarestra/contracts": "workspace:*",
     "@antarestra/database": "workspace:*",
+    "@antarestra/markdown": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-ai-agent-core": "workspace:*",
     "@antarestra/plugin-ai-agents": "workspace:*",
@@ -34,12 +36,15 @@
     "@antarestra/plugin-database-kysely": "workspace:*",
     "@antarestra/plugin-hmr": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
+    "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "jsdom": "^30.1.1",
     "prettier": "^3.9.6",
     "selfsigned": "^5.5.0",
     "tsx": "^4.23.13",
@@ -47,6 +52,7 @@
     "vite": "^8.2.2",
     "vitest": "^5.0.0",
     "vue": "^3.5.42",
+    "vue-tsc": "^3.3.11",
     "ws": "^8.21.3"
   }
 }

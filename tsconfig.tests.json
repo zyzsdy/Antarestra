@@ -1,5 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
-  "compilerOptions": { "noEmit": true, "lib": ["ES2024", "ESNext.Array", "DOM", "DOM.Iterable"] },
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vite/client"],
+    "lib": ["ES2024", "ESNext.Array", "DOM", "DOM.Iterable"]
+  },
   "include": ["tests/**/*.ts", "vitest.config.ts"]
 }

@@ -24,6 +24,7 @@ plugins:
   ai-provider: {}
   ai-agents: {}
   config-panel: {}
+  markdown-render: {}
   chat-webui: {}
 pluginPanel:
   instances:

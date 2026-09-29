@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src/core.ts", "src/markdown.ts", "src/stream.ts", "src/types.ts"]
+}

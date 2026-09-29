@@ -1,13 +1,32 @@
 {
-  "findings": [],
+  "findings": [
+    {
+      "category": "violation",
+      "file": "packages/markdown/src/markdown.ts",
+      "line": 125,
+      "message": "Enabled literal button has no detectable action or submit behavior.",
+      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
+      "ruleId": "affordance.actionless-button",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "plugins/features/ai-agents/client/AgentForm.vue",
+      "line": 211,
+      "message": "Literal product textarea does not show evidence of the canonical resize-none rule.",
+      "remediation": "Use the shared Textarea owner or apply resize-none/resize: none with adequate height or auto-grow behavior.",
+      "ruleId": "form.textarea-resize-missing",
+      "severity": "error"
+    }
+  ],
   "mode": "strict",
   "projectRoot": "E:\\MyProjects\\Antarestra",
   "schemaVersion": 1,
   "summary": {
-    "errors": 0,
-    "total": 0,
+    "errors": 2,
+    "total": 2,
     "unresolved": 0,
-    "violations": 0,
+    "violations": 2,
     "warnings": 0
   }
 }

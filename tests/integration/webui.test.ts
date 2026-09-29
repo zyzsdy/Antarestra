@@ -29,6 +29,7 @@ describe('WebUI 插件', () => {
     for (const path of ['/', '/auth/user/', '/auth/user']) {
       const response = await app.get(path)
       expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Security-Policy')).toContain("font-src 'self' data:")
       expect(await response.text()).toContain('<div id="app"></div>')
     }
     for (const path of [

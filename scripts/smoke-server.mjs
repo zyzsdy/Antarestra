@@ -70,11 +70,17 @@ try {
           ).json()
           const entry = entries.find((item) => item.id === 'auth-local-local')
           const chat = entries.find((item) => item.id === 'chat-webui')
+          const markdown = entries.find((item) => item.id === 'markdown-render')
           const admin = entries.find((item) => item.id === 'admin-console')
           const panel = entries.find((item) => item.id === 'config-panel')
           const providers = entries.find((item) => item.id === 'ai-provider')
           healthy =
-            entry?.config.path === '/auth/user/' && !!chat && !!admin && !!panel && !!providers
+            entry?.config.path === '/auth/user/' &&
+            !!chat &&
+            !!markdown &&
+            !!admin &&
+            !!panel &&
+            !!providers
           if (healthy) {
             const resource = await fetch('http://127.0.0.1:' + port + entry.url)
             healthy =
@@ -82,6 +88,10 @@ try {
               resource.headers.get('content-type')?.includes('javascript')
             const access = await fetch(`http://127.0.0.1:${port}/api/chat-webui/session`)
             const chatResource = await fetch(`http://127.0.0.1:${port}${chat.url}`)
+            const markdownResource = await fetch(`http://127.0.0.1:${port}${markdown.url}`)
+            const markdownStyle = await fetch(
+              new URL('./style.css', `http://127.0.0.1:${port}${markdown.url}`),
+            )
             const logo = await fetch(`http://127.0.0.1:${port}/brand/logo.svg`)
             const favicon = await fetch(`http://127.0.0.1:${port}/favicon.ico`)
             const adminResource = await fetch(`http://127.0.0.1:${port}${admin.url}`)
@@ -93,6 +103,10 @@ try {
               access.status === 401 &&
               (await access.json()).loginPath === '/auth/user/' &&
               chatResource.status === 200 &&
+              markdownResource.status === 200 &&
+              markdownResource.headers.get('content-type')?.includes('javascript') &&
+              markdownStyle.status === 200 &&
+              page.headers.get('content-security-policy')?.includes("font-src 'self' data:") &&
               logo.status === 200 &&
               logo.headers.get('content-type')?.includes('image/svg+xml') &&
               favicon.status === 200 &&

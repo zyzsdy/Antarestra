@@ -1,5 +1,6 @@
 import { defineComponent, h, reactive } from 'vue'
 import type { ClientPlugin } from '@antarestra/webui/client'
+import { provideMarkdown } from '@antarestra/plugin-markdown-render/client'
 import ChatPage from './ChatPage.vue'
 import type { Session } from './session.js'
 
@@ -18,8 +19,9 @@ const apply: ClientPlugin = (ctx) => {
   ctx.page({
     path: '/',
     name: '聊天',
-    component: defineComponent(
-      () => () =>
+    component: defineComponent(() => {
+      provideMarkdown(ctx)
+      return () =>
         h(ChatPage, {
           ...state,
           signal: controller.signal,
@@ -35,8 +37,8 @@ const apply: ClientPlugin = (ctx) => {
             ctx.session.clear()
             await ctx.router.push(state.session?.accountPath ?? '/auth/user/')
           },
-        }),
-    ),
+        })
+    }),
     async beforeEnter() {
       state.session = undefined
       state.failure = ''

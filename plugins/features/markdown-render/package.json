@@ -1,8 +1,11 @@
 {
-  "name": "@antarestra/plugin-chat-webui",
+  "name": "@antarestra/plugin-markdown-render",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "antarestra": {
+    "multipleInstances": false
+  },
   "keywords": [
     "antarestra-plugin"
   ],
@@ -12,6 +15,7 @@
     "dev": "vite build --watch"
   },
   "exports": {
+    "./client": "./client/api.ts",
     ".": {
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
@@ -19,11 +23,9 @@
     }
   },
   "dependencies": {
-    "@antarestra/contracts": "workspace:*",
-    "@antarestra/plugin-markdown-render": "workspace:*",
+    "@antarestra/markdown": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
-    "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*"
   },
   "devDependencies": {
@@ -31,9 +33,5 @@
     "vite": "^8.2.2",
     "vue": "^3.5.42",
     "vue-tsc": "^3.3.11"
-  },
-  "antarestra": {
-    "configSchema": "./config.schema.json",
-    "multipleInstances": false
   }
 }

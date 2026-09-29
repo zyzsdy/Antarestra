@@ -1,0 +1,552 @@
+/* -------------------------------------------------------------------------
+ * @antarestra/markdown 渲染样式
+ * 设计说明：正文与代码块均沿用应用浅色蓝灰体系，代码卡与 Mermaid 卡
+ * 采用同一视觉语言（白底、#f6f8fc 头部、圆角浅边框卡片）。
+ * 注意：宿主应用若引入 Tailwind preflight，会重置列表标记与表格边框，
+ * 本文件内已显式恢复。所有选择器都收敛在 .md-body 作用域内。
+ * ------------------------------------------------------------------------- */
+
+.md-body {
+  min-width: 0;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+
+.md-body .md-extension-pending,
+.md-body [data-md-extension] > pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 7px;
+}
+
+/* --- 块级基础 ----------------------------------------------------------- */
+
+.md-body > .md-block > :first-child {
+  margin-top: 0;
+}
+
+.md-body > .md-block > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body > .md-block + .md-block > :first-child {
+  margin-top: 0.75em;
+}
+
+.md-body p {
+  margin: 0 0 0.75em;
+}
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  margin: 1.4em 0 0.6em;
+  color: #263754;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.md-body h1 {
+  font-size: 1.32em;
+  letter-spacing: -0.01em;
+}
+
+.md-body h2 {
+  font-size: 1.18em;
+}
+
+.md-body h3 {
+  font-size: 1.06em;
+}
+
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font-size: 1em;
+}
+
+.md-body h1:first-child,
+.md-body h2:first-child,
+.md-body h3:first-child {
+  margin-top: 0.2em;
+}
+
+.md-body ul,
+.md-body ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+}
+
+/* Tailwind preflight 会全局重置 list-style，这里显式恢复列表标记。 */
+.md-body ul {
+  list-style: disc;
+}
+
+.md-body ul ul {
+  list-style: circle;
+}
+
+.md-body ul ul ul {
+  list-style: square;
+}
+
+.md-body ol {
+  list-style: decimal;
+}
+
+.md-body ol ol {
+  list-style: lower-alpha;
+}
+
+.md-body li {
+  display: list-item;
+  margin: 0.25em 0;
+}
+
+.md-body li > p {
+  margin: 0.35em 0;
+}
+
+.md-body li > ul,
+.md-body li > ol {
+  margin: 0.35em 0 0.2em;
+}
+
+.md-body blockquote {
+  margin: 0 0 0.85em;
+  padding: 0.35em 0 0.35em 1em;
+  border-left: 3px solid #c9d4e8;
+  color: #5a6a85;
+}
+
+.md-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.md-body hr {
+  margin: 1.4em 0;
+  border: 0;
+  border-top: 1px solid #e2e8f2;
+}
+
+.md-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+.md-body a {
+  color: #6962ca;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(105 98 202 / 32%);
+}
+
+.md-body a:hover {
+  color: #524bae;
+  border-bottom-color: currentcolor;
+}
+
+/* 行内代码：超长路径与方法名不得撑破消息区域 */
+.md-body :not(pre) > code {
+  padding: 0.15em 0.4em;
+  border: 1px solid #dfe6f0;
+  border-radius: 6px;
+  color: #3b4a68;
+  background: #eef2f8;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.88em;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.md-body del,
+.md-body s {
+  color: #7c8798;
+}
+
+.md-body mark {
+  padding: 0 0.2em;
+  border-radius: 4px;
+  background: #fdeeb8;
+}
+
+.md-body kbd {
+  padding: 0.1em 0.4em;
+  border: 1px solid #cdd6e3;
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #f6f8fb;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.82em;
+}
+
+.md-body input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin-right: 0.4em;
+  vertical-align: -2px;
+  accent-color: #6962ca;
+}
+
+.md-body .task-list-container {
+  list-style: none;
+  padding-left: 0.35em;
+}
+
+.md-body .task-list-container .task-list-item {
+  display: flex;
+  align-items: baseline;
+}
+
+.md-body .task-list-container .task-list-item > input {
+  flex: 0 0 auto;
+  margin-top: 0.45em;
+  transform: translateY(1px);
+}
+
+.md-body .task-list-container .task-list-item > label {
+  flex: 1;
+  cursor: default;
+}
+
+/* --- 表格 --------------------------------------------------------------- */
+
+.md-body .md-table-wrap {
+  max-width: 100%;
+  margin: 0 0 1em;
+  overflow-x: auto;
+  border: 1px solid #e3e9f2;
+  border-radius: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-body table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+
+.md-body th,
+.md-body td {
+  padding: 8px 14px;
+  border-bottom: 1px solid #e3e9f2;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md-body th {
+  color: #33425e;
+  background: #f2f5fa;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.md-body tr:last-child td {
+  border-bottom: 0;
+}
+
+.md-body td :not(pre) > code {
+  white-space: break-spaces;
+}
+
+/* --- KaTeX -------------------------------------------------------------- */
+
+.md-body .katex-display {
+  margin: 0.9em 0;
+  padding: 0.35em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.md-body .katex {
+  font-size: 1.05em;
+}
+
+.md-body .katex-error {
+  padding: 0.1em 0.35em;
+  border-radius: 5px;
+  color: #b15d69;
+  background: #fff5f6;
+}
+
+/* --- 代码块 -------------------------------------------------------------- */
+
+.md-body .md-code {
+  margin: 0 0 1em;
+  border: 1px solid #dce4ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgb(42 65 105 / 6%);
+  overflow: hidden;
+}
+
+.md-body .md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px 7px 14px;
+  border-bottom: 1px solid #e6ebf3;
+  background: #f6f8fc;
+}
+
+.md-body .md-code-lang {
+  color: #6b7799;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.md-body .md-code-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.md-body .md-code-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  color: #63718c;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.md-body .md-code-action:hover {
+  color: #263754;
+  background: #e8edf5;
+}
+
+.md-body .md-code-action:focus-visible {
+  outline: 2px solid #6962ca;
+  outline-offset: 1px;
+}
+
+.md-body .md-code-action.is-copied {
+  color: #1d7d63;
+}
+
+.md-body .md-code-pre {
+  margin: 0;
+  padding: 13px 15px;
+  overflow-x: auto;
+  color: #384a60;
+  background: transparent;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  tab-size: 4;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 全局“代码自动换行”模式（预留给设置菜单，通过 codeWrap prop 开启）。 */
+.md-body--code-wrap .md-code-pre {
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.md-body .md-code-pre code {
+  display: block;
+  width: max-content;
+  font-family: inherit;
+  background: transparent;
+  padding: 0;
+  border: 0;
+}
+
+.md-body--code-wrap .md-code-pre code {
+  width: auto;
+}
+
+/* --- highlight.js 配色（浅色主题，与品牌紫 / 薄荷绿同族） ------------------ */
+
+.md-body .hljs-comment,
+.md-body .hljs-quote {
+  color: #93a0b4;
+  font-style: italic;
+}
+
+.md-body .hljs-keyword,
+.md-body .hljs-selector-tag,
+.md-body .hljs-doctag,
+.md-body .hljs-template-tag,
+.md-body .hljs-section,
+.md-body .hljs-name {
+  color: #7c4dcf;
+}
+
+.md-body .hljs-string,
+.md-body .hljs-regexp,
+.md-body .hljs-addition,
+.md-body .hljs-meta .hljs-string {
+  color: #147d64;
+}
+
+.md-body .hljs-number,
+.md-body .hljs-literal,
+.md-body .hljs-bullet,
+.md-body .hljs-link {
+  color: #b2500d;
+}
+
+.md-body .hljs-title,
+.md-body .hljs-title.function_,
+.md-body .hljs-built_in {
+  color: #3558c4;
+}
+
+.md-body .hljs-title.class_,
+.md-body .hljs-type,
+.md-body .hljs-class .hljs-title {
+  color: #955300;
+}
+
+.md-body .hljs-attr,
+.md-body .hljs-attribute,
+.md-body .hljs-variable,
+.md-body .hljs-template-variable,
+.md-body .hljs-selector-attr,
+.md-body .hljs-selector-class,
+.md-body .hljs-selector-id {
+  color: #4a5db0;
+}
+
+.md-body .hljs-symbol,
+.md-body .hljs-meta,
+.md-body .hljs-operator {
+  color: #4a5a74;
+}
+
+.md-body .hljs-emphasis {
+  font-style: italic;
+}
+
+.md-body .hljs-strong {
+  font-weight: 700;
+}
+
+.md-body .hljs-deletion {
+  color: #cf2e3d;
+}
+
+/* --- Mermaid ------------------------------------------------------------- */
+
+.md-body .md-mermaid-frame {
+  margin: 0 0 1em;
+  border: 1px solid #dce4ee;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgb(42 65 105 / 6%);
+  overflow: hidden;
+}
+
+.md-body .md-mermaid-head {
+  border-bottom: 1px solid #e6ebf3;
+  background: #f6f8fc;
+}
+
+.md-body .md-mermaid-head .md-code-lang {
+  color: #6b7799;
+}
+
+.md-body .md-mermaid-head .md-code-action {
+  color: #63718c;
+}
+
+.md-body .md-mermaid-head .md-code-action:hover {
+  color: #263754;
+  background: #e8edf5;
+}
+
+.md-body .md-mermaid-head .md-code-action.is-active {
+  color: #101936;
+  background: #b4f6e4;
+}
+
+.md-body .md-mermaid-head .md-code-action.is-copied {
+  color: #1d7d63;
+}
+
+.md-body .md-mermaid-body {
+  position: relative;
+  padding: 18px 16px;
+  overflow-x: auto;
+}
+
+.md-body .md-mermaid-canvas {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.md-body .md-mermaid-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.md-body .md-mermaid-message {
+  margin: 0;
+  color: #8792a6;
+  font-size: 12px;
+  text-align: center;
+}
+
+.md-body .md-mermaid-message--error {
+  color: #b15d69;
+}
+
+.md-body .md-mermaid-retry {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid currentcolor;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  font-size: 11px;
+}
+
+.md-body .md-mermaid-source-view {
+  margin: 0;
+  padding: 13px 15px;
+  overflow-x: auto;
+  color: #3b4a68;
+  background: #f8fafc;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+/* --- 窄屏适配 ------------------------------------------------------------ */
+
+@media (max-width: 640px) {
+  .md-body .md-code-pre,
+  .md-body .md-mermaid-source-view {
+    padding: 11px 12px;
+    font-size: 12px;
+  }
+
+  .md-body th,
+  .md-body td {
+    padding: 7px 10px;
+  }
+}

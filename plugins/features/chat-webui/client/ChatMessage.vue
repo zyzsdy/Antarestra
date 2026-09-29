@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { MarkdownView } from '@antarestra/plugin-markdown-render/client'
 import type { ContentBlock, MessageNode, RunRecord } from '@antarestra/contracts'
 import {
   CollapsibleRoot,
@@ -58,14 +59,19 @@ const tools = computed(() =>
         ><ChevronDownIcon class="ui-icon" />思考与工具详情</CollapsibleTrigger
       >
       <CollapsibleContent>
-        <p v-if="thoughts" class="chat-plain">{{ thoughts }}</p>
+        <MarkdownView v-if="thoughts" :source="thoughts" :streaming="!!live && !live.ended" />
         <div v-for="tool in tools" :key="tool.id" class="chat-tool">
           <strong>{{ tool.name }} · {{ tool.status }}</strong>
           <pre>{{ tool.detail }}</pre>
         </div>
       </CollapsibleContent>
     </CollapsibleRoot>
-    <p v-if="body" class="chat-plain">{{ body }}</p>
+    <MarkdownView
+      v-if="body && node.role === 'assistant'"
+      :source="body"
+      :streaming="!!live && !live.ended"
+    />
+    <p v-else-if="body" class="chat-plain">{{ body }}</p>
     <p v-if="live && !live.ended" class="chat-run-status" role="status">{{ live.status }}…</p>
     <p
       v-else-if="node.role === 'assistant' && run && run.status !== 'completed'"

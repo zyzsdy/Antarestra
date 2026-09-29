@@ -2,6 +2,8 @@
   "profile": "product-admin",
   "locale": "zh-CN",
   "sourceRoots": [
+    "packages/markdown/src",
+    "plugins/features/markdown-render/client",
     "plugins/definitions/webui/client",
     "plugins/features/admin-console/client",
     "plugins/features/chat-webui/client",
