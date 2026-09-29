@@ -106,6 +106,7 @@ const editError = ref('')
 const actionsDisabled = computed(
   () =>
     loading.value ||
+    !detail.value ||
     sending.value ||
     !!activeRunId.value ||
     archivedConversation.value ||
@@ -164,6 +165,7 @@ const intensity = computed({
 const canSend = computed(
   () =>
     !loading.value &&
+    (!currentId.value || !!detail.value) &&
     !sending.value &&
     !activeRunId.value &&
     !archivedConversation.value &&
@@ -194,7 +196,7 @@ watch(draft, () => {
   void nextTick(grow)
 })
 watch(
-  () => [reply.value.sequence, detail.value?.path.length],
+  () => [reply.value.sequence, detail.value?.path],
   async () => {
     await nextTick()
     if (following.value) bottom()
@@ -363,28 +365,36 @@ onUnmounted(() => {
           }}</span>
           <span v-if="activeRunId" class="chat-header-status">正在生成</span>
         </header>
-        <section ref="messages" class="chat-messages" aria-label="消息记录" @scroll="scroll">
-          <div v-if="loading" class="chat-loading" role="status">正在加载对话…</div>
-          <div v-else-if="!detail?.path.length" class="chat-welcome">
-            <AntarestraLogo :size="60" decorative />
-            <h1>今天，有什么新想法？</h1>
-            <p>从一次对话开始。</p>
-          </div>
-          <div v-else class="chat-transcript">
-            <ChatMessage
-              v-for="node in detail.path"
-              :key="node.id"
-              :node="node"
-              :run="runs.get(node.runId)"
-              :live="node.role === 'assistant' ? replies.get(node.runId) : undefined"
-              :disabled="actionsDisabled"
-              :branches="node.role === 'assistant' ? branches(node) : []"
-              @edit="editMessage(node)"
-              @regenerate="regenerate(node)"
-              @branch="selectBranch"
-            />
-          </div>
-        </section>
+        <div class="chat-message-area" :aria-busy="loading">
+          <section
+            ref="messages"
+            class="chat-messages"
+            aria-label="消息记录"
+            :inert="loading || (!!currentId && !detail)"
+            @scroll="scroll"
+          >
+            <div v-if="!detail?.path.length && !loading" class="chat-welcome">
+              <AntarestraLogo :size="60" decorative />
+              <h1>今天，有什么新想法？</h1>
+              <p>从一次对话开始。</p>
+            </div>
+            <div v-if="detail?.path.length" class="chat-transcript">
+              <ChatMessage
+                v-for="node in detail.path"
+                :key="node.id"
+                :node="node"
+                :run="runs.get(node.runId)"
+                :live="node.role === 'assistant' ? replies.get(node.runId) : undefined"
+                :disabled="actionsDisabled"
+                :branches="node.role === 'assistant' ? branches(node) : []"
+                @edit="editMessage(node)"
+                @regenerate="regenerate(node)"
+                @branch="selectBranch"
+              />
+            </div>
+          </section>
+          <div v-if="loading" class="chat-loading" role="status"><span>正在加载对话…</span></div>
+        </div>
         <footer class="chat-composer-area">
           <div v-if="!following" class="chat-bottom-link">
             <button class="chat-text-button" @click="bottom">回到底部 ↓</button>

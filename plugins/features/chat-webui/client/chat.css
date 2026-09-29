@@ -185,6 +185,13 @@
   font-size: 12px;
   white-space: nowrap;
 }
+.chat-message-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 .chat-messages {
   flex: 1;
   min-height: 0;
@@ -517,9 +524,22 @@
   background: #fff;
 }
 .chat-loading {
-  padding: 32px;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #ffffff40;
   text-align: center;
   color: #666;
+}
+.chat-loading > span {
+  padding: 10px 16px;
+  border: 1px solid #e2e2de;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 14px #00000008;
 }
 .chat-popover {
   z-index: 310;

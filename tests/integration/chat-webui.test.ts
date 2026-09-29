@@ -623,6 +623,49 @@ describe('聊天会话状态', () => {
     await tick()
     expect(chat.draft.value).toBe('新对话草稿')
   })
+  it('同一对话重载保留消息和流式文本，失败不清屏，切换对话立即清空', async () => {
+    setupPreferences()
+    const chat = await mount()
+    chat.draft.value = '保留这条消息'
+    await chat.send()
+    await tick()
+    const detail = chat.detail.value
+    const live = chat.replies.get('run')
+    let rejectLoad: (error: Error) => void = () => {}
+    harness.api.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectLoad = reject
+        }),
+    )
+    const loading = chat.load()
+    await tick()
+    expect(chat.loading.value).toBe(true)
+    expect(chat.detail.value).toBe(detail)
+    expect(chat.replies.get('run')).toBe(live)
+    rejectLoad(new Error('暂时断线'))
+    await loading
+    expect(chat.loading.value).toBe(false)
+    expect(chat.detail.value).toBe(detail)
+    expect(chat.error.value).toBe('暂时断线')
+    let resolveLoad: (value: unknown) => void = () => {}
+    harness.api.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve
+        }),
+    )
+    await chat.navigate('other')
+    await tick()
+    expect(chat.loading.value).toBe(true)
+    expect(chat.detail.value).toBeUndefined()
+    expect(chat.replies.size).toBe(0)
+    resolveLoad(history('other'))
+    await tick()
+    expect(chat.detail.value?.conversation.id).toBe('other')
+    expect(chat.loading.value).toBe(false)
+  })
+
   it('旧会话的迟到响应不能覆盖新会话', async () => {
     let resolveOld: (value: unknown) => void = () => {}
     harness.api.mockImplementation(async (path: string) =>

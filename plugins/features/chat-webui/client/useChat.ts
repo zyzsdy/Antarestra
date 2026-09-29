@@ -235,11 +235,15 @@ export function useChat(identity: () => Session | undefined) {
     const id = currentId.value
     stream?.abort()
     disconnected.value = false
-    detail.value = undefined
-    reply.value = emptyReply()
-    replies.clear()
+    if (detail.value?.conversation.id !== id) {
+      detail.value = undefined
+      reply.value = emptyReply()
+      replies.clear()
+    }
     error.value = ''
     if (!id) {
+      reply.value = emptyReply()
+      replies.clear()
       loading.value = false
       chooseNewModel()
       return
@@ -256,6 +260,8 @@ export function useChat(identity: () => Session | undefined) {
         ids.map((runId) => api<RunRecord>(`/ai/runs/${encodeURIComponent(runId)}`)),
       )
       if (!same(id, turn)) return
+      reply.value = emptyReply()
+      replies.clear()
       for (const run of records) runs.set(run.id, run)
       detail.value = result
       const latest = records.at(-1)
@@ -404,6 +410,7 @@ export function useChat(identity: () => Session | undefined) {
     if (
       sending.value ||
       loading.value ||
+      (currentId.value && !detail.value) ||
       activeRunId.value ||
       !model.value ||
       !agent.value ||
