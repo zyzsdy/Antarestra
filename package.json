@@ -18,7 +18,10 @@
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "start": "pnpm --filter @antarestra/server start",
-    "create:webui": "node scripts/create-webui.mjs"
+    "create:webui": "node scripts/create-webui.mjs",
+    "startdevstorage": "node scripts/start-storage.mjs",
+    "test:storage": "node --env-file=.env.storage.local --import tsx --conditions=development scripts/smoke-storage.ts",
+    "initdevstorage": "node --env-file=.env.storage.local scripts/init-storage.mjs"
   },
   "devDependencies": {
     "@antarestra/ai": "workspace:*",
@@ -39,8 +42,12 @@
     "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/plugin-storage-s3": "workspace:*",
+    "@antarestra/plugin-workspace-file": "workspace:*",
     "@antarestra/rbac": "workspace:*",
+    "@antarestra/storage": "workspace:*",
     "@antarestra/webui": "workspace:*",
+    "@aws-sdk/client-s3": "^3.1141.0",
     "@types/node": "^24.13.3",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.8",

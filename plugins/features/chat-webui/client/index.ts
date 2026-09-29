@@ -3,6 +3,8 @@ import type { ClientPlugin } from '@antarestra/webui/client'
 import { provideMarkdown } from '@antarestra/plugin-markdown-render/client'
 import ChatPage from './ChatPage.vue'
 import type { Session } from './session.js'
+import { filesSlot } from '@antarestra/plugin-workspace-file/client'
+import type { WorkspaceFilesClient } from '@antarestra/plugin-workspace-file/client'
 
 const apply: ClientPlugin = (ctx) => {
   const state = reactive<{ session: Session | undefined; failure: string }>({
@@ -24,6 +26,7 @@ const apply: ClientPlugin = (ctx) => {
       return () =>
         h(ChatPage, {
           ...state,
+          files: ctx.slot<WorkspaceFilesClient>(filesSlot).get('default'),
           signal: controller.signal,
           canAdmin: !!ctx.session.snapshot.value?.permissions.includes('admin.console.view'),
           logout: async () => {

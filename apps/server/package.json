@@ -26,7 +26,10 @@
     "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/plugin-storage-s3": "workspace:*",
+    "@antarestra/plugin-workspace-file": "workspace:*",
     "@antarestra/rbac": "workspace:*",
+    "@antarestra/storage": "workspace:*",
     "@antarestra/webui": "workspace:*"
   }
 }

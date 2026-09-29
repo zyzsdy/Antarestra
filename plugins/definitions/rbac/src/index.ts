@@ -34,6 +34,8 @@ export type DefaultRole = 'guest' | 'user' | 'admin'
 export interface RequestIdentity {
   readonly actorId: string | null
   readonly workspaceId: string | null
+  /** 由可信入口提供的空间展示名称，例如“本地用户·Admin”或“QQ群·293103019”。 */
+  readonly workspaceLabel?: string
   readonly roles: readonly DefaultRole[]
   readonly auth?: AuthContext
 }
@@ -673,6 +675,24 @@ export class RbacService extends Service<Config> {
 
   async principal(id: string): Promise<Principal | undefined> {
     return this.db().selectFrom('principal').selectAll().where('id', '=', id).executeTakeFirst()
+  }
+
+  /** 可信服务用于展示已建立的本地个人空间；调用方仍需执行管理权限检查。 */
+  async personalWorkspaces(offset = 0, limit = 100) {
+    const rows = await this.db()
+      .selectFrom('principal')
+      .innerJoin('identity', 'identity.principal_id', 'principal.id')
+      .innerJoin('provider', 'provider.id', 'identity.provider_id')
+      .select(['principal.id', 'principal.display_name', 'provider.id as providerId'])
+      .where('provider.plugin_id', '=', '@antarestra/plugin-auth-local')
+      .orderBy('principal.id')
+      .offset(offset)
+      .limit(limit)
+      .execute()
+    return rows.map((row) => ({
+      id: `personal:${row.id}`,
+      label: `本地用户·${row.display_name}（${row.providerId}）`,
+    }))
   }
 
   async role(id: string): Promise<{ id: string; name: string; status: string } | undefined> {

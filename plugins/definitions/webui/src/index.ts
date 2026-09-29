@@ -32,6 +32,27 @@ export class WebUI extends Service<Config> {
   private readonly listeners = new Set<() => void>()
   private readonly assets = new Map<string, { directory: string; refresh: () => Promise<void> }>()
   private hmrPath: string | undefined
+  private readonly connectOrigins = new Map<object, string>()
+
+  /** 可信实现插件登记浏览器直传目标，只允许精确 HTTP(S) origin，随所属上下文回收。 */
+  addConnectOrigin(owner: Context, value: string): void {
+    this.ctx.fiber.assertActive()
+    const url = new URL(value)
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.origin === 'null'
+    )
+      throw new Error('浏览器连接源必须为 HTTP(S) origin')
+    const token = {}
+    owner.effect(() => {
+      this.connectOrigins.set(token, url.origin)
+      return () => {
+        this.connectOrigins.delete(token)
+      }
+    })
+  }
 
   getEntries(): EntryManifest[] {
     return [...this.entries.values()]
@@ -101,7 +122,7 @@ export class WebUI extends Service<Config> {
       http.set('X-Content-Type-Options', 'nosniff')
       http.set(
         'Content-Security-Policy',
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ${[...new Set(this.connectOrigins.values())].join(' ')}; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`,
       )
       await next()
     })

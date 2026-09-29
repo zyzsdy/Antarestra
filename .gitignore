@@ -23,3 +23,6 @@ log/
 /plugins/features/ai-provider/public/
 /plugins/features/ai-agents/public/
 /plugins/features/markdown-render/public/
+
+/plugins/features/workspace-file/public/
+/plugins/implementations/storage-s3/public/

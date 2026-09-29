@@ -17,10 +17,19 @@
       "path": "../../definitions/webui"
     },
     {
+      "path": "../../definitions/storage"
+    },
+    {
+      "path": "../../definitions/database"
+    },
+    {
       "path": "../../definitions/rbac"
     },
     {
-      "path": "../workspace-file"
+      "path": "../admin-console"
+    },
+    {
+      "path": "../../definitions/ai"
     }
   ]
 }

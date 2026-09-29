@@ -5,5 +5,5 @@
     "types": ["node", "vite/client"],
     "lib": ["ES2024", "ESNext.Array", "DOM", "DOM.Iterable"]
   },
-  "include": ["tests/**/*.ts", "vitest.config.ts"]
+  "include": ["tests/**/*.ts", "vitest.config.ts", "scripts/smoke-storage.ts"]
 }

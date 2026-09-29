@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "backendId": {
+      "type": "string",
+      "default": "s3",
+      "description": "新上传使用的存储后端标识"
+    },
+    "defaultQuota": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 1073741824,
+      "description": "新空间默认配额（字节）"
+    },
+    "maxFileSize": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967296,
+      "default": 1073741824,
+      "description": "单文件最大字节数"
+    },
+    "uploadMinutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 30,
+      "description": "上传凭证有效期（分钟）"
+    }
+  }
+}

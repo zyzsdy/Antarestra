@@ -37,6 +37,8 @@ import {
   XMarkIcon,
 } from '@antarestra/webui/icons'
 import type { Session } from './session.js'
+import type { WorkspaceFilesClient } from '@antarestra/plugin-workspace-file/client'
+import { uploadPath } from '@antarestra/plugin-workspace-file/client'
 import ChatHistory from './ChatHistory.vue'
 import ChatMessage from './ChatMessage.vue'
 import { useChat } from './useChat.js'
@@ -47,8 +49,36 @@ const props = defineProps<{
   signal: AbortSignal
   canAdmin: boolean
   logout: () => Promise<void>
+  files: WorkspaceFilesClient | undefined
 }>()
 const feedback = inject(feedbackKey)!
+const filePicker = ref<HTMLInputElement>()
+const fileBusy = ref(false)
+const fileError = ref('')
+let fileController: AbortController | undefined
+async function uploadFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !props.files || fileBusy.value) return
+  input.value = ''
+  fileBusy.value = true
+  fileError.value = ''
+  fileController = new AbortController()
+  const conversationId = currentId.value
+  try {
+    const path = uploadPath(file.name)
+    const saved = await props.files.upload(file, path, fileController.signal)
+    if (currentId.value === conversationId)
+      draft.value += `${draft.value ? '\n' : ''}工作空间文件：${saved.path}`
+    feedback.toast('文件已保存到工作空间；Agent 可通过文件工具读取文本')
+  } catch (error) {
+    fileError.value = error instanceof Error ? error.message : '上传失败'
+  } finally {
+    fileBusy.value = false
+    fileController = undefined
+  }
+}
+onUnmounted(() => fileController?.abort())
 const {
   catalog,
   conversations,
@@ -167,6 +197,7 @@ const canSend = computed(
     !loading.value &&
     (!currentId.value || !!detail.value) &&
     !sending.value &&
+    !fileBusy.value &&
     !activeRunId.value &&
     !archivedConversation.value &&
     !unavailable.value &&
@@ -396,6 +427,10 @@ onUnmounted(() => {
           <div v-if="loading" class="chat-loading" role="status"><span>正在加载对话…</span></div>
         </div>
         <footer class="chat-composer-area">
+          <p v-if="fileError" class="chat-inline-error" role="alert">{{ fileError }}</p>
+          <p v-if="fileBusy" class="chat-inline-error" role="status">
+            正在上传文件… <button type="button" @click="fileController?.abort()">取消上传</button>
+          </p>
           <div v-if="!following" class="chat-bottom-link">
             <button class="chat-text-button" @click="bottom">回到底部 ↓</button>
           </div>
@@ -443,6 +478,7 @@ onUnmounted(() => {
               @keydown="keydown"
             />
             <div class="chat-composer-toolbar">
+              <input ref="filePicker" type="file" hidden @change="uploadFile" />
               <DropdownMenuRoot
                 ><DropdownMenuTrigger class="chat-icon-button" type="button" aria-label="添加内容"
                   ><PlusIcon class="ui-icon" /></DropdownMenuTrigger
@@ -452,9 +488,16 @@ onUnmounted(() => {
                     side="top"
                     :side-offset="8"
                     :collision-padding="12"
-                    ><DropdownMenuItem class="chat-menu-item" disabled
-                      ><PaperClipIcon class="ui-icon" />添加图片或附件</DropdownMenuItem
-                    ><small class="chat-menu-note">暂未开放</small></DropdownMenuContent
+                    ><DropdownMenuItem
+                      class="chat-menu-item"
+                      :disabled="!files || fileBusy"
+                      @select="filePicker?.click()"
+                      ><PaperClipIcon class="ui-icon" />上传工作空间文件</DropdownMenuItem
+                    ><DropdownMenuItem v-if="files" class="chat-menu-item" as-child
+                      ><a href="/files/">管理工作空间文件</a></DropdownMenuItem
+                    ><small class="chat-menu-note"
+                      >文本可由 Agent 文件工具读取</small
+                    ></DropdownMenuContent
                   ></DropdownMenuPortal
                 ></DropdownMenuRoot
               >

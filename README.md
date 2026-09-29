@@ -313,3 +313,9 @@ export function apply(ctx: Context): void {
 主配置支持顶层 `loader`（初始化超时默认 90000 毫秒、清理超时默认 30000 毫秒、监督模式默认 internal）和 `pluginPanel` 展示元数据。单个插件启动失败不再停止整个系统；红点可在线修复。删除配置立即卸载但保留依赖包。外部编辑需显式应用或重启。
 
 内部监督支持 `pnpm start`、`pnpm dev`；外部监督配置 `loader.supervision: external`，经授权的重启以退出码 75 结束，需部署平台负责拉起。重启后旧会话撤销，需要重新登录。基础入口失效时通过主配置恢复。详细契约见 [插件设置说明](plugins/features/config-panel/README.md)。
+
+## 工作空间存储
+
+已提供 storage、storage-s3 与 workspace-file 三个插件。文件页为 /files/，控制台配额页为 /admin/storage/；聊天菜单可以上传文件，Agent 文件工具支持目录与 UTF-8 文本读取。原始文件路径仅保存在数据库，S3 使用随机对象键。
+
+本地依次运行 pnpm startdevstorage、pnpm initdevstorage 和 pnpm test:storage。启用根配置中的 storage-s3 示例并将 .env.storage.local 的凭据加入启动环境。详细契约与限制见 [工作空间文件](plugins/features/workspace-file/README.md) 和 [S3 / RustFS 配置](plugins/implementations/storage-s3/README.md)。

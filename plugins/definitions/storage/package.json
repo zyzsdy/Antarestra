@@ -1,0 +1,30 @@
+{
+  "name": "@antarestra/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "default": "./src/client.ts"
+    }
+  },
+  "dependencies": {
+    "@antarestra/plugin-sdk": "workspace:*"
+  },
+  "antarestra": {
+    "multipleInstances": false
+  }
+}

@@ -45,6 +45,7 @@ export default defineDatabasePlugin({
         return {
           actorId: auth.principalId,
           workspaceId: `personal:${auth.principalId}`,
+          workspaceLabel: `本地用户·${(await ctx.rbac.principal(auth.principalId))?.display_name ?? '用户'}（${providerId}）`,
           roles: await ctx.rbac.defaultRoles(auth),
           auth,
         }

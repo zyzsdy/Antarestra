@@ -1,5 +1,5 @@
 {
-  "name": "@antarestra/plugin-chat-webui",
+  "name": "@antarestra/plugin-storage-s3",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,13 +19,12 @@
     }
   },
   "dependencies": {
-    "@antarestra/contracts": "workspace:*",
-    "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
-    "@antarestra/plugin-workspace-file": "workspace:*",
-    "@antarestra/rbac": "workspace:*",
-    "@antarestra/webui": "workspace:*"
+    "@antarestra/storage": "workspace:*",
+    "@antarestra/webui": "workspace:*",
+    "@aws-sdk/client-s3": "^3.1141.0",
+    "@aws-sdk/s3-request-presigner": "^3.1141.0"
   },
   "devDependencies": {
     "typescript": "6.0.3",
@@ -34,7 +33,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
-    "configSchema": "./config.schema.json",
-    "multipleInstances": false
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
   }
 }

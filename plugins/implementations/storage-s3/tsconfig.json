@@ -17,10 +17,7 @@
       "path": "../../definitions/webui"
     },
     {
-      "path": "../../definitions/rbac"
-    },
-    {
-      "path": "../workspace-file"
+      "path": "../../definitions/storage"
     }
   ]
 }

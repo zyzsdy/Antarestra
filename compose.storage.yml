@@ -1,0 +1,20 @@
+# 本机 S3 兼容开发环境；凭据由 scripts/start-storage.mjs 生成到忽略的本地文件。
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:19000:9000'
+      - '127.0.0.1:19001:9001'
+    environment:
+      RUSTFS_ACCESS_KEY: ${ANTARESTRA_S3_ACCESS_KEY:?请运行 pnpm startdevstorage}
+      RUSTFS_SECRET_KEY: ${ANTARESTRA_S3_SECRET_KEY:?请运行 pnpm startdevstorage}
+      RUSTFS_ADDRESS: ':9000'
+      RUSTFS_CONSOLE_ADDRESS: ':9001'
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_OBS_LOGGER_LEVEL: error
+    volumes:
+      - antarestra_dev_rustfs:/data
+    command: /data
+volumes:
+  antarestra_dev_rustfs:

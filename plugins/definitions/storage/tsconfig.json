@@ -3,24 +3,13 @@
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "lib": ["ES2024", "DOM"]
   },
   "include": ["src/**/*.ts"],
   "references": [
     {
       "path": "../../../packages/plugin-sdk"
-    },
-    {
-      "path": "../../adapters/server"
-    },
-    {
-      "path": "../../definitions/webui"
-    },
-    {
-      "path": "../../definitions/rbac"
-    },
-    {
-      "path": "../workspace-file"
     }
   ]
 }

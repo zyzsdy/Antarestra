@@ -102,3 +102,32 @@ describe('WebUI 插件', () => {
     expect(await response.json()).toHaveLength(1)
   })
 })
+
+it('浏览器直传只允许实现插件登记的精确源，并随所有者独立卸载回收', async () => {
+  const app = await setup()
+  const first = await app.ctx.plugin({
+    inject: ['webui'],
+    apply(ctx: Context) {
+      ctx.webui.addConnectOrigin(ctx, 'https://storage.example.com')
+      expect(() => ctx.webui.addConnectOrigin(ctx, 'javascript:alert(1)')).toThrow()
+      expect(() => ctx.webui.addConnectOrigin(ctx, 'https://user:password@example.com')).toThrow()
+    },
+  })
+  const second = await app.ctx.plugin({
+    inject: ['webui'],
+    apply(ctx: Context) {
+      ctx.webui.addConnectOrigin(ctx, 'https://storage.example.com')
+    },
+  })
+  expect((await app.get('/')).headers.get('content-security-policy')).toContain(
+    "connect-src 'self' https://storage.example.com;",
+  )
+  await first.dispose()
+  expect((await app.get('/')).headers.get('content-security-policy')).toContain(
+    'https://storage.example.com',
+  )
+  await second.dispose()
+  expect((await app.get('/')).headers.get('content-security-policy')).not.toContain(
+    'https://storage.example.com',
+  )
+})

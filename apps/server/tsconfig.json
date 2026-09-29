@@ -7,7 +7,9 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
-    { "path": "../../plugins/features/markdown-render" },
+    {
+      "path": "../../plugins/features/markdown-render"
+    },
     {
       "path": "../../plugins/implementations/ai-agent-core"
     },
@@ -58,6 +60,15 @@
     },
     {
       "path": "../../plugins/features/ai-agents"
+    },
+    {
+      "path": "../../plugins/definitions/storage"
+    },
+    {
+      "path": "../../plugins/features/workspace-file"
+    },
+    {
+      "path": "../../plugins/implementations/storage-s3"
     }
   ]
 }

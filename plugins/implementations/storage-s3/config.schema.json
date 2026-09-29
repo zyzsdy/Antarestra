@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "default": "s3"
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "服务端 S3 地址"
+    },
+    "publicEndpoint": {
+      "type": "string",
+      "description": "浏览器可达的签名地址，留空使用 endpoint"
+    },
+    "region": {
+      "type": "string",
+      "default": "us-east-1"
+    },
+    "bucket": {
+      "type": "string"
+    },
+    "accessKeyId": {
+      "type": "string",
+      "format": "password"
+    },
+    "secretAccessKey": {
+      "type": "string",
+      "format": "password"
+    },
+    "forcePathStyle": {
+      "type": "boolean",
+      "default": true
+    },
+    "multipartThreshold": {
+      "type": "integer",
+      "minimum": 5242880,
+      "default": 16777216
+    },
+    "partSize": {
+      "type": "integer",
+      "minimum": 5242880,
+      "default": 8388608
+    }
+  },
+  "required": ["endpoint", "bucket", "accessKeyId", "secretAccessKey"]
+}
