@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { Parser } from 'htmlparser2'
 import { katex as katexPlugin } from '@mdit/plugin-katex'
 import { tasklist } from '@mdit/plugin-tasklist'
 import hljs from 'highlight.js/lib/core'
@@ -171,21 +172,25 @@ export function createMarkdownRenderer(options: MarkdownRendererOptions = {}): M
       const offsets = [0]
       for (let i = 0; i < source.length; i++) if (source[i] === '\n') offsets.push(i + 1)
       const tokens = md.parse(source, {})
-      // 原始 HTML 容器可能跨空行和多个 AST 块，不能把开闭标签拆进不同 DOM 宿主。
-      const htmlStart = tokens.find(
-        (token) =>
-          token.type === 'html_block' ||
-          token.children?.some((child) => child.type === 'html_inline'),
-      )?.map?.[0]
-      return [
-        ...new Set(
-          tokens.flatMap((token) =>
-            token.level === 0 && token.map && (htmlStart === undefined || token.map[0] <= htmlStart)
-              ? [offsets[token.map[0]] ?? 0]
-              : [],
-          ),
-        ),
-      ]
+      // HTML 容器可能跨空行和多个 Markdown AST 块。只把真正的 HTML token
+      // 交给流式解析器，避免代码、注释和带引号属性里的标签干扰容器闭合判断。
+      let depth = 0
+      const html = new Parser({
+        onopentagname: () => depth++,
+        onclosetag: () => depth--,
+      })
+      const starts = new Set<number>()
+      for (const token of tokens) {
+        if (token.level === 0 && token.map && depth === 0) {
+          starts.add(offsets[token.map[0]] ?? 0)
+        }
+        if (token.type === 'html_block') html.write(token.content)
+        for (const child of token.children ?? []) {
+          if (child.type === 'html_inline') html.write(child.content)
+        }
+      }
+      // 不调用 end()：解析器在 EOF 自动补闭合，不能据此把未完成容器冻结。
+      return [...starts]
     },
   }
 }

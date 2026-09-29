@@ -13,6 +13,7 @@ import type { EntryManifest } from '@antarestra/webui/client'
 import applyMarkdown from '../../plugins/features/markdown-render/client/index.js'
 import { MarkdownView, provideMarkdown } from '../../plugins/features/markdown-render/client/api.js'
 import * as runtime from '../../plugins/definitions/webui/client/runtime.js'
+import { detailsSample } from '../fixtures/markdown-details.js'
 
 const cleanups: (() => void)[] = []
 afterEach(() => {
@@ -79,6 +80,67 @@ describe('Markdown DOM 与代码扩展生命周期', () => {
     expect(host.querySelector('details div')?.textContent).toBe('末尾')
     expect(host.querySelector('details')?.textContent).not.toContain('后续段落')
   })
+
+  it.each([1, 8, detailsSample.length])(
+    '完整折叠示例在分片 %s 下保持内容归属和默认状态',
+    async (step) => {
+      const { host, text, streaming } = mount('')
+      for (let length = step; length < detailsSample.length; length += step) {
+        text.value = detailsSample.slice(0, length)
+        await nextTick()
+      }
+      text.value = detailsSample
+      streaming.value = false
+      await nextTick()
+      const [closed, open] = host.querySelectorAll('details')
+      expect(host.querySelectorAll('.md-block')).toHaveLength(4)
+      expect(closed?.open).toBe(false)
+      expect(closed?.querySelectorAll('li')).toHaveLength(2)
+      expect(closed?.querySelector('strong')?.textContent).toBe('粗体')
+      expect(closed?.querySelector('code')?.textContent).toBe('代码')
+      expect(closed?.querySelector('blockquote')?.textContent).toContain('甚至引用块。')
+      expect(open?.open).toBe(true)
+      expect(open?.querySelector('p')?.textContent).toContain('说明支持')
+      expect(open?.textContent).not.toContain('折叠块之后的独立段落')
+      closed!.querySelector('summary')!.click()
+      open!.querySelector('summary')!.click()
+      expect(closed?.open).toBe(true)
+      expect(open?.open).toBe(false)
+    },
+  )
+
+  it.each([false, true])(
+    '未闭合折叠块追加和结束时保留用户切换状态：默认展开 %s',
+    async (initialOpen) => {
+      const { host, text, streaming } = mount(
+        `<details${initialOpen ? ' open' : ''}>\n<summary>详情</summary>\n\n第一段`,
+      )
+      const details = host.querySelector('details')!
+      const block = details.parentElement
+      details.querySelector('summary')!.click()
+      expect(details.open).toBe(!initialOpen)
+      for (const delta of ['\n\n- 新增列表', '\n\n</details>\n\n后续段落', '\n继续']) {
+        text.value += delta
+        await nextTick()
+        expect(host.querySelector('details')).toBe(details)
+        expect(details.parentElement).toBe(block)
+        expect(details.open).toBe(!initialOpen)
+      }
+      streaming.value = false
+      await nextTick()
+      expect(details.open).toBe(!initialOpen)
+      expect(details.querySelector('li')?.textContent).toBe('新增列表')
+      expect(details.textContent).not.toContain('后续段落')
+      details.querySelector('summary')!.click()
+      expect(details.open).toBe(initialOpen)
+      text.value = text.value.replace(
+        initialOpen ? '<details open>' : '<details>',
+        initialOpen ? '<details>' : '<details open>',
+      )
+      await nextTick()
+      expect(host.querySelector('details')?.open).toBe(!initialOpen)
+    },
+  )
 
   it('清除脚本、样式表、事件、危险 URL 和请求资源或定位覆盖的内联样式', () => {
     const { host } = mount(

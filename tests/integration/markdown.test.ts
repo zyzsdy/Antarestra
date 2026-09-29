@@ -5,6 +5,7 @@ import { Context } from '@antarestra/plugin-sdk'
 import Server from '@antarestra/plugin-server'
 import WebUI from '@antarestra/webui'
 import * as MarkdownPlugin from '@antarestra/plugin-markdown-render'
+import { detailsSample } from '../fixtures/markdown-details.js'
 
 describe('Markdown 增量解析', () => {
   it('插件入口支持独立卸载、WebUI 依赖卸载与恢复', async () => {
@@ -60,6 +61,51 @@ describe('Markdown 增量解析', () => {
     stream.update('旧消息\n\n正文\n')
     expect(stream.update('新消息', false).map((block) => block.source)).toEqual(['新消息'])
     expect(stream.update('', false)).toEqual([])
+  })
+
+  it.each([1, 8, detailsSample.length])('HTML 容器仅在闭合后分块，分片长度 %s', (step) => {
+    const stream = createMarkdownStream()
+    for (let length = step; length < detailsSample.length; length += step) {
+      const source = detailsSample.slice(0, length)
+      const chunks = stream.update(source)
+      const first = source.indexOf('<details>')
+      if (first !== -1 && !source.includes('</details>')) {
+        expect(chunks.at(-1)?.id).toBe(first)
+        expect(chunks.at(-1)?.source).toBe(source.slice(first))
+        expect(chunks.at(-1)?.streaming).toBe(true)
+      }
+    }
+    const chunks = stream.update(detailsSample)
+    expect(chunks).toHaveLength(4)
+    expect(chunks[1]?.source).toMatch(/^<details>[\s\S]*<\/details>\n\n$/)
+    expect(chunks[2]?.source).toMatch(/^<details open>[\s\S]*<\/details>\n\n$/)
+    const next = stream.update(detailsSample + '继续输出', false)
+    expect(next[1]).toBe(chunks[1])
+    expect(next[2]).toBe(chunks[2])
+    expect(stream.update(detailsSample, false)).toEqual(
+      createMarkdownStream().update(detailsSample, false),
+    )
+  })
+
+  it.each([
+    '<details>\n<summary>外层</summary>\n\n<details open>\n<summary>内层</summary>\n\n正文\n\n</details>\n\n仍在外层\n\n</details>\n\n',
+    '<div title="</div>">\n\n<!-- </div> -->\n\n`</div>`\n\n```html\n</div>\n```\n\n正文\n\n</div>\n\n',
+    '<DETAILS open>\n<SUMMARY>详情</SUMMARY>\n\n<img src="/test.png"><br><hr>\n\n正文\n\n</DETAILS>\n\n',
+    '<div\n title="跨行属性">\n\n正文\n\n</div>\n\n',
+    '<span>跨段落\n\n正文\n\n</span>\n\n',
+  ])('嵌套、空元素和伪标签不破坏容器边界：%s', (container) => {
+    const source = container + '尾部\n'
+    const stream = createMarkdownStream()
+    for (let length = 1; length <= source.length; length++) stream.update(source.slice(0, length))
+    expect(stream.update(source, false).map((chunk) => chunk.source)).toEqual([container, '尾部\n'])
+  })
+
+  it('未闭合容器结束输出时仍保持一个块；关闭 HTML 时正常分块', () => {
+    const source = '<details>\n\n第一段\n\n第二段\n'
+    expect(createMarkdownStream().update(source, false)).toHaveLength(1)
+    expect(
+      createMarkdownStream(createMarkdownRenderer({ html: false })).update(source, false),
+    ).toHaveLength(3)
   })
 
   it.each([

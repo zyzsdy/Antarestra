@@ -11,6 +11,7 @@ import {
 import ChatMessage from '../../plugins/features/chat-webui/client/ChatMessage.vue'
 import { emptyReply } from '../../plugins/features/chat-webui/client/stream.js'
 import PreviewValue from './MarkdownPreviewValue.vue'
+import { detailsSample } from './markdown-details.js'
 
 const slots = new Map<string, Map<string, unknown>>()
 const effects: (() => void)[] = []
@@ -93,6 +94,7 @@ const typographySample = `# H1 一级标题
 
 `
 const sample =
+  detailsSample +
   typographySample +
   '# 流式 Markdown\n\n已完成的标题与段落在后续输出时保持原节点。\n\n## 常用格式\n\n**加粗**、*斜体*、[外部链接](https://example.com) 和 $E=mc^2$。\n\n- 第一项\n- 第二项\n\n| 功能 | 状态 |\n| --- | --- |\n| 增量渲染 | 已接入 |\n\n```go\nfunc main() { println("hello") }\n```\n\n```partial\n逐步输出的数据\n```\n\n```complete\n只在闭合之后解析\n```\n\n```mermaid\ngraph LR\n A[开始] --> B[完成]\n```\n\n最后一段保持持续追加。'
 const reply = vue.reactive(emptyReply())
