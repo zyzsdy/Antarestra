@@ -1,19 +1,51 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject, ref } from 'vue'
+import { feedbackKey } from '@antarestra/webui/client'
 import { MarkdownView } from '@antarestra/plugin-markdown-render/client'
 import type { ContentBlock, MessageNode, RunRecord } from '@antarestra/contracts'
 import {
   CollapsibleRoot,
   CollapsibleTrigger,
   CollapsibleContent,
+  TooltipProvider,
 } from '@antarestra/webui/components'
-import { ChevronDownIcon } from '@antarestra/webui/icons'
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClipboardIcon,
+  PencilSquareIcon,
+  ArrowPathIcon,
+} from '@antarestra/webui/icons'
+import MessageAction from './MessageAction.vue'
+import { formatMessageTime } from './message-time.js'
 import type { ReplyState } from './stream.js'
 const props = defineProps<{
   node: MessageNode
   run?: RunRecord | undefined
   live?: ReplyState | undefined
+  disabled?: boolean
+  branches?: MessageNode[]
 }>()
+defineEmits<{ edit: []; regenerate: []; branch: [id: string] }>()
+const feedback = inject(feedbackKey)!
+const now = ref(new Date())
+const copying = ref(false)
+const branchIndex = computed(
+  () => props.branches?.findIndex((node) => node.id === props.node.id) ?? -1,
+)
+async function copy() {
+  if (copying.value) return
+  copying.value = true
+  try {
+    await navigator.clipboard.writeText(body.value)
+    feedback.toast('已复制消息')
+  } catch {
+    feedback.toast('复制失败，请检查浏览器剪贴板权限后重试')
+  } finally {
+    copying.value = false
+  }
+}
 const content = computed(() =>
   props.live ? [...props.live.completed, ...props.live.pending] : props.node.content,
 )
@@ -50,6 +82,8 @@ const tools = computed(() =>
     class="chat-message"
     :class="node.role"
     :aria-label="node.role === 'user' ? '你的消息' : '助理回复'"
+    @mouseenter="now = new Date()"
+    @focusin="now = new Date()"
   >
     <CollapsibleRoot
       v-if="node.role === 'assistant' && (thoughts || tools.length)"
@@ -92,5 +126,52 @@ const tools = computed(() =>
         错误代码：{{ run.error.code }}
       </span>
     </p>
+    <TooltipProvider :delay-duration="250">
+      <div
+        class="chat-message-actions"
+        :aria-label="node.role === 'user' ? '用户消息操作' : '助理回复操作'"
+      >
+        <time v-if="node.role === 'user'" :datetime="new Date(node.createdAt).toISOString()">{{
+          formatMessageTime(node.createdAt, now)
+        }}</time>
+        <MessageAction label="复制" :disabled="!body || copying" @click="copy"
+          ><ClipboardIcon class="ui-icon"
+        /></MessageAction>
+        <MessageAction
+          v-if="node.role === 'user'"
+          label="编辑"
+          :disabled="disabled"
+          @click="$emit('edit')"
+          ><PencilSquareIcon class="ui-icon"
+        /></MessageAction>
+        <template v-else>
+          <MessageAction label="重新生成" :disabled="disabled" @click="$emit('regenerate')"
+            ><ArrowPathIcon class="ui-icon"
+          /></MessageAction>
+          <div
+            v-if="branches && branches.length > 1"
+            class="chat-message-branches"
+            aria-label="回复分支"
+          >
+            <MessageAction
+              label="上一个分支"
+              :disabled="disabled || branchIndex <= 0"
+              @click="branches[branchIndex - 1] && $emit('branch', branches[branchIndex - 1]!.id)"
+              ><ChevronLeftIcon class="ui-icon"
+            /></MessageAction>
+            <span>{{ branchIndex + 1 }}/{{ branches.length }}</span>
+            <MessageAction
+              label="下一个分支"
+              :disabled="disabled || branchIndex >= branches.length - 1"
+              @click="branches[branchIndex + 1] && $emit('branch', branches[branchIndex + 1]!.id)"
+              ><ChevronRightIcon class="ui-icon"
+            /></MessageAction>
+          </div>
+          <time :datetime="new Date(node.createdAt).toISOString()">{{
+            formatMessageTime(node.createdAt, now)
+          }}</time>
+        </template>
+      </div>
+    </TooltipProvider>
   </article>
 </template>

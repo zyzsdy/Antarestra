@@ -215,12 +215,14 @@
   padding: 20px 28px 32px;
 }
 .chat-message {
+  position: relative;
   margin-bottom: 28px;
   overflow-wrap: anywhere;
   font-size: 16px;
   line-height: 1.75;
 }
 .chat-message.user {
+  margin-bottom: 60px;
   width: fit-content;
   max-width: 85%;
   margin-left: auto;
@@ -231,6 +233,75 @@
 .chat-plain {
   white-space: pre-wrap;
   margin: 0;
+}
+.chat-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+  color: #737373;
+  font-size: 12px;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+}
+.chat-message.user .chat-message-actions {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: max-content;
+  justify-content: flex-end;
+}
+.chat-message:hover .chat-message-actions,
+.chat-message:focus-within .chat-message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chat-message-actions time {
+  white-space: nowrap;
+  margin: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+.chat-message-actions .chat-icon-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+.chat-message-actions .ui-icon {
+  width: 16px;
+  height: 16px;
+}
+.chat-message-branches {
+  display: flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.chat-message-tooltip {
+  z-index: 320;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #28292c;
+  color: #fff;
+  font:
+    12px/1.5 'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+}
+.chat-rename-form textarea {
+  width: 100%;
+  min-height: 160px;
+  max-height: 45dvh;
+  overflow: auto;
+  border: 1px solid #ccc;
+  border-radius: 7px;
+  padding: 10px;
+  font: inherit;
+}
+@media (hover: none) {
+  .chat-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .chat-details {
   color: #606060;

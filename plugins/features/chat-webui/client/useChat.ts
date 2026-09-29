@@ -118,7 +118,10 @@ export function useChat(identity: () => Session | undefined) {
       user = {
         id: run.userNodeId,
         conversationId: run.conversationId,
-        parentId: command.expectedNodeId,
+        parentId:
+          command.operation === 'edit'
+            ? (history.nodes.find((node) => node.id === command.targetNodeId)?.parentId ?? null)
+            : command.expectedNodeId,
         runId: run.id,
         role: 'user',
         content: [{ type: 'text', text: run.input.text }, ...(run.input.attachments ?? [])],
@@ -397,7 +400,7 @@ export function useChat(identity: () => Session | undefined) {
     { immediate: true },
   )
 
-  async function send(regenerate = false) {
+  async function send(regenerate = false, target?: MessageNode, editedText?: string) {
     if (
       sending.value ||
       loading.value ||
@@ -407,15 +410,22 @@ export function useChat(identity: () => Session | undefined) {
       detail.value?.conversation.archivedAt
     )
       return
-    if (!regenerate && !pending.has(currentId.value) && (!draft.value.trim() || interrupted.value))
+    if (target && pending.has(currentId.value)) return
+    if (
+      !regenerate &&
+      !target &&
+      !pending.has(currentId.value) &&
+      (!draft.value.trim() || interrupted.value)
+    )
       return
+    if (target && !regenerate && !editedText?.trim()) return
     const owner = identityEpoch
     const session = identity()
     const usedAgentId = agent.value.id
     sending.value = true
     error.value = ''
     let id = currentId.value
-    const text = draft.value
+    const text = editedText ?? draft.value
     const selected = { ...model.value.ref }
     const intensity = thinking.value
     let history = detail.value
@@ -442,15 +452,18 @@ export function useChat(identity: () => Session | undefined) {
         history = fresh
         if (!alive || owner !== identityEpoch) return
         command = {
-          operation: regenerate ? 'regenerate' : 'send',
+          operation: regenerate ? 'regenerate' : target ? 'edit' : 'send',
           expectedRevision: fresh.conversation.revision,
           expectedNodeId: fresh.conversation.selectedNodeId,
           idempotencyKey: crypto.randomUUID(),
           model: selected,
           thinking: intensity,
           ...(regenerate
-            ? { targetNodeId: fresh.conversation.selectedNodeId! }
-            : { input: { text } }),
+            ? { targetNodeId: target?.id ?? fresh.conversation.selectedNodeId! }
+            : {
+                input: { ...target?.input, text },
+                ...(target ? { targetNodeId: target.id } : {}),
+              }),
         }
         pending.set(id, command)
       }
@@ -462,16 +475,75 @@ export function useChat(identity: () => Session | undefined) {
       if (session)
         preferences.write(session, usedAgentId, { model: result.model, thinking: result.thinking })
       pending.delete(id)
-      if (drafts.get(id) === command.input?.text) drafts.delete(id)
+      if (command.operation === 'send' && drafts.get(id) === command.input?.text) drafts.delete(id)
       runs.set(result.id, result)
       if (currentId.value === id && history) {
         acceptRun(history, result, command)
         void connect(result.id)
       }
+      return result
     } catch (cause) {
       if (!alive || owner !== identityEpoch) return
       if (cause instanceof ApiError && cause.status < 500) pending.delete(id)
       if (currentId.value === id || !id) {
+        if (cause instanceof ApiError && cause.status === 409) await load()
+        error.value = message(cause)
+      }
+    } finally {
+      sending.value = false
+    }
+  }
+  function branches(node: MessageNode) {
+    const nodes = detail.value?.nodes ?? []
+    const user = nodes.find((item) => item.id === node.parentId)
+    const users = new Set(
+      nodes
+        .filter((item) => item.role === 'user' && item.parentId === user?.parentId)
+        .map((item) => item.id),
+    )
+    return nodes
+      .filter((item) => item.role === 'assistant' && item.parentId && users.has(item.parentId))
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+  }
+  async function selectBranch(nodeId: string) {
+    const history = detail.value
+    if (
+      !history ||
+      sending.value ||
+      loading.value ||
+      activeRunId.value ||
+      pending.has(currentId.value) ||
+      history.conversation.archivedAt !== null
+    )
+      return
+    const id = currentId.value
+    const owner = identityEpoch
+    sending.value = true
+    error.value = ''
+    try {
+      // 回到该分支最近的末端，保留其已有的后续对话。
+      let selected = nodeId
+      const visited = new Set<string>()
+      while (!visited.has(selected)) {
+        visited.add(selected)
+        const child = history.nodes
+          .filter((node) => node.parentId === selected)
+          .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))[0]
+        if (!child) break
+        selected = child.id
+      }
+      await api(
+        `/ai/conversations/${encodeURIComponent(id)}/selection`,
+        {
+          expectedRevision: history.conversation.revision,
+          expectedNodeId: history.conversation.selectedNodeId,
+          nodeId: selected,
+        },
+        'PATCH',
+      )
+      if (alive && owner === identityEpoch && currentId.value === id) await load()
+    } catch (cause) {
+      if (alive && owner === identityEpoch && currentId.value === id) {
         if (cause instanceof ApiError && cause.status === 409) await load()
         error.value = message(cause)
       }
@@ -569,6 +641,8 @@ export function useChat(identity: () => Session | undefined) {
     navigate,
     initialize,
     send,
+    branches,
+    selectBranch,
     stop,
     continuePrevious,
     update,

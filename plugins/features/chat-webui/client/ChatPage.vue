@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { Conversation } from '@antarestra/contracts'
+import type { Conversation, MessageNode } from '@antarestra/contracts'
 import { feedbackKey } from '@antarestra/webui/client'
 import {
   AntarestraLogo,
@@ -83,6 +83,8 @@ const {
   navigate,
   initialize,
   send,
+  branches,
+  selectBranch,
   stop,
   continuePrevious,
   update,
@@ -97,6 +99,49 @@ const rename = ref<Conversation>()
 const title = ref('')
 const renameError = ref('')
 const saving = ref(false)
+const editing = ref<MessageNode>()
+const editInput = ref<HTMLTextAreaElement>()
+const editText = ref('')
+const editError = ref('')
+const actionsDisabled = computed(
+  () =>
+    loading.value ||
+    sending.value ||
+    !!activeRunId.value ||
+    archivedConversation.value ||
+    !!unavailable.value ||
+    pending.has(currentId.value),
+)
+function editMessage(node: MessageNode) {
+  editing.value = node
+  editText.value = node.input?.text ?? ''
+  editError.value = ''
+}
+async function saveMessage() {
+  const node = editing.value
+  if (!node || actionsDisabled.value) return
+  if (!editText.value.trim()) {
+    editError.value = '请输入消息内容'
+    editInput.value?.focus()
+    return
+  }
+  const result = await send(false, node, editText.value)
+  if (result && editing.value === node) editing.value = undefined
+  else editError.value = error.value || '发送未完成，请关闭编辑窗口后核对并重试发送。'
+}
+async function regenerate(node: MessageNode) {
+  await send(true, node)
+}
+async function closeMessageEditor() {
+  if (sending.value) return
+  if (
+    !pending.has(currentId.value) &&
+    editText.value !== (editing.value?.input?.text ?? '') &&
+    !(await feedback.modal('放弃修改', '消息修改尚未发送，确定放弃吗？'))
+  )
+    return
+  editing.value = undefined
+}
 const archivedConversation = computed(() => detail.value?.conversation.archivedAt != null)
 function thinkingLabel(level: string | null | undefined) {
   const labels: Record<string, string> = {
@@ -156,6 +201,7 @@ watch(
   },
 )
 watch(currentId, () => {
+  editing.value = undefined
   following.value = true
   sidebar.value = false
 })
@@ -236,7 +282,7 @@ async function check() {
   }
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (draft.value) {
+  if (draft.value || (editing.value && editText.value !== editing.value.input?.text)) {
     event.preventDefault()
     event.returnValue = ''
   }
@@ -331,6 +377,11 @@ onUnmounted(() => {
               :node="node"
               :run="runs.get(node.runId)"
               :live="node.role === 'assistant' ? replies.get(node.runId) : undefined"
+              :disabled="actionsDisabled"
+              :branches="node.role === 'assistant' ? branches(node) : []"
+              @edit="editMessage(node)"
+              @regenerate="regenerate(node)"
+              @branch="selectBranch"
             />
           </div>
         </section>
@@ -479,6 +530,29 @@ onUnmounted(() => {
           <p class="chat-hint">Enter 发送 · Shift+Enter 换行</p>
         </footer>
       </main>
+      <EditorDialog v-if="editing" title="编辑消息" :busy="sending" @close="closeMessageEditor">
+        <form class="chat-rename-form" novalidate @submit.prevent="saveMessage">
+          <label for="chat-edit-message">消息内容</label>
+          <textarea
+            ref="editInput"
+            id="chat-edit-message"
+            v-model="editText"
+            :disabled="sending || pending.has(currentId)"
+            rows="8"
+            style="resize: none"
+            :aria-invalid="!!editError"
+            aria-describedby="chat-edit-error"
+          />
+          <p class="chat-inline-notice">发送后创建新分支，原消息和回复仍会保留。</p>
+          <p id="chat-edit-error" class="chat-inline-error" role="alert">{{ editError }}</p>
+          <p v-if="pending.has(currentId)" class="chat-inline-notice">
+            请求结果尚未确认。请关闭编辑窗口，使用消息输入区的“核对并重试发送”继续，原请求会保留。
+          </p>
+          <button class="chat-save" :disabled="actionsDisabled">
+            {{ sending ? '正在发送…' : '保存并发送' }}
+          </button>
+        </form>
+      </EditorDialog>
       <EditorDialog v-if="rename" title="重命名对话" :busy="saving" @close="rename = undefined"
         ><form class="chat-rename-form" novalidate @submit.prevent="saveTitle">
           <label for="chat-title">对话标题</label

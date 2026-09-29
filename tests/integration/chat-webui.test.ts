@@ -203,6 +203,71 @@ describe('聊天会话状态', () => {
     return { data, source }
   }
 
+  it('编辑旧消息在原父节点创建分支，重新生成指定回复且保留输入草稿', async () => {
+    setupPreferences()
+    const original = harness.api.getMockImplementation()!
+    let sequence = 0
+    harness.api.mockImplementation(async (path: string, command?: RunCommand) => {
+      const result = await original(path, command)
+      if (!path.endsWith('/runs')) return result
+      sequence++
+      return {
+        ...result,
+        id: `run-${sequence}`,
+        userNodeId: command?.operation === 'regenerate' ? 'user-1' : `user-${sequence}`,
+        replyNodeId: `reply-${sequence}`,
+        input: command?.input ?? { text: '原问题' },
+      }
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const runId = url.split('/runs/')[1]!.split('/')[0]!
+        return new Response(
+          `data: ${JSON.stringify({ ...event(1, 'run-end', { status: 'completed' }), runId })}\n\n`,
+        )
+      }),
+    )
+    const chat = await mount()
+    chat.draft.value = '原问题'
+    await chat.send()
+    await tick()
+    const user = chat.detail.value!.path[0]!
+    const reply = chat.detail.value!.path[1]!
+    chat.draft.value = '下一轮草稿'
+    await chat.send(false, user, '修改后的问题')
+    await tick()
+    expect(chat.detail.value!.path.map((node) => node.id)).toEqual(['user-2', 'reply-2'])
+    expect(chat.detail.value!.nodes.find((node) => node.id === 'user-2')?.parentId).toBeNull()
+    expect(chat.detail.value!.nodes.some((node) => node.id === user.id)).toBe(true)
+    expect(chat.branches(chat.detail.value!.path[1]!).map((node) => node.id)).toEqual([
+      'reply-1',
+      'reply-2',
+    ])
+    await chat.send(true, reply)
+    await tick()
+    expect(chat.detail.value!.path.map((node) => node.id)).toEqual(['user-1', 'reply-3'])
+    expect(chat.draft.value).toBe('下一轮草稿')
+    expect(
+      harness.api.mock.calls.filter(([path]) => path.endsWith('/runs')).at(-1)?.[1],
+    ).toMatchObject({ operation: 'regenerate', targetNodeId: 'reply-1' })
+    expect(chat.branches(chat.detail.value!.path[1]!)).toHaveLength(3)
+    chat.detail.value = {
+      ...chat.detail.value!,
+      nodes: [
+        ...chat.detail.value!.nodes,
+        { ...user, id: 'follow-up-user', parentId: 'reply-2', createdAt: 10 },
+        { ...reply, id: 'follow-up-reply', parentId: 'follow-up-user', createdAt: 11 },
+      ],
+    }
+    await chat.selectBranch('reply-2')
+    expect(harness.api).toHaveBeenCalledWith(
+      '/ai/conversations/new/selection',
+      expect.objectContaining({ nodeId: 'follow-up-reply', expectedNodeId: 'reply-3' }),
+      'PATCH',
+    )
+  })
+
   it('各助理保存已提交的设置，新对话及重新挂载恢复，浏览历史不覆盖偏好', async () => {
     setupPreferences()
     let chat = await mount()
