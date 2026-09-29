@@ -4,6 +4,8 @@
 
 服务通过 `markdown-render.service/default` 插槽发布。消费插件在页面包装组件的 `setup` 调用 `provideMarkdown(ctx)`，Vue SFC 使用公开客户端入口的 `MarkdownView`，传入持续增长的 `source` 和 `streaming`。`chat-webui` 的助理正文与思考详情已使用此服务；用户原文仍按纯文本显示。服务未加载或卸载时回退为可读原文，重新加载后恢复渲染。
 
+服务默认支持基础 HTML 与受限内联样式，具体元素、URL 和样式清理规则由 `packages/markdown` 统一维护，详见该包 README。标题使用六级字号，中文斜体在 Markdown 作用域内允许字体合成；插件和聊天页面不重复定义这些样式。
+
 ## 注册代码节点扩展
 
 其他插件通过自己的 WebUI 客户端入口注册，函数和 Vue 组件不通过后端 JSON 配置传输。

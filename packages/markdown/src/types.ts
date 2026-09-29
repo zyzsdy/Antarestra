@@ -1,5 +1,5 @@
 export type MarkdownRendererOptions = {
-  /** 是否允许原始 HTML（默认关闭，DOM 输出前仍会经过 DOMPurify 清洗）。 */
+  /** 是否允许原始 HTML（默认开启，DOM 输出前仍会经过 DOMPurify 清洗）。 */
   html?: boolean
   /** 是否自动识别裸 URL 为链接（默认开启）。 */
   linkify?: boolean

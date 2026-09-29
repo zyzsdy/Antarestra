@@ -21,7 +21,7 @@ const props = withDefaults(
   {
     streaming: false,
     codeWrap: false,
-    html: false,
+    html: true,
     linkify: true,
     highlight: true,
     math: true,

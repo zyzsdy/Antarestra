@@ -65,7 +65,35 @@ function toggle() {
   registered.value = !registered.value
 }
 toggle()
+const typographySample = `# H1 一级标题
+
+## H2 二级标题
+
+### H3 三级标题
+
+#### H4 四级标题
+
+##### H5 五级标题
+
+###### H6 六级标题
+
+普通中文与 *中文斜体 italic*、**加粗**。
+
+<div><u>下划线</u> · H<sub>2</sub>O · x<sup>2</sup> · <small>小字</small> · <mark>高亮</mark> · <kbd>Ctrl</kbd> · <ruby>字<rp>(</rp><rt>zì</rt><rp>)</rp></ruby></div>
+
+<div style="color: #315ed1; background-color: #f4f6fa; padding: 12px; border-radius: 7px"><span style="font-style: italic">内联颜色、底色、间距与斜体</span></div>
+
+<details>
+<summary>展开 HTML 详情</summary>
+
+支持跨空行的 **Markdown 内容**。
+
+<a href="https://example.com">受限外部链接</a>
+</details>
+
+`
 const sample =
+  typographySample +
   '# 流式 Markdown\n\n已完成的标题与段落在后续输出时保持原节点。\n\n## 常用格式\n\n**加粗**、*斜体*、[外部链接](https://example.com) 和 $E=mc^2$。\n\n- 第一项\n- 第二项\n\n| 功能 | 状态 |\n| --- | --- |\n| 增量渲染 | 已接入 |\n\n```go\nfunc main() { println("hello") }\n```\n\n```partial\n逐步输出的数据\n```\n\n```complete\n只在闭合之后解析\n```\n\n```mermaid\ngraph LR\n A[开始] --> B[完成]\n```\n\n最后一段保持持续追加。'
 const reply = vue.reactive(emptyReply())
 const node: MessageNode = {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, onUnmounted, ref, shallowReactive } from 'vue'
-import { MarkdownContent } from '@antarestra/markdown'
+import { MarkdownContent, sanitizeHtml } from '@antarestra/markdown'
 import type { CodeNode, CodeRenderer } from '@antarestra/markdown/core'
 import type { PropType } from 'vue'
 import {
@@ -36,6 +36,92 @@ function mount(source: string, extensions = shallowReactive(new Map<string, Code
 }
 
 describe('Markdown DOM 与代码扩展生命周期', () => {
+  it('默认展示基础 HTML、斜体、内联样式和受限链接图片', () => {
+    const { host } = mount(
+      '<div><u>下划线</u> H<sub>2</sub>O x<sup>2</sup> <small>小字</small> <mark>重点</mark> <kbd>Ctrl</kbd> <ruby>字<rp>(</rp><rt>zi</rt><rp>)</rp></ruby> <span style="color: red; background-color: yellow; font-style: italic">彩色</span> <i>斜体</i><a href="https://example.com" target="named">链接</a><img src="/test.png" alt="示例"></div>\n\n*中文斜体*',
+    )
+    for (const tag of [
+      'u',
+      'sub',
+      'sup',
+      'small',
+      'mark',
+      'kbd',
+      'ruby',
+      'rp',
+      'rt',
+      'span',
+      'i',
+      'em',
+      'a',
+      'img',
+    ]) {
+      expect(host.querySelector(tag)).not.toBeNull()
+    }
+    expect(host.querySelector('span')?.style.color).toBe('red')
+    expect(host.querySelector('a')?.getAttribute('target')).toBe('_blank')
+    expect(host.querySelector('a')?.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(host.querySelector('img')?.getAttribute('src')).toBe('/test.png')
+  })
+
+  it('包含空行的 HTML 容器逐字追加后仍包裹完整内容', async () => {
+    const source =
+      '<details>\n<summary>详情</summary>\n\n正文 *强调*\n\n<div>末尾</div>\n</details>\n\n后续段落'
+    const { host, text, streaming } = mount('')
+    for (let length = 1; length <= source.length; length++) {
+      text.value = source.slice(0, length)
+      await nextTick()
+    }
+    streaming.value = false
+    await nextTick()
+    expect(host.querySelector('details summary')?.textContent).toBe('详情')
+    expect(host.querySelector('details em')?.textContent).toBe('强调')
+    expect(host.querySelector('details div')?.textContent).toBe('末尾')
+    expect(host.querySelector('details')?.textContent).not.toContain('后续段落')
+  })
+
+  it('清除脚本、样式表、事件、危险 URL 和请求资源或定位覆盖的内联样式', () => {
+    const { host } = mount(
+      '<div><style>body { color: red }</style><script>window.bad = true</script><iframe src="https://example.com"></iframe><img src="javascript:evil()" onerror="evil()" srcset="https://example.com/x 2x"><a href="jav&#x61;script:evil()" onclick="evil()">危险链接</a><span style="color: red !important; position: fixed; z-index: 9999; background-image: url(https://example.com/x); --secret: url(https://example.com/y)">正文</span></div>',
+    )
+    expect(host.querySelector('script, style, iframe, [onclick], [onerror], [srcset]')).toBeNull()
+    expect(host.querySelector('a')?.hasAttribute('href')).toBe(false)
+    expect(host.querySelector('img')?.hasAttribute('src')).toBe(false)
+    expect(host.querySelector('span')?.getAttribute('style')).toBe('color: red;')
+    expect(host.textContent).not.toContain('window.bad')
+    expect(host.textContent).not.toContain('body {')
+  })
+
+  it.each(['data:text/html,evil', 'vbscript:evil()', 'file:///C:/secret', 'javascript:evil()'])(
+    '拒绝非允许的链接协议：%s',
+    (href) => {
+      const container = document.createElement('div')
+      container.innerHTML = sanitizeHtml(`<a href="${href}">链接</a><img src="${href}">`)
+      expect(container.querySelector('a')?.hasAttribute('href')).toBe(false)
+      expect(container.querySelector('img')?.hasAttribute('src')).toBe(false)
+    },
+  )
+
+  it('原始 HTML 不能冒充代码扩展占位，更新时也不冻结其内容', async () => {
+    const update = vi.fn()
+    const { host, text } = mount(
+      '<div data-md-extension="0">原文</div>\n\n```chart\n数据\n```\n',
+      new Map([['chart', { supportsPartial: true, mount: () => ({ update, dispose() {} }) }]]),
+    )
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(host.querySelectorAll('[data-md-extension]')).toHaveLength(1)
+    text.value = '<div data-md-extension="0">新文</div>'
+    await nextTick()
+    expect(host.textContent).toBe('新文')
+  })
+
+  it('HTML 清洗后仍保留公式布局和复制图标', () => {
+    const { host } = mount('$$\\frac{a^2}{\\sqrt{b}}$$\n\n```js\nconst x = 1\n```\n')
+    expect(host.querySelector('.katex math')).not.toBeNull()
+    expect(host.querySelector('.katex [style*="height"]')).not.toBeNull()
+    expect(host.querySelector('.md-code-copy svg')).not.toBeNull()
+  })
+
   it('真实客户端运行时中服务卸载回退原文，重载恢复渲染且消费者无需重挂载', async () => {
     const consumerEntry = { id: 'consumer', url: '/webui/extensions/consumer/index.js', config: {} }
     const rendererEntry = { id: 'renderer', url: '/webui/extensions/renderer/index.js', config: {} }

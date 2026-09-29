@@ -12,6 +12,8 @@
   font-size: 16px;
   line-height: 1.75;
   overflow-wrap: break-word;
+  /* 中文系统字体常没有斜体字形，局部恢复宿主禁用的斜体合成。 */
+  font-synthesis: style;
 }
 
 .md-body .md-extension-pending,
@@ -54,22 +56,76 @@
 }
 
 .md-body h1 {
-  font-size: 1.32em;
+  font-size: 2em;
   letter-spacing: -0.01em;
 }
 
 .md-body h2 {
-  font-size: 1.18em;
+  font-size: 1.65em;
 }
 
 .md-body h3 {
-  font-size: 1.06em;
+  font-size: 1.4em;
 }
 
-.md-body h4,
-.md-body h5,
+.md-body h4 {
+  font-size: 1.2em;
+}
+
+.md-body h5 {
+  font-size: 1.05em;
+}
+
 .md-body h6 {
-  font-size: 1em;
+  font-size: 0.9em;
+}
+
+.md-body em,
+.md-body i {
+  font-style: italic;
+}
+
+.md-body u {
+  text-decoration: underline;
+}
+
+.md-body small {
+  font-size: 0.8em;
+}
+
+.md-body sub,
+.md-body sup {
+  position: relative;
+  font-size: 0.75em;
+  line-height: 0;
+  vertical-align: baseline;
+}
+
+.md-body sub {
+  bottom: -0.25em;
+}
+
+.md-body sup {
+  top: -0.5em;
+}
+
+.md-body details {
+  margin: 0.75em 0;
+}
+
+.md-body summary {
+  display: list-item;
+  cursor: pointer;
+}
+
+.md-body summary:hover {
+  color: #524bae;
+}
+
+.md-body summary:focus-visible,
+.md-body a:focus-visible {
+  outline: 2px solid #6962ca;
+  outline-offset: 2px;
 }
 
 .md-body h1:first-child,

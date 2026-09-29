@@ -122,6 +122,8 @@ Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认�
 
 助理回复和思考内容通过 markdown-render 共享服务逐步渲染，正文继承聊天文字色，代码和表格在各自区域横向滚动，禁止撑宽消息列。已完成块保持 DOM，活动尾部只更新变化部分。完整解析扩展等待代码围栏闭合；未闭合、异常或服务不可用时保留可读源码。渲染样式归 packages/markdown，插件注册及卸载行为归 markdown-render，不在聊天页面复制解析逻辑。
 
+Markdown 正文基准为 16px；H1–H6 依次为正文的 2、1.65、1.4、1.2、1.05、0.9 倍，由 `packages/markdown/src/styles/markdown.css` 唯一维护。Markdown 范围允许斜体合成，以支持缺少斜体字形的中文系统字体。基础 HTML 保留语义及受限内联排版样式，详情使用原生 details/summary，支持键盘展开与可见焦点；独立样式表和可执行内容被清除。
+
 推理强度滑块以白色滑块为分界，左侧已选区间使用 Logo 中的紫色 #9d8df6（来源为 WebUI 的 assets/brand/logo.svg），右侧剩余区间使用 #e5e5e3；紫色填充仅左端保留圆角，右端平直结束于滑块中心直径处，并计入滑块在轨道两端的内缩偏移。填充随档位变化，由 Reka UI SliderRange 和 chat.css 共同维护。
 
 聊天采用 ChatGPT 式浅中性布局，保留 Antarestra Logo。聊天样式仍由 `chat-webui/client/chat.css` 维护：侧栏 #f7f7f5，正文 #ffffff，文本 #28292c，历史悬浮与选中 #eaeae7，用户消息 #f0f0ee。系统字体不变，正文及输入 16px，辅助操作 12–14px。此为聊天局部视觉变体，不改变控制台主色与布局。

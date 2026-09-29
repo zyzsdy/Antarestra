@@ -21,4 +21,8 @@ defineProps<{ text: string; running: boolean }>()
 
 `closed` 根据 Markdown AST 判断合法结束围栏，兼容长围栏、波浪号围栏、引用和列表嵌套。流式末尾没有换行的结束围栏要等下一次换行或消息结束才确认，避免下一分片把它变成普通代码行。消息结束不会补造缺失的结束围栏。
 
-原始 HTML 默认关闭；写入 DOM 的普通渲染结果统一经 DOMPurify 清洗。`render()` 返回未清洗 HTML，直接使用字符串 API 时调用方仍需清洗。可信扩展负责自己的渲染和副作用清理。当前引用式链接按块解析，后续块的引用定义不会回写已稳定块；需要跨块链接时使用行内链接。
+原始 HTML 默认开启，可通过 `html: false` 关闭。支持 `u`、`sub`、`sup`、`small`、`mark`、`details/summary`、`kbd`、`ruby/rt/rp`、`div`、`span`、`a`、`img` 等常用元素。折叠详情的标准标签是 `details`。
+
+写入 DOM 前统一经 DOMPurify 清洗，过滤脚本、事件属性、iframe、独立 style、表单及嵌入对象。内联 `style` 保留颜色、字体、对齐、边框、间距和尺寸等排版白名单，不保留定位、层级、外部资源函数、自定义属性和 `!important`。链接允许 HTTP(S)、相对路径、锚点、mailto 和 tel；图片允许 HTTP(S) 与相对路径，过滤 data/file/javascript 等协议和 srcset。HTTP(S) 外链统一新窗口打开并附加 `noopener noreferrer`。
+
+`render()` 返回未清洗 HTML，直接使用字符串 API 时调用方必须先清洗；浏览器端可使用包导出的 `sanitizeHtml()`。可信扩展负责自己的渲染和副作用清理。原始 HTML 出现后，其所在顶层块及后续内容保持为同一活动尾部，以保留跨空行的容器结构；之前的稳定块仍复用 DOM。当前引用式链接按块解析，后续块的引用定义不会回写已稳定块；需要跨块链接时使用行内链接。

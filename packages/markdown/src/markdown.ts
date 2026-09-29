@@ -147,15 +147,9 @@ function createLinkOpenRenderer(md: MarkdownItInstance): RenderRule {
   }
 }
 
-function wrapTables(html: string): string {
-  return html
-    .replace(/<table>/g, '<div class="md-table-wrap"><table>')
-    .replace(/<\/table>/g, '</table></div>')
-}
-
 export function createMarkdownRenderer(options: MarkdownRendererOptions = {}): MarkdownRenderer {
   const md = new MarkdownIt({
-    html: options.html ?? false,
+    html: options.html ?? true,
     linkify: options.linkify ?? true,
     typographer: false,
     breaks: false,
@@ -166,21 +160,30 @@ export function createMarkdownRenderer(options: MarkdownRendererOptions = {}): M
 
   md.renderer.rules.fence = createFenceRenderer(md, options.highlight !== false)
   md.renderer.rules.link_open = createLinkOpenRenderer(md)
+  md.renderer.rules.table_open = () => '<div class="md-table-wrap"><table>\n'
+  md.renderer.rules.table_close = () => '</table></div>\n'
 
   return {
     render(source: string, context: MarkdownRenderContext = {}): string {
-      return wrapTables(md.render(source ?? '', { ...context, source }))
+      return md.render(source ?? '', { ...context, source })
     },
     boundaries(source: string): number[] {
       const offsets = [0]
       for (let i = 0; i < source.length; i++) if (source[i] === '\n') offsets.push(i + 1)
+      const tokens = md.parse(source, {})
+      // 原始 HTML 容器可能跨空行和多个 AST 块，不能把开闭标签拆进不同 DOM 宿主。
+      const htmlStart = tokens.find(
+        (token) =>
+          token.type === 'html_block' ||
+          token.children?.some((child) => child.type === 'html_inline'),
+      )?.map?.[0]
       return [
         ...new Set(
-          md
-            .parse(source, {})
-            .flatMap((token) =>
-              token.level === 0 && token.map ? [offsets[token.map[0]] ?? 0] : [],
-            ),
+          tokens.flatMap((token) =>
+            token.level === 0 && token.map && (htmlStart === undefined || token.map[0] <= htmlStart)
+              ? [offsets[token.map[0]] ?? 0]
+              : [],
+          ),
         ),
       ]
     },

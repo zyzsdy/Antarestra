@@ -11,6 +11,7 @@ const props = defineProps<{
   extensions: ReadonlyMap<string, CodeRenderer>
 }>()
 const host = ref<HTMLElement | null>(null)
+const extensionPrefix = Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-')
 const mounts = new Map<
   string,
   {
@@ -50,7 +51,7 @@ function apply() {
   const html = props.renderer.render(props.text, {
     streaming: props.streaming,
     fence(node) {
-      const key = String(index++)
+      const key = `${extensionPrefix}-${index++}`
       const renderer =
         props.extensions.get(node.language) ?? (node.language === 'mermaid' ? mermaid : undefined)
       if (!renderer) return undefined
@@ -65,7 +66,7 @@ function apply() {
       mounts.delete(key)
     }
   }
-  patchMarkdown(el, html)
+  patchMarkdown(el, html, new Set(nodes.keys()))
   for (const [key, { node, renderer }] of nodes) {
     const holder = el.querySelector<HTMLElement>(`[data-md-extension="${key}"]`)!
     let entry = mounts.get(key)

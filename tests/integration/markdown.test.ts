@@ -86,12 +86,17 @@ describe('Markdown 增量解析', () => {
     expect(nodes[0]?.language).toBe('chart')
   })
 
-  it('默认关闭原始 HTML 并转义语言属性，保留公式、表格与高亮', () => {
+  it('默认解析原始 HTML，也可显式关闭；转义语言属性并保留公式、表格与高亮', () => {
     const renderer = createMarkdownRenderer()
-    expect(renderer.render('<script>alert(1)</script>')).not.toContain('<script>')
+    expect(renderer.render('<u>下划线</u>')).toContain('<u>下划线</u>')
+    expect(createMarkdownRenderer({ html: false }).render('<u>下划线</u>')).toContain('&lt;u&gt;')
     expect(renderer.render('```x"onclick="evil\ntext\n```')).not.toContain('onclick="evil')
     expect(renderer.render('$a^2$')).toContain('katex')
     expect(renderer.render('| A |\n|---|\n| B |')).toContain('md-table-wrap')
+    expect(renderer.render('<table class="example"><tr><td>HTML</td></tr></table>')).not.toContain(
+      '</div>',
+    )
+    expect(renderer.render('<span title="</table>">正文</span>')).toContain('title="</table>"')
     expect(renderer.render('```go\nfunc main() {}\n```')).toContain('hljs-keyword')
   })
 })
