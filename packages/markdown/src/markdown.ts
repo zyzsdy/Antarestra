@@ -122,7 +122,7 @@ function createFenceRenderer(md: MarkdownItInstance, enableHighlight: boolean): 
       '<div class="md-code-head">',
       `<span class="md-code-lang">${escapeHtml(lang || DEFAULT_LANG_LABEL)}</span>`,
       '<div class="md-code-actions">',
-      `<button type="button" class="md-code-action md-code-copy">${COPY_ICON}<span class="md-code-label">复制</span></button>`,
+      `<button type="button" class="md-code-action md-code-copy" title="复制" aria-label="复制"><span class="md-action-icon"><span class="md-copy-icon">${COPY_ICON}</span><svg class="md-check-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"></path></svg></span><span class="md-code-label" role="status"></span></button>`,
       '</div>',
       '</div>',
       `<pre class="md-code-pre"><code class="hljs${langClass}">${body}</code></pre>`,

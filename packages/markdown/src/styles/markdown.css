@@ -375,8 +375,14 @@
 .md-body .md-code-action {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 0;
+  appearance: none;
+  cursor: pointer;
+  font-family: inherit;
   border-radius: 7px;
   color: #63718c;
   background: transparent;
@@ -399,6 +405,94 @@
 
 .md-body .md-code-action.is-copied {
   color: #1d7d63;
+  background: #dff5e9;
+}
+
+.md-body .md-code-action:active {
+  background: #dce4ee;
+}
+
+.md-body .md-action-icon {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+}
+
+.md-body .md-copy-icon,
+.md-body .md-check-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.md-body .md-check-icon {
+  opacity: 0;
+  transform: scale(0.6) rotate(-20deg);
+}
+
+.md-body .is-copied .md-copy-icon {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.md-body .is-copied .md-check-icon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.md-body .md-code-label {
+  width: 0;
+  margin-left: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    width 180ms ease,
+    margin-left 180ms ease,
+    opacity 180ms ease;
+}
+
+.md-body .is-copied .md-code-label,
+.md-body .is-copy-error .md-code-label {
+  width: 3em;
+  margin-left: 5px;
+  opacity: 1;
+}
+
+.md-body .is-copy-error .md-code-label {
+  width: 4em;
+}
+
+.md-body .md-mode-icon {
+  animation: md-action-in 180ms ease;
+}
+
+@keyframes md-action-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-body .md-code-action,
+  .md-body .md-code-label,
+  .md-body .md-copy-icon,
+  .md-body .md-check-icon {
+    transition: none;
+  }
+  .md-body .md-mode-icon {
+    animation: none;
+  }
 }
 
 .md-body .md-code-pre {
@@ -523,24 +617,6 @@
 
 .md-body .md-mermaid-head .md-code-lang {
   color: #6b7799;
-}
-
-.md-body .md-mermaid-head .md-code-action {
-  color: #63718c;
-}
-
-.md-body .md-mermaid-head .md-code-action:hover {
-  color: #263754;
-  background: #e8edf5;
-}
-
-.md-body .md-mermaid-head .md-code-action.is-active {
-  color: #101936;
-  background: #b4f6e4;
-}
-
-.md-body .md-mermaid-head .md-code-action.is-copied {
-  color: #1d7d63;
 }
 
 .md-body .md-mermaid-body {

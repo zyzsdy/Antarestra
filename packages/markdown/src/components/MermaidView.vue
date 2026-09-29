@@ -20,6 +20,8 @@ const canvas = ref<HTMLElement | null>(null)
 const error = ref('')
 const rendering = ref(true)
 const copied = ref(false)
+const copyError = ref(false)
+let active = true
 
 let debounceTimer: number | undefined
 let renderSequence = 0
@@ -57,15 +59,19 @@ function scheduleDraw(): void {
 watch(() => props.source, scheduleDraw, { immediate: true })
 
 async function copySource(): Promise<void> {
-  if (!(await copyText(props.source))) return
-  copied.value = true
+  const success = await copyText(props.source)
+  if (!active) return
+  copied.value = success
+  copyError.value = !success
   window.clearTimeout(copiedTimer)
   copiedTimer = window.setTimeout(() => {
     copied.value = false
+    copyError.value = false
   }, 1600)
 }
 
 onBeforeUnmount(() => {
+  active = false
   window.clearTimeout(debounceTimer)
   window.clearTimeout(copiedTimer)
   renderSequence += 1
@@ -80,11 +86,13 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="md-code-action"
-          :class="{ 'is-active': mode === 'source' }"
-          :title="mode === 'diagram' ? '查看图表源代码' : '返回图表视图'"
+          :aria-label="mode === 'diagram' ? '源代码' : '图表'"
+          :title="mode === 'diagram' ? '源代码' : '图表'"
           @click="mode = mode === 'diagram' ? 'source' : 'diagram'"
         >
           <svg
+            :key="mode"
+            class="md-mode-icon"
             viewBox="0 0 16 16"
             width="13"
             height="13"
@@ -95,37 +103,59 @@ onBeforeUnmount(() => {
             stroke-linejoin="round"
             aria-hidden="true"
           >
-            <rect x="1.8" y="2.5" width="5.4" height="4.2" rx="1"></rect>
-            <rect x="8.8" y="2.5" width="5.4" height="4.2" rx="1"></rect>
-            <rect x="1.8" y="9.3" width="5.4" height="4.2" rx="1"></rect>
-            <path d="M11.5 9.3v4.2M9.4 11.4h4.2"></path>
+            <path v-if="mode === 'diagram'" d="m5 4-4 4 4 4m6-8 4 4-4 4M9 2 7 14"></path>
+            <g v-else>
+              <rect x="1.8" y="2.5" width="5.4" height="4.2" rx="1"></rect>
+              <rect x="8.8" y="2.5" width="5.4" height="4.2" rx="1"></rect>
+              <rect x="1.8" y="9.3" width="5.4" height="4.2" rx="1"></rect>
+              <path d="M11.5 9.3v4.2M9.4 11.4h4.2"></path>
+            </g>
           </svg>
-          <span class="md-code-label">{{ mode === 'diagram' ? '源代码' : '图表' }}</span>
         </button>
         <button
           type="button"
           class="md-code-action"
-          :class="{ 'is-copied': copied }"
-          title="复制 Mermaid 源代码"
+          :class="{ 'is-copied': copied, 'is-copy-error': copyError }"
+          :aria-label="copied ? '已复制' : copyError ? '复制失败，点击重试' : '复制'"
+          title="复制"
           @click="copySource"
         >
-          <svg
-            viewBox="0 0 16 16"
-            width="13"
-            height="13"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="5.5" y="5.5" width="8" height="8" rx="1.6"></rect>
-            <path
-              d="M10.5 3.4V3A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.4"
-            ></path>
-          </svg>
-          <span class="md-code-label">{{ copied ? '已复制' : '复制' }}</span>
+          <span class="md-action-icon">
+            <svg
+              class="md-copy-icon"
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.6"></rect>
+              <path
+                d="M10.5 3.4V3A1.5 1.5 0 0 0 9 1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.4"
+              ></path>
+            </svg>
+            <svg
+              class="md-check-icon"
+              viewBox="0 0 16 16"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m3 8 3 3 7-7"></path>
+            </svg>
+          </span>
+          <span class="md-code-label" role="status">{{
+            copied ? '已复制' : copyError ? '复制失败' : ''
+          }}</span>
         </button>
       </div>
     </div>

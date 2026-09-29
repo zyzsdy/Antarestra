@@ -38,7 +38,7 @@ const renderer = createMarkdownRenderer({
 })
 const stream = createMarkdownStream(renderer)
 const blocks = computed(() => stream.update(props.source, props.streaming))
-const timers = new Set<ReturnType<typeof setTimeout>>()
+const timers = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
 let active = true
 async function handleClick(event: Event) {
   const target = event.target instanceof Element ? event.target : null
@@ -48,18 +48,22 @@ async function handleClick(event: Event) {
   const copied = await copyText(code)
   if (!active || !button.isConnected) return
   const label = button.querySelector('.md-code-label')
+  clearTimeout(timers.get(button))
   button.classList.toggle('is-copied', copied)
+  button.classList.toggle('is-copy-error', !copied)
+  button.setAttribute('aria-label', copied ? '已复制' : '复制失败，点击重试')
   if (label) label.textContent = copied ? '已复制' : '复制失败'
   const timer = setTimeout(() => {
-    timers.delete(timer)
-    button.classList.remove('is-copied')
-    if (label) label.textContent = '复制'
+    timers.delete(button)
+    button.classList.remove('is-copied', 'is-copy-error')
+    button.setAttribute('aria-label', '复制')
+    if (label) label.textContent = ''
   }, 1600)
-  timers.add(timer)
+  timers.set(button, timer)
 }
 onBeforeUnmount(() => {
   active = false
-  for (const timer of timers) clearTimeout(timer)
+  for (const timer of timers.values()) clearTimeout(timer)
 })
 </script>
 
