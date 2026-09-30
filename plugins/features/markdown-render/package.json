@@ -6,7 +6,8 @@
   "type": "module",
   "antarestra": {
     "title": "Markdown 渲染",
-    "multipleInstances": false
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
   },
   "keywords": [
     "antarestra-plugin"

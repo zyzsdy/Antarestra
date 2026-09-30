@@ -39,6 +39,14 @@ it('S3 实现插件提供自动表单，凭据字段默认遮罩且保留环境�
   })
 })
 
+it('Markdown 渲染插件无需配置也声明 Schema 并支持自动表单', async () => {
+  const schema = await pluginSchema('plugins/features/markdown-render')
+  expect(supportsForm(schema)).toBe(true)
+  expect(schema.properties).toEqual({})
+  expect(validateConfig(schema, {})).toEqual({})
+  expect(() => validateConfig(schema, { unknown: true })).toThrow()
+})
+
 it('数据库配置提供自动表单，同时保留数据库类型的条件校验和敏感字段', async () => {
   const schema = JSON.parse(
     await readFile('plugins/implementations/database-kysely/config.schema.json', 'utf8'),
