@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-auth-local",
+  "description": "提供本地账号登录、注册和资料管理，以及用户、角色与权限管理页面。",
   "keywords": [
     "antarestra-plugin"
   ],
@@ -33,6 +34,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "本地账号认证",
     "configSchema": "./config.schema.json",
     "multipleInstances": true
   }

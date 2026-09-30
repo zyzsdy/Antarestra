@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-workspace-file",
+  "description": "提供工作空间文件与存储配额管理页面，支持上传、下载和删除文件。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -41,6 +42,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "工作空间文件",
     "multipleInstances": false,
     "configSchema": "./config.schema.json"
   }

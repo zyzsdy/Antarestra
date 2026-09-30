@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-ai-provider",
+  "description": "管理模型提供商、连接凭据与模型目录，支持同步提供商模型。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -29,6 +30,7 @@
     "@earendil-works/pi-ai": "^0.87.0"
   },
   "antarestra": {
+    "title": "模型提供商管理",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   },

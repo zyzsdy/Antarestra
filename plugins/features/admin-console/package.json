@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-admin-console",
+  "description": "提供管理控制台布局、导航与页面注册，按用户权限展示管理入口。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -36,6 +37,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "管理控制台",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/database",
+  "description": "提供统一数据库接口和插件迁移契约，支持插件在事务中操作各自的数据。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,6 +23,7 @@
     "kysely": "^0.29.5"
   },
   "antarestra": {
+    "title": "数据库服务",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

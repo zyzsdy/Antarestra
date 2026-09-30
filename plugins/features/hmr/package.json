@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-hmr",
+  "description": "监听插件源码变化，重新构建并重载受影响的插件及网页扩展。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -29,6 +30,7 @@
     "@types/ws": "^8.18.1"
   },
   "antarestra": {
+    "title": "源码热重载",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

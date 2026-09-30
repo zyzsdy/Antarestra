@@ -46,6 +46,7 @@ export interface Layout {
   instances: Record<string, { alias?: string; group?: string; order?: number }>
 }
 export interface Instance {
+  title: string
   instanceId: string
   pluginId: string
   enabled: boolean
@@ -66,6 +67,7 @@ export interface Snapshot {
   instances: Instance[]
 }
 export interface Metadata {
+  title: string
   name: string
   version: string
   description: string

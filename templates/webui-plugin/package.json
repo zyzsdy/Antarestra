@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-__NAME__",
+  "description": "__NAME__ 网页功能插件。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -28,5 +29,8 @@
     "vite": "^8.2.2",
     "vue": "^3.5.42",
     "vue-tsc": "^3.3.11"
+  },
+  "antarestra": {
+    "title": "__NAME__ 网页插件"
   }
 }

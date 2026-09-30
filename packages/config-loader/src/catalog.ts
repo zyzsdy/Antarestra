@@ -6,6 +6,7 @@ import type { PluginResolver } from './index.js'
 
 export interface PluginMetadata {
   name: string
+  title: string
   version: string
   description: string
   multipleInstances: boolean
@@ -13,7 +14,7 @@ export interface PluginMetadata {
 }
 export async function metadata(resolver: PluginResolver, id: string): Promise<PluginMetadata> {
   if (!resolver.resolveUrl)
-    return { name: id, version: '', description: '', multipleInstances: true }
+    return { name: id, title: '', version: '', description: '', multipleInstances: true }
   let directory = dirname(fileURLToPath(resolver.resolveUrl(id)))
   while (true) {
     let pkg: Record<string, unknown> | undefined
@@ -40,6 +41,7 @@ export async function metadata(resolver: PluginResolver, id: string): Promise<Pl
       }
       return {
         name: pkg.name,
+        title: typeof info.title === 'string' ? info.title : '',
         version: typeof pkg.version === 'string' ? pkg.version : '',
         description: typeof pkg.description === 'string' ? pkg.description : '',
         multipleInstances: info.multipleInstances === true,

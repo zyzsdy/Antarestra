@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-chat-webui",
+  "description": "提供网页聊天入口，支持对话历史、流式回复、消息编辑与重新生成。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -34,6 +35,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "网页聊天",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/webui",
+  "description": "提供 Vue 网页壳、客户端插件扩展和共享界面组件，承载聊天及管理页面。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -51,6 +52,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "网页服务",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

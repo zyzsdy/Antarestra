@@ -48,7 +48,9 @@ pluginPanel:
 
 ```json
 {
+  "description": "插件的功能描述。",
   "antarestra": {
+    "title": "插件标题",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

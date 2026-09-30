@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/storage",
+  "description": "管理工作空间文件、存储配额和上传流程，校验文件访问范围。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -25,6 +26,7 @@
     "@antarestra/plugin-sdk": "workspace:*"
   },
   "antarestra": {
+    "title": "存储服务",
     "multipleInstances": false,
     "configSchema": "./config.schema.json"
   }

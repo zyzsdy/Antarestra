@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-config-panel",
+  "description": "管理插件配置、运行状态、分组与排序，支持单独加载、卸载及系统重启。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -34,6 +35,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "插件设置",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

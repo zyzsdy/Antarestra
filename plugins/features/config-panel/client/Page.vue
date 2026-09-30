@@ -99,7 +99,7 @@ const parsed = computed(() => {
 const rows = computed(() =>
   (snapshot.value?.instances ?? [])
     .filter((row) =>
-      `${row.alias} ${row.pluginId} ${row.instanceId}`
+      `${row.alias} ${row.pluginId} ${row.title} ${row.instanceId}`
         .toLowerCase()
         .includes(search.value.toLowerCase()),
     )
@@ -419,7 +419,7 @@ onUnmounted(() => {
             id="plugin-search"
             ref="searchInput"
             v-model="search"
-            placeholder="搜索插件或别名"
+            placeholder="搜索插件、标题或别名"
           /><button v-if="search" aria-label="清空搜索" @click="clearSearch">清空</button>
         </div>
         <button
@@ -495,7 +495,8 @@ onUnmounted(() => {
                   class="instance-text"
                   ><strong>{{ row.alias || row.pluginId }}</strong
                   ><small
-                    >{{ names[row.status] }}{{ row.pending ? ' · 待应用' : ''
+                    >{{ row.title ? `${row.title} · ` : '' }}{{ names[row.status]
+                    }}{{ row.pending ? ' · 待应用' : ''
                     }}{{ row.removed ? ' · 待移除' : '' }}</small
                   ></span
                 >
@@ -562,6 +563,10 @@ onUnmounted(() => {
           <header class="detail-heading">
             <div>
               <h2>{{ alias || detail.entry.pluginId }}</h2>
+              <p v-if="detail.info?.title" class="plugin-title">{{ detail.info.title }}</p>
+              <p v-if="detail.info?.description" class="plugin-description">
+                {{ detail.info.description }}
+              </p>
               <code>{{ selected }}</code>
             </div>
             <span class="state-label">{{ names[current?.status ?? 'failed'] }}</span>
@@ -854,6 +859,7 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
 }
 .config-page .instance-text small {
+  overflow-wrap: anywhere;
   color: #667085;
   font-size: 11px;
 }
@@ -890,6 +896,19 @@ onUnmounted(() => {
   background: #f4f6fa;
   padding: 7px 10px;
   border-radius: 7px;
+}
+.config-page .detail-heading > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.config-page .plugin-title {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+.config-page .plugin-description {
+  margin: 8px 0 12px;
+  color: #667085;
+  line-height: 1.6;
 }
 .config-page .instance-controls {
   margin: 20px 0;

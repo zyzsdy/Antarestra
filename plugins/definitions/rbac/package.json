@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/rbac",
+  "description": "管理用户主体、角色与权限，校验系统及工作空间范围内的访问权限。",
   "keywords": [
     "antarestra-plugin"
   ],
@@ -24,6 +25,7 @@
     "@antarestra/plugin-server": "workspace:*"
   },
   "antarestra": {
+    "title": "权限服务",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

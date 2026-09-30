@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-storage-s3",
+  "description": "通过兼容 S3 的对象存储实现文件上传、分片上传、签名下载与删除。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -33,6 +34,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "S3 对象存储",
     "multipleInstances": false,
     "configSchema": "./config.schema.json"
   }

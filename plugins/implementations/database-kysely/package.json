@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-database-kysely",
+  "description": "通过 Kysely 实现数据库服务，支持数据库连接、查询、事务与插件迁移。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -30,6 +31,7 @@
     "@types/pg": "^8.23.1"
   },
   "antarestra": {
+    "title": "Kysely 数据库",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

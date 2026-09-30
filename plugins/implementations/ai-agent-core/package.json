@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-ai-agent-core",
+  "description": "执行 Agent 对话与工具调用，通过 AI 服务使用模型并记录运行过程。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,6 +19,7 @@
     }
   },
   "antarestra": {
+    "title": "Agent 执行引擎",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   },

@@ -31,6 +31,21 @@ async function setup(source: string, resolver?: loader.PluginResolver) {
 }
 
 describe('配置面板管理服务', () => {
+  it('运行及禁用实例均展示包标题，详情与目录包含功能描述', async () => {
+    const app = await setup('plugins:\n  logger: {}\n  ~hmr: {}\n  ~missing-plugin: {}\n')
+    const items = (await app.manager.snapshot()).instances
+    expect(items.find((item) => item.pluginId === 'logger')?.title).toBe('日志服务')
+    expect(items.find((item) => item.pluginId === 'hmr')?.title).toBe('源码热重载')
+    expect(items.find((item) => item.pluginId === 'missing-plugin')?.title).toBe('')
+    const detail = await app.manager.detail('logger')
+    expect(detail.info?.title).toBe('日志服务')
+    expect(detail.info?.description).toContain('系统日志')
+    const catalog = await app.manager.catalog()
+    expect(catalog.find((item) => item.name === detail.info?.name)).toMatchObject({
+      title: detail.info?.title,
+      description: detail.info?.description,
+    })
+  })
   it.each(['', 'pluginPanel: {}\n', 'pluginPanel: { instances: {} }\n'])(
     '删除配置允许缺少面板元数据：%s',
     async (layout) => {
@@ -204,7 +219,7 @@ describe('配置面板管理服务', () => {
       }
       const app = await setup('plugins: {}\n', resolver)
       vi.spyOn(app.manager, 'catalog').mockResolvedValue([
-        { name, version: '', description: '', multipleInstances },
+        { name, title: '', version: '', description: '', multipleInstances },
       ])
       await app.manager.add((await app.manager.snapshot()).version, name, operation())
       const entries = await loader.readConfig(app.filename)

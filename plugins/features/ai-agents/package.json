@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-ai-agents",
+  "description": "提供 Agent 管理页面，配置系统提示词、模型和可用能力。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -34,6 +35,7 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
+    "title": "Agent 管理",
     "multipleInstances": false,
     "configSchema": "./config.schema.json"
   }

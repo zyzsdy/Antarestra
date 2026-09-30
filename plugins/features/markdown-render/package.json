@@ -1,9 +1,11 @@
 {
   "name": "@antarestra/plugin-markdown-render",
+  "description": "提供共享 Markdown 渲染服务，支持流式内容、代码块和 Mermaid 图表。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "antarestra": {
+    "title": "Markdown 渲染",
     "multipleInstances": false
   },
   "keywords": [

@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/plugin-server",
+  "description": "提供 HTTP 与 HTTPS 服务，统一管理 API 路由、中间件和静态文件。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -30,6 +31,7 @@
     "@types/koa-send": "^4.1.6"
   },
   "antarestra": {
+    "title": "HTTP 服务",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   }

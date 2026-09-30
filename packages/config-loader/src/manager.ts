@@ -285,6 +285,20 @@ export class ConfigManager extends Service<ManagerConfig> {
     const file = await readDocument(this.options.filename)
     const configured = new Map(file.entries.map((entry) => [entry.instanceId, entry]))
     const ids = new Set([...configured.keys(), ...this.instances.keys()])
+    const titles = new Map<string, string>()
+    await Promise.all(
+      [
+        ...new Set(
+          [...ids].map((id) => (configured.get(id) ?? this.instances.get(id)!.entry).pluginId),
+        ),
+      ].map(async (pluginId) => {
+        try {
+          titles.set(pluginId, (await metadata(this.options.resolvePlugin, pluginId)).title)
+        } catch {
+          /* 包缺失或元数据无效时仍展示实例及状态。 */
+        }
+      }),
+    )
     return {
       version: file.version,
       generation: this.generation,
@@ -297,6 +311,7 @@ export class ConfigManager extends Service<ManagerConfig> {
         return {
           instanceId: id,
           pluginId: (entry ?? item!.entry).pluginId,
+          title: titles.get((entry ?? item!.entry).pluginId) ?? '',
           enabled: entry?.enabled ?? false,
           status: item ? this.state(item) : 'disabled',
           error: item?.error ?? (item && this.state(item) === 'failed' ? this.failure(item) : ''),

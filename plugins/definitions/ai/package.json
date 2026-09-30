@@ -1,5 +1,6 @@
 {
   "name": "@antarestra/ai",
+  "description": "统一管理 Agent、模型、工具和 Skill，提供按工作空间隔离的对话、运行与历史接口。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,6 +19,7 @@
     }
   },
   "antarestra": {
+    "title": "AI 服务",
     "configSchema": "./config.schema.json",
     "multipleInstances": false
   },
