@@ -14,13 +14,13 @@ plugins:
   rbac: {}
   storage: {}
   # 运行 pnpm startdevstorage 和 pnpm initdevstorage 后启用；凭据从环境读取。
-  # storage-s3:
-  #   endpoint: http://127.0.0.1:19000
-  #   region: us-east-1
-  #   bucket: antarestra-dev
-  #   accessKeyId: $ANTARESTRA_S3_ACCESS_KEY
-  #   secretAccessKey: $ANTARESTRA_S3_SECRET_KEY
-  #   forcePathStyle: true
+  storage-s3:
+    endpoint: http://127.0.0.1:19000
+    region: us-east-1
+    bucket: antarestra-dev
+    accessKeyId: $ANTARESTRA_S3_ACCESS_KEY
+    secretAccessKey: $ANTARESTRA_S3_SECRET_KEY
+    forcePathStyle: true
   workspace-file:
     backendId: s3
     defaultQuota: 1073741824
@@ -38,7 +38,3 @@ plugins:
   config-panel: {}
   markdown-render: {}
   chat-webui: {}
-pluginPanel:
-  instances:
-    chat-webui:
-      alias: ''
