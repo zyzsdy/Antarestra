@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import type { UploadPlan, UploadedPart } from './client.js'
+import type { DownloadResponse } from './response.js'
+export { fileResponse } from './response.js'
+export type { DownloadResponse } from './response.js'
 export type { UploadPlan, UploadedPart } from './client.js'
 
 export interface BlobUpload {
@@ -10,6 +13,7 @@ export interface BlobUpload {
   size: number
   expiresAt: number
   multipartId?: string
+  contentType?: string
 }
 export interface StorageBackend {
   begin(upload: BlobUpload): Promise<BlobUpload>
@@ -18,7 +22,7 @@ export interface StorageBackend {
   complete(upload: BlobUpload, parts: UploadedPart[]): Promise<void>
   discard(upload: BlobUpload): Promise<void>
   remove(key: string): Promise<void>
-  download(key: string, response?: { contentDisposition: string }): Promise<string>
+  download(key: string, response?: DownloadResponse): Promise<string>
   read(key: string): Promise<Uint8Array>
 }
 declare module '@antarestra/plugin-sdk' {

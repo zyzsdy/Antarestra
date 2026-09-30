@@ -8,6 +8,7 @@ export interface FileEntry {
   createdAt: number
   backend: string
   key: string
+  contentType?: string
 }
 export interface UploadRecord {
   id: string

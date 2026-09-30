@@ -30,9 +30,11 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/storage": "workspace:*",
-    "@antarestra/webui": "workspace:*"
+    "@antarestra/webui": "workspace:*",
+    "mime-types": "^3.0.2"
   },
   "devDependencies": {
+    "@types/mime-types": "^3.0.1",
     "typescript": "6.0.3",
     "vite": "^8.2.2",
     "vue": "^3.5.42",

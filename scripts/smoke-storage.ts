@@ -46,7 +46,7 @@ try {
       CORSConfiguration: {
         CORSRules: [
           {
-            AllowedOrigins: ['http://127.0.0.1:14459'],
+            AllowedOrigins: ['*'],
             AllowedMethods: ['PUT', 'GET', 'HEAD'],
             AllowedHeaders: ['*'],
             ExposeHeaders: ['ETag'],
@@ -97,7 +97,12 @@ try {
     password,
   })
   const otherCookie = otherLogin.headers.get('set-cookie')!.split(';')[0]!
-  async function upload(path: string, bytes: Buffer) {
+  async function upload(
+    path: string,
+    bytes: Buffer,
+    contentType = 'application/octet-stream',
+    disposition = 'attachment',
+  ) {
     const started = await request('/workspace-files/uploads', cookie, { path, size: bytes.length })
     assert.equal(started.status, 200, await started.clone().text())
     const ticket = (await started.json()) as { token: string; plan: UploadPlan }
@@ -125,7 +130,19 @@ try {
       cookie,
     )
     const { url } = (await download.json()) as { url: string }
-    assert.deepEqual(Buffer.from(await (await fetch(url)).arrayBuffer()), bytes)
+    const response = await fetch(url, { headers: { Origin: 'https://images.example.com' } })
+    assert.equal(response.headers.get('content-type'), contentType)
+    assert.ok(response.headers.get('content-disposition')?.startsWith(disposition + ';'))
+    assert.equal(response.headers.get('access-control-allow-origin'), '*')
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes)
+    const stored = await backend.client.send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: new URL(url).pathname.split('/').slice(2).join('/'),
+      }),
+    )
+    assert.equal(stored.ContentType, contentType)
+    assert.equal(stored.ContentDisposition, disposition)
     if (ticket.plan.parts.length === 1) {
       const replay = await fetch(ticket.plan.parts[0]!.url, {
         method: 'PUT',
@@ -147,13 +164,35 @@ try {
     )
     return ticket
   }
-  await upload('/upload/2026-09-29/中文说明.txt', Buffer.from('这是来自真实 RustFS 的文件。'))
+  await upload(
+    '/upload/2026-09-29/中文说明.txt',
+    Buffer.from('这是来自真实 RustFS 的文件。'),
+    'text/plain',
+    'inline',
+  )
+  const image = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDaYAAAAASUVORK5CYII=',
+    'base64',
+  )
+  await upload('/图片.png', image, 'image/png', 'inline')
+  await upload('/页面.html', Buffer.from('<script>alert(1)</script>'), 'text/html')
+  await upload(
+    '/矢量.svg',
+    Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+    'image/svg+xml',
+  )
+  await upload(
+    '/分片图片.png',
+    Buffer.concat([image, Buffer.alloc(6 * 1024 * 1024)]),
+    'image/png',
+    'inline',
+  )
   const multipart = await upload(
     '/upload/2026-09-29/分片数据.bin',
     Buffer.alloc(6 * 1024 * 1024, 37),
   )
   assert.equal(multipart.plan.parts.length, 2)
-  const zero = await upload('/empty.txt', Buffer.alloc(0))
+  const zero = await upload('/empty.txt', Buffer.alloc(0), 'text/plain', 'inline')
   assert.equal(zero.plan.parts.length, 1)
   const listed = await backend.client.send(new ListObjectsV2Command({ Bucket: bucket }))
   for (const object of listed.Contents ?? []) {
@@ -169,7 +208,7 @@ try {
   assert.equal((await restored.json()).entries.length, 2)
   assert.equal((await request('/workspace-file-admin', otherCookie)).status, 403)
   console.log(
-    'RustFS + 磁盘 SQLite 验证通过：直传、零字节、分片、内容下载、重复完成、不可覆盖、随机键、跨空间拒绝、插件重载。',
+    'RustFS + 磁盘 SQLite 验证通过：任意 Origin CORS、图片与文本内联、HTML/SVG 附件、原始类型、直传、零字节、分片、内容下载、重复完成、不可覆盖、随机键、跨空间拒绝、插件重载。',
   )
   if (preview) {
     console.log(

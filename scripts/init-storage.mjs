@@ -29,11 +29,7 @@ try {
       CORSConfiguration: {
         CORSRules: [
           {
-            AllowedOrigins: [
-              'http://localhost:14451',
-              'http://127.0.0.1:14451',
-              'http://127.0.0.1:14459',
-            ],
+            AllowedOrigins: ['*'],
             AllowedMethods: ['PUT', 'GET', 'HEAD'],
             AllowedHeaders: ['*'],
             ExposeHeaders: ['ETag'],

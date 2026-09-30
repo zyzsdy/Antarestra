@@ -632,7 +632,13 @@ importers:
       '@antarestra/webui':
         specifier: workspace:*
         version: link:../../definitions/webui
+      mime-types:
+        specifier: ^3.0.2
+        version: 3.0.2
     devDependencies:
+      '@types/mime-types':
+        specifier: ^3.0.1
+        version: 3.0.1
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -1641,6 +1647,9 @@ packages:
 
   '@types/koa@3.0.3':
     resolution: {integrity: sha512-TdtNEJ7sYSrFQcVuS2ySsVqnq5EyE3oJbnfFJvkC9UtGP4Kpem5KE7r+ivHIbIAQAofSqnlB5D3vkfYO69TQpg==}
+
+  '@types/mime-types@3.0.1':
+    resolution: {integrity: sha512-xRMsfuQbnRq1Ef+C+RKaENOxXX87Ygl38W1vDfPHRku02TgQr+Qd8iivLtAMcR0KF5/29xlnFihkTlbqFrGOVQ==}
 
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
@@ -4177,6 +4186,8 @@ snapshots:
       '@types/keygrip': 1.0.6
       '@types/koa-compose': 3.2.9
       '@types/node': 24.13.3
+
+  '@types/mime-types@3.0.1': {}
 
   '@types/node@24.13.3':
     dependencies:

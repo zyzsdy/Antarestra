@@ -37,9 +37,9 @@ docker compose --env-file .env.storage.local -p antarestra-storage -f compose.st
 - `forcePathStyle`：默认 true，适合 RustFS / MinIO；AWS 或其他供应商按要求修改。
 - `multipartThreshold`、`partSize`：以字节计。
 
-桶由管理员提前创建，插件不自动修改生产桶策略或 CORS。CORS 至少允许应用精确 Origin、PUT / GET / HEAD、签名需要的请求头，并暴露 ETag；不能用公开桶代替鉴权。`uploads/` 必须配置一天过期和未完成分片一天终止作为崩溃回收兜底；不要给 `objects/` 配置短期过期。生产凭据应限制到目标私有桶及所需读写、分片、复制权限。
+桶由管理员提前创建，插件不自动修改生产桶策略或 CORS。本地初始化脚本允许任意 Origin（`*`）、PUT / GET / HEAD、所有请求头，并暴露 ETag，以支持上传和跨域图片展示；私有桶仍通过签名 URL 鉴权。生产桶应按部署需要配置同等的浏览器访问能力。`uploads/` 必须配置一天过期和未完成分片一天终止作为崩溃回收兜底；不要给 `objects/` 配置短期过期。生产凭据应限制到目标私有桶及所需读写、分片、复制权限。
 
-底层对象 Content-Type 固定 application/octet-stream，不保存原始文件名、路径、空间 ID 或用户 metadata。下载强制 attachment。直传临时对象使用 If-None-Match，最终对象使用条件 CopyObject；实现语义参考 [AWS CopyObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html)。
+对象保留上传类型，不保存原始文件名、路径、空间 ID 或用户 metadata。常见位图、音视频、纯文本、CSV、Markdown 和 JSON 允许 inline；HTML、SVG、脚本、PDF 等未列入允许清单的类型使用 attachment，未知类型回退为 application/octet-stream。未指定下载响应覆盖时保留对象的 Content-Type 和 Content-Disposition；工作空间下载显式传入类型和编码文件名，使历史对象也可以内联展示。工作空间按上传文件扩展名识别类型，重命名保留该类型；缺少类型的历史记录按当前文件名识别。直接使用存储后端的生成文件调用方可以通过 BlobUpload.contentType 提供类型。直传临时对象使用 If-None-Match，最终对象使用条件 CopyObject；实现语义参考 [AWS CopyObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html)。
 
 已有文件记录保存后端 id，修改该 id 对应的桶/凭据不会迁移历史数据。更换存储位置需要单独迁移，不应直接把同一 id 指向空桶。本次仅验证 RustFS，不宣称已实测 AWS、R2 或 OSS。不同供应商的条件写入和 CORS 支持仍需实际验证。
 

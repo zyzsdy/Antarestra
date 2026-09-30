@@ -11,7 +11,14 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import type { BlobUpload, StorageBackend, UploadedPart, UploadPlan } from '@antarestra/storage'
+import { fileResponse } from '@antarestra/storage'
+import type {
+  BlobUpload,
+  DownloadResponse,
+  StorageBackend,
+  UploadedPart,
+  UploadPlan,
+} from '@antarestra/storage'
 export interface Config {
   id?: string
   endpoint: string
@@ -66,7 +73,7 @@ export class S3Backend implements StorageBackend {
     const result = await this.client.send(
       new CreateMultipartUploadCommand({
         ...this.object(upload.stagingKey),
-        ContentType: 'application/octet-stream',
+        ContentType: fileResponse(upload.contentType).contentType,
       }),
     )
     if (!result.UploadId) throw new Error('S3 未返回分片标识')
@@ -92,7 +99,7 @@ export class S3Backend implements StorageBackend {
             ...this.object(upload.stagingKey),
             ContentLength: size,
             IfNoneMatch: '*',
-            ContentType: 'application/octet-stream',
+            ContentType: fileResponse(upload.contentType).contentType,
           })
       const url =
         command instanceof UploadPartCommand
@@ -105,7 +112,7 @@ export class S3Backend implements StorageBackend {
       parts,
       headers: upload.multipartId
         ? {}
-        : { 'If-None-Match': '*', 'Content-Type': 'application/octet-stream' },
+        : { 'If-None-Match': '*', 'Content-Type': fileResponse(upload.contentType).contentType },
     }
   }
   private async head(key: string) {
@@ -146,8 +153,8 @@ export class S3Backend implements StorageBackend {
         CopySource: `${this.config.bucket}/${upload.stagingKey}`,
         CopySourceIfMatch: source.ETag,
         MetadataDirective: 'REPLACE',
-        ContentType: 'application/octet-stream',
-        ContentDisposition: 'attachment',
+        ContentType: fileResponse(upload.contentType).contentType,
+        ContentDisposition: fileResponse(upload.contentType).contentDisposition,
       }),
     )
     if ((await this.head(upload.key))?.ContentLength !== upload.size)
@@ -171,13 +178,19 @@ export class S3Backend implements StorageBackend {
   async remove(key: string) {
     await this.client.send(new DeleteObjectCommand(this.object(key)))
   }
-  download(key: string, response?: { contentDisposition: string }) {
+  download(key: string, response?: DownloadResponse) {
     return getSignedUrl(
       this.publicClient,
       new GetObjectCommand({
         ...this.object(key),
-        ResponseContentDisposition: response?.contentDisposition ?? 'attachment',
-        ResponseContentType: 'application/octet-stream',
+        ...(response
+          ? {
+              ResponseContentDisposition: response.contentDisposition,
+              ...(response.contentType
+                ? { ResponseContentType: fileResponse(response.contentType).contentType }
+                : {}),
+            }
+          : {}),
       }),
       { expiresIn: 60 },
     )

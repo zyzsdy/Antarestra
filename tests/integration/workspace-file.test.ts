@@ -139,6 +139,32 @@ it('拒绝路径穿越，并且随机对象键不包含用户名称或目录', a
     expect.objectContaining({ path: '/upload', kind: 'directory' }),
   ])
 })
+it('图片与文本允许内联，主动内容和未知类型下载，重命名保留上传类型', async () => {
+  const app = await setup()
+  const download = vi.spyOn(app.backend, 'download')
+  for (const [path, contentType, disposition] of [
+    ['/截图.PNG', 'image/png', 'inline'],
+    ['/说明.txt', 'text/plain', 'inline'],
+    ['/页面.html', 'text/html', 'attachment'],
+    ['/矢量.svg', 'image/svg+xml', 'attachment'],
+    ['/未知.unknown', 'application/octet-stream', 'attachment'],
+  ]) {
+    await app.upload(app.a, path!)
+    await app.ctx.workspaceFile.download(app.a, path)
+    expect(download).toHaveBeenLastCalledWith(expect.any(String), {
+      contentType,
+      contentDisposition: `${disposition}; filename*=UTF-8''${encodeURIComponent(path!.slice(1))}`,
+    })
+    await app.ctx.workspaceFile.remove(app.a, path)
+  }
+  await app.upload(app.a, '/original.html')
+  await app.ctx.workspaceFile.move(app.a, '/original.html', '/renamed.png')
+  await app.ctx.workspaceFile.download(app.a, '/renamed.png')
+  expect(download).toHaveBeenLastCalledWith(expect.any(String), {
+    contentType: 'text/html',
+    contentDisposition: "attachment; filename*=UTF-8''renamed.png",
+  })
+})
 it('配额预占抵御并发，取消释放预占，重复完成不重复计费', async () => {
   const app = await setup()
   const result = await Promise.allSettled([

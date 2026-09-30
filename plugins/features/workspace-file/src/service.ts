@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
+import { lookup } from 'mime-types'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { AuthError } from '@antarestra/rbac'
 import type { UploadedPart } from '@antarestra/storage'
+import { fileResponse } from '@antarestra/storage'
 import { name, usage } from './store.js'
 import type { Tables, Space, FileEntry } from './store.js'
 import { filePath, sizeValue } from './validation.js'
@@ -208,6 +210,7 @@ export class WorkspaceFileService extends Service<Config> {
       size,
       Date.now() + (this.options.uploadMinutes ?? 30) * 60_000,
     )
+    blob.contentType = fileResponse(lookup(path) || undefined).contentType
     const id = randomUUID()
     await this.mutate(access.workspaceId, (state) => {
       this.available(state, path)
@@ -236,7 +239,12 @@ export class WorkspaceFileService extends Service<Config> {
     if (upload.status === 'complete') return { path: upload.path }
     if (upload.status !== 'pending' || upload.blob.expiresAt <= Date.now())
       throw new AuthError(410, '上传已取消或过期')
-    await this.ctx.storage.backend(upload.backend).complete(upload.blob, parts)
+    const blob = {
+      ...upload.blob,
+      contentType: fileResponse(upload.blob.contentType ?? (lookup(upload.path) || undefined))
+        .contentType,
+    }
+    await this.ctx.storage.backend(upload.backend).complete(blob, parts)
     await this.verify(access)
     await this.mutate(access.workspaceId, (state) => {
       const current = state.uploads.find((u) => u.id === token)
@@ -249,6 +257,7 @@ export class WorkspaceFileService extends Service<Config> {
         size: upload.blob.size,
         backend: upload.backend,
         key: upload.blob.key,
+        contentType: blob.contentType,
         createdAt: Date.now(),
       })
       current.status = 'complete'
@@ -329,13 +338,15 @@ export class WorkspaceFileService extends Service<Config> {
   }
   async download(access: FileAccess, path: unknown) {
     const file = await this.file(access, path)
+    const response = fileResponse(file.contentType ?? (lookup(file.path) || undefined))
     const encodedName = encodeURIComponent(file.path.split('/').at(-1)!).replace(
       /['()*]/g,
       (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
     )
     return {
       url: await this.ctx.storage.backend(file.backend).download(file.key, {
-        contentDisposition: `attachment; filename*=UTF-8''${encodedName}`,
+        contentType: response.contentType,
+        contentDisposition: `${response.contentDisposition}; filename*=UTF-8''${encodedName}`,
       }),
       expiresIn: 60,
     }
