@@ -25,6 +25,7 @@
     "@antarestra/plugin-sdk": "workspace:*"
   },
   "antarestra": {
-    "multipleInstances": false
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
   }
 }

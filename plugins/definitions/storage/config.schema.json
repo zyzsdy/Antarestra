@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Blob 存储服务",
+  "description": "提供存储后端注册与上传契约，无需额外配置；连接地址与凭据请在 storage-s3 等实现插件中配置。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

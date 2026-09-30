@@ -23,11 +23,13 @@
     },
     "accessKeyId": {
       "type": "string",
-      "format": "password"
+      "format": "password",
+      "x-sensitive": true
     },
     "secretAccessKey": {
       "type": "string",
-      "format": "password"
+      "format": "password",
+      "x-sensitive": true
     },
     "forcePathStyle": {
       "type": "boolean",
