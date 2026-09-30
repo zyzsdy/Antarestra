@@ -51,6 +51,9 @@ class MemoryStorage implements StorageBackend {
   async read(key: string) {
     return this.blobs.get(key)!
   }
+  async exists(key: string) {
+    return this.blobs.has(key)
+  }
 }
 async function setup() {
   const ctx = new Context()
@@ -138,6 +141,37 @@ it('拒绝路径穿越，并且随机对象键不包含用户名称或目录', a
   expect((await app.ctx.workspaceFile.list(app.a)).entries).toEqual([
     expect.objectContaining({ path: '/upload', kind: 'directory' }),
   ])
+})
+it('聊天附件使用稳定 ID、独立目录；移动后仍可访问，删除立即释放配额且不误删同名新文件', async () => {
+  const app = await setup()
+  const ticket = await app.ctx.workspaceFile.begin(app.a, {
+    path: '截图.png',
+    size: 5,
+    attachment: true,
+    mimeType: 'image/png',
+  })
+  app.backend.blobs.set(ticket.plan.parts[0]!.url, Buffer.from('hello'))
+  const saved = await app.ctx.workspaceFile.complete(app.a, ticket.token, [])
+  expect(saved.id).toBe(ticket.token)
+  expect(saved.path).toMatch(/^\/chat-attachments\/[a-f\d-]+\/截图.png$/)
+  expect(saved.url).toBe(`/api/workspace-files/resources/${ticket.token}/content`)
+  expect((await app.ctx.workspaceFile.list(app.a)).used).toBe(5)
+  await expect(app.ctx.workspaceFile.resource(app.b, saved.id)).rejects.toThrow('文件已过期')
+  await app.ctx.workspaceFile.move(app.a, saved.path, '/new.png')
+  expect((await app.ctx.workspaceFile.resource(app.a, saved.id)).path).toBe('/new.png')
+  expect((await app.ctx.workspaceFile.readResource(app.a, saved.id)).bytes).toEqual(
+    Buffer.from('hello'),
+  )
+  await app.ctx.workspaceFile.removeResource(app.a, saved.id)
+  expect((await app.ctx.workspaceFile.list(app.a)).used).toBe(0)
+  await expect(app.ctx.workspaceFile.resource(app.a, saved.id)).rejects.toThrow('文件已过期')
+  const replacement = await app.upload(app.a, '/new.png')
+  await app.ctx.workspaceFile.removeResource(app.a, saved.id)
+  expect((await app.ctx.workspaceFile.resource(app.a, replacement.token)).size).toBe(5)
+  const file = await app.ctx.workspaceFile.resource(app.a, replacement.token)
+  const key = [...app.backend.blobs.keys()].find((key) => key.startsWith('objects/'))!
+  app.backend.blobs.delete(key)
+  await expect(app.ctx.workspaceFile.resource(app.a, file.id)).rejects.toThrow('文件已过期')
 })
 it('图片与文本允许内联，主动内容和未知类型下载，重命名保留上传类型', async () => {
   const app = await setup()
@@ -271,6 +305,8 @@ it('管理 API 显示中文空间来源、限制管理员、校验配额版本�
 it('Agent 文件工具只接受核心当前运行上下文，不能通过工具参数越过空间', async () => {
   const app = await setup()
   await app.upload(app.a, '/note.txt', 'hello')
+  const photo = await app.upload(app.a, '/photo.png', 'hello')
+  const attachment = await app.ctx.workspaceFile.resource(app.a, photo.token)
   await app.ctx.plugin(ai, {})
   const access = await app.ctx.ai.authorize('test', 'a')
   app.ctx.ai.registerBackend(app.ctx, {
@@ -281,9 +317,9 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
         app.ctx.workspaceFile.authorize('workspace-file-agent', forged),
       ).rejects.toThrow()
       const output = await runtime.request()
-      const result = await runtime.executeTools(
-        output.content.filter((block) => block.type === 'tool-call'),
-      )
+      const calls = output.content.filter((block) => block.type === 'tool-call')
+      if (!calls.length) return
+      const result = await runtime.executeTools(calls)
       expect(JSON.stringify(result)).toContain('hello')
       await runtime.request()
     },
@@ -299,7 +335,7 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
         title: '测试模型',
         contextWindow: 10000,
         maxOutputTokens: 1000,
-        input: ['text'],
+        input: ['text', 'image'],
         output: ['text'],
         tools: true,
         thinkingLevels: [],
@@ -308,7 +344,15 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
   })
   app.ctx.ai.registerDriver(app.ctx, {
     id: 'file-driver',
-    async generate(request) {
+    async generate(request, connection) {
+      if (
+        request.messages.some((message) => message.content.some((block) => block.type === 'image'))
+      )
+        expect(connection.resources?.get(photo.token)).toEqual({
+          filename: 'photo.png',
+          mimeType: 'image/png',
+          data: 'aGVsbG8=',
+        })
       return {
         content: request.messages.some((message) => message.role === 'tool')
           ? [{ type: 'text', text: '读取成功' }]
@@ -339,7 +383,18 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
   const conversation = await app.ctx.ai.createConversation(access, 'file-agent')
   const run = await app.ctx.ai.start(access, conversation.id, {
     operation: 'send',
-    input: { text: '读取文件' },
+    input: {
+      text: '读取文件',
+      attachments: [
+        {
+          type: 'image',
+          resourceId: photo.token,
+          filename: attachment.filename,
+          mimeType: attachment.mimeType,
+          url: attachment.url,
+        },
+      ],
+    },
     idempotencyKey: 'file-run',
     expectedRevision: conversation.revision,
     expectedNodeId: null,
@@ -348,10 +403,31 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
     const record = await app.ctx.ai.getRun(access, run.id)
     if (record.status !== 'running') {
       expect(record.status, JSON.stringify(record.error)).toBe('completed')
+      expect(JSON.stringify(record.requests)).not.toContain('aGVsbG8=')
+      expect(record.input.attachments?.[0]?.resourceId).toBe(photo.token)
       break
     }
     await delay(10)
     if (i === 99) throw new Error('文件工具测试未结束')
+  }
+  await app.ctx.workspaceFile.removeResource(app.a, photo.token)
+  const history = await app.ctx.ai.getConversation(access, conversation.id)
+  const next = await app.ctx.ai.start(access, conversation.id, {
+    operation: 'send',
+    input: { text: '继续读取' },
+    idempotencyKey: 'file-follow-up',
+    expectedRevision: history.conversation.revision,
+    expectedNodeId: history.conversation.selectedNodeId,
+  })
+  for (let i = 0; i < 100; i++) {
+    const record = await app.ctx.ai.getRun(access, next.id)
+    if (record.status !== 'running') {
+      expect(record.status, JSON.stringify(record.error)).toBe('completed')
+      expect(JSON.stringify(record.requests)).toContain('文件已过期')
+      break
+    }
+    await delay(10)
+    if (i === 99) throw new Error('附件历史测试未结束')
   }
   await expect(
     app.ctx.workspaceFile.authorize('workspace-file-agent', {

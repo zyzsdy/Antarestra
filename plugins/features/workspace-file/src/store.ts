@@ -2,6 +2,7 @@ import { defineMigration } from '@antarestra/database'
 import type { BlobUpload } from '@antarestra/storage'
 export const name = '@antarestra/plugin-workspace-file'
 export interface FileEntry {
+  id?: string
   path: string
   kind: 'file' | 'directory'
   size: number

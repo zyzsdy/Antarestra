@@ -4,6 +4,7 @@ import type {
   AgentPreset,
   ChatMessage,
   Conversation,
+  ContentBlock,
   MessageNode,
   ModelDefinition,
   ModelRef,
@@ -43,6 +44,9 @@ export function useChat(identity: () => Session | undefined) {
   const detail = shallowRef<History>()
   const runs = shallowReactive(new Map<string, RunRecord>())
   const drafts = reactive(new Map<string, string>())
+  const attachmentDrafts = reactive(
+    new Map<string, Extract<ContentBlock, { resourceId: string }>[]>(),
+  )
   const pending = shallowReactive(new Map<string, RunCommand>())
   const agentId = ref('')
   const selectedModel = ref('')
@@ -59,6 +63,7 @@ export function useChat(identity: () => Session | undefined) {
     get: () => drafts.get(currentId.value) ?? '',
     set: (value: string) => drafts.set(currentId.value, value),
   })
+  const attachments = computed(() => attachmentDrafts.get(currentId.value) ?? [])
   const agent = computed(() =>
     catalog.value.agents.find(
       (item) => item.id === (detail.value?.conversation.agentId ?? agentId.value),
@@ -396,6 +401,7 @@ export function useChat(identity: () => Session | undefined) {
       listEpoch++
       stream?.abort()
       drafts.clear()
+      attachmentDrafts.clear()
       pending.clear()
       runs.clear()
       replies.clear()
@@ -422,7 +428,7 @@ export function useChat(identity: () => Session | undefined) {
       !regenerate &&
       !target &&
       !pending.has(currentId.value) &&
-      (!draft.value.trim() || interrupted.value)
+      ((!draft.value.trim() && !attachments.value.length) || interrupted.value)
     )
       return
     if (target && !regenerate && !editedText?.trim()) return
@@ -433,6 +439,7 @@ export function useChat(identity: () => Session | undefined) {
     error.value = ''
     let id = currentId.value
     const text = editedText ?? draft.value
+    const selectedAttachments = attachments.value.map((item) => ({ ...item }))
     const selected = { ...model.value.ref }
     const intensity = thinking.value
     let history = detail.value
@@ -440,13 +447,17 @@ export function useChat(identity: () => Session | undefined) {
       if (!id) {
         const created = await api<Conversation>('/ai/conversations', {
           agentId: agent.value.id,
-          title: text.replace(/\s+/g, ' ').trim().slice(0, 30),
+          title: (text.trim() || selectedAttachments[0]?.filename || '附件对话')
+            .replace(/\s+/g, ' ')
+            .slice(0, 30),
         })
         if (!alive || owner !== identityEpoch) return
         id = created.id
         history = { conversation: created, nodes: [], path: [] }
         remember(created)
         drafts.set(id, text)
+        attachmentDrafts.set(id, selectedAttachments)
+        attachmentDrafts.delete('')
         if (drafts.get('') === text) drafts.delete('')
         if (!currentId.value) {
           detail.value = history
@@ -468,7 +479,11 @@ export function useChat(identity: () => Session | undefined) {
           ...(regenerate
             ? { targetNodeId: target?.id ?? fresh.conversation.selectedNodeId! }
             : {
-                input: { ...target?.input, text },
+                input: {
+                  ...target?.input,
+                  text,
+                  ...(target ? {} : { attachments: selectedAttachments }),
+                },
                 ...(target ? { targetNodeId: target.id } : {}),
               }),
         }
@@ -483,6 +498,14 @@ export function useChat(identity: () => Session | undefined) {
         preferences.write(session, usedAgentId, { model: result.model, thinking: result.thinking })
       pending.delete(id)
       if (command.operation === 'send' && drafts.get(id) === command.input?.text) drafts.delete(id)
+      if (command.operation === 'send') {
+        const sent = new Set(command.input?.attachments?.map((item) => item.resourceId))
+        const remaining = (attachmentDrafts.get(id) ?? []).filter(
+          (item) => !sent.has(item.resourceId),
+        )
+        if (remaining.length) attachmentDrafts.set(id, remaining)
+        else attachmentDrafts.delete(id)
+      }
       runs.set(result.id, result)
       if (currentId.value === id && history) {
         acceptRun(history, result, command)
@@ -589,6 +612,11 @@ export function useChat(identity: () => Session | undefined) {
         'PATCH',
       )
       if (!drafts.get(id)) drafts.set(id, run.input.text)
+      if (!attachmentDrafts.get(id)?.length && run.input.attachments?.length)
+        attachmentDrafts.set(
+          id,
+          run.input.attachments.map((item) => ({ ...item })),
+        )
       if (id === currentId.value) await load()
     } catch (cause) {
       if (id === currentId.value) error.value = message(cause)
@@ -628,6 +656,8 @@ export function useChat(identity: () => Session | undefined) {
     detail,
     runs,
     draft,
+    attachments,
+    attachmentDrafts,
     agentId,
     agent,
     selectedModel,

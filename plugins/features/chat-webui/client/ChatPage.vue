@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { Conversation, MessageNode } from '@antarestra/contracts'
+import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import type { ContentBlock, Conversation, MessageNode } from '@antarestra/contracts'
 import { feedbackKey } from '@antarestra/webui/client'
 import {
   AntarestraLogo,
@@ -38,7 +38,7 @@ import {
 } from '@antarestra/webui/icons'
 import type { Session } from './session.js'
 import type { WorkspaceFilesClient } from '@antarestra/plugin-workspace-file/client'
-import { uploadPath } from '@antarestra/plugin-workspace-file/client'
+import AttachmentTile from './AttachmentTile.vue'
 import ChatHistory from './ChatHistory.vue'
 import ChatMessage from './ChatMessage.vue'
 import { useChat } from './useChat.js'
@@ -53,32 +53,138 @@ const props = defineProps<{
 }>()
 const feedback = inject(feedbackKey)!
 const filePicker = ref<HTMLInputElement>()
-const fileBusy = ref(false)
 const fileError = ref('')
-let fileController: AbortController | undefined
-async function uploadFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file || !props.files || fileBusy.value) return
-  input.value = ''
-  fileBusy.value = true
-  fileError.value = ''
-  fileController = new AbortController()
+type Attachment = Extract<ContentBlock, { resourceId: string }>
+interface Upload {
+  conversationId: string
+  attachment: Attachment
+  preview: string
+  status: string
+  controller: AbortController
+}
+const uploads = reactive(new Map<string, Upload>())
+const removing = reactive(new Set<string>())
+const fileBusy = computed(
+  () =>
+    [...uploads.values()].some((upload) => upload.conversationId === currentId.value) ||
+    removing.size > 0,
+)
+const currentUploads = computed(() =>
+  [...uploads.values()].filter((upload) => upload.conversationId === currentId.value),
+)
+const attachmentLocked = computed(
+  () => sending.value || pending.has(currentId.value) || archivedConversation.value,
+)
+async function uploadFiles(files: File[]) {
+  const client = props.files
+  if (!client || attachmentLocked.value) return
   const conversationId = currentId.value
-  try {
-    const path = uploadPath(file.name)
-    const saved = await props.files.upload(file, path, fileController.signal)
-    if (currentId.value === conversationId)
-      draft.value += `${draft.value ? '\n' : ''}工作空间文件：${saved.path}`
-    feedback.toast('文件已保存到工作空间；Agent 可通过文件工具读取文本')
-  } catch (error) {
-    fileError.value = error instanceof Error ? error.message : '上传失败'
-  } finally {
-    fileBusy.value = false
-    fileController = undefined
+  const owner = props.session
+  if (attachments.value.length + currentUploads.value.length + files.length > 20) {
+    fileError.value = '每条消息最多添加 20 个附件'
+    return
+  }
+  fileError.value = ''
+  // 逐个传输，限制多选时的内存和网络占用；每个任务都能单独取消。
+  const jobs = files.map((file) => {
+    const id = crypto.randomUUID()
+    const image = /^image\/(png|jpeg|gif|webp)$/.test(file.type)
+    const upload: Upload = {
+      conversationId,
+      attachment: {
+        type: image ? 'image' : 'file',
+        resourceId: id,
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+      },
+      preview: image ? URL.createObjectURL(file) : '',
+      status: '等待上传',
+      controller: new AbortController(),
+    }
+    uploads.set(id, upload)
+    return { id, file, upload }
+  })
+  for (const { id, file, upload } of jobs) {
+    try {
+      upload.controller.signal.throwIfAborted()
+      uploads.get(id)!.status = '正在上传…'
+      const saved = await client.uploadAttachment(file, upload.controller.signal, (sent, total) => {
+        const job = uploads.get(id)
+        if (job) job.status = `上传 ${total ? Math.round((sent / total) * 100) : 100}%`
+      })
+      if (upload.controller.signal.aborted || props.session !== owner) {
+        await client.remove(saved.id, AbortSignal.timeout(10000))
+        continue
+      }
+      attachmentDrafts.set(conversationId, [
+        ...(attachmentDrafts.get(conversationId) ?? []),
+        {
+          type: /^image\/(png|jpeg|gif|webp)$/.test(saved.mimeType) ? 'image' : 'file',
+          resourceId: saved.id,
+          filename: file.name,
+          mimeType: saved.mimeType,
+          size: saved.size,
+          url: saved.url,
+        },
+      ])
+    } catch (error) {
+      if (!upload.controller.signal.aborted)
+        fileError.value = `${file.name}：${error instanceof Error ? error.message : '上传失败'}，请重新选择文件重试`
+    } finally {
+      URL.revokeObjectURL(upload.preview)
+      uploads.delete(id)
+    }
   }
 }
-onUnmounted(() => fileController?.abort())
+function uploadFile(event: Event) {
+  const picker = event.target as HTMLInputElement
+  const files = Array.from(picker.files ?? [])
+  picker.value = ''
+  void uploadFiles(files)
+}
+function paste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
+    file.type.startsWith('image/'),
+  )
+  if (!files.length) return
+  event.preventDefault()
+  void uploadFiles(files)
+}
+async function removeAttachment(attachment: Attachment) {
+  if (!props.files || attachmentLocked.value || removing.has(attachment.resourceId)) return
+  const id = currentId.value
+  removing.add(attachment.resourceId)
+  fileError.value = ''
+  try {
+    const sent = detail.value?.nodes.some((node) =>
+      node.content.some(
+        (block) =>
+          (block.type === 'image' || block.type === 'file') &&
+          block.resourceId === attachment.resourceId,
+      ),
+    )
+    if (!sent) await props.files.remove(attachment.resourceId, AbortSignal.timeout(10000))
+    const remaining = (attachmentDrafts.get(id) ?? []).filter(
+      (item) => item.resourceId !== attachment.resourceId,
+    )
+    if (remaining.length) attachmentDrafts.set(id, remaining)
+    else attachmentDrafts.delete(id)
+  } catch (error) {
+    fileError.value = error instanceof Error ? error.message : '删除失败，请重试'
+  } finally {
+    removing.delete(attachment.resourceId)
+  }
+}
+watch(
+  () => props.session,
+  () => {
+    for (const upload of uploads.values()) upload.controller.abort()
+  },
+)
+onUnmounted(() => {
+  for (const upload of uploads.values()) upload.controller.abort()
+})
 const {
   catalog,
   conversations,
@@ -93,6 +199,8 @@ const {
   detail,
   runs,
   draft,
+  attachments,
+  attachmentDrafts,
   agentId,
   agent,
   selectedModel,
@@ -201,7 +309,8 @@ const canSend = computed(
     !activeRunId.value &&
     !archivedConversation.value &&
     !unavailable.value &&
-    (!!pending.get(currentId.value) || (!interrupted.value && !!draft.value.trim())),
+    (!!pending.get(currentId.value) ||
+      (!interrupted.value && (!!draft.value.trim() || !!attachments.value.length))),
 )
 function resize() {
   narrow.value = media.matches
@@ -315,7 +424,12 @@ async function check() {
   }
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (draft.value || (editing.value && editText.value !== editing.value.input?.text)) {
+  if (
+    draft.value ||
+    [...attachmentDrafts.values()].some((items) => items.length) ||
+    uploads.size ||
+    (editing.value && editText.value !== editing.value.input?.text)
+  ) {
     event.preventDefault()
     event.returnValue = ''
   }
@@ -428,9 +542,6 @@ onUnmounted(() => {
         </div>
         <footer class="chat-composer-area">
           <p v-if="fileError" class="chat-inline-error" role="alert">{{ fileError }}</p>
-          <p v-if="fileBusy" class="chat-inline-error" role="status">
-            正在上传文件… <button type="button" @click="fileController?.abort()">取消上传</button>
-          </p>
           <div v-if="!following" class="chat-bottom-link">
             <button class="chat-text-button" @click="bottom">回到底部 ↓</button>
           </div>
@@ -467,6 +578,30 @@ onUnmounted(() => {
           </div>
           <p v-if="unavailable && !loading" class="chat-muted" role="status">{{ unavailable }}</p>
           <form class="chat-composer" novalidate @submit.prevent="submit">
+            <div
+              v-if="attachments.length || currentUploads.length"
+              class="chat-attachments chat-draft-attachments"
+            >
+              <AttachmentTile
+                v-for="attachment in attachments"
+                :key="attachment.resourceId"
+                :attachment="attachment"
+                removable
+                draft
+                :busy="attachmentLocked || removing.has(attachment.resourceId)"
+                @remove="removeAttachment(attachment)"
+              />
+              <AttachmentTile
+                v-for="upload in currentUploads"
+                :key="upload.attachment.resourceId"
+                :attachment="upload.attachment"
+                :preview="upload.preview"
+                :status="upload.status"
+                removable
+                draft
+                @remove="upload.controller.abort()"
+              />
+            </div>
             <textarea
               ref="input"
               v-model="draft"
@@ -476,9 +611,10 @@ onUnmounted(() => {
               :disabled="archivedConversation"
               placeholder="随意问些什么"
               @keydown="keydown"
+              @paste="paste"
             />
             <div class="chat-composer-toolbar">
-              <input ref="filePicker" type="file" hidden @change="uploadFile" />
+              <input ref="filePicker" type="file" multiple hidden @change="uploadFile" />
               <DropdownMenuRoot
                 ><DropdownMenuTrigger class="chat-icon-button" type="button" aria-label="添加内容"
                   ><PlusIcon class="ui-icon" /></DropdownMenuTrigger
@@ -490,13 +626,13 @@ onUnmounted(() => {
                     :collision-padding="12"
                     ><DropdownMenuItem
                       class="chat-menu-item"
-                      :disabled="!files || fileBusy"
+                      :disabled="!files || attachmentLocked"
                       @select="filePicker?.click()"
-                      ><PaperClipIcon class="ui-icon" />上传工作空间文件</DropdownMenuItem
+                      ><PaperClipIcon class="ui-icon" />上传文件或图片</DropdownMenuItem
                     ><DropdownMenuItem v-if="files" class="chat-menu-item" as-child
                       ><a href="/files/">管理工作空间文件</a></DropdownMenuItem
                     ><small class="chat-menu-note"
-                      >文本可由 Agent 文件工具读取</small
+                      >文件保存在当前工作空间，受存储配额限制</small
                     ></DropdownMenuContent
                   ></DropdownMenuPortal
                 ></DropdownMenuRoot

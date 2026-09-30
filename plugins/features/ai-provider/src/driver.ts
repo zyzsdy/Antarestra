@@ -6,9 +6,18 @@ import type {
   Usage,
   ProviderStreams,
   ThinkingLevel,
+  ImagesInputContent,
 } from '@earendil-works/pi-ai'
 import { AiError } from '@antarestra/ai'
-import type { ModelDefinition, ModelDriver, RequestSnapshot, JsonObject } from '@antarestra/ai'
+import type {
+  ModelDefinition,
+  ModelDriver,
+  RequestSnapshot,
+  JsonObject,
+  ResolvedResource,
+} from '@antarestra/ai'
+import { filePayload } from './attachments.js'
+import { nativeFiles } from './native-files.js'
 import { builtinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { ProviderRecord } from './types.js'
 import { builtinModels } from './catalog.js'
@@ -38,18 +47,27 @@ const emptyUsage = (): Usage => ({
   totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 })
-function messages(request: RequestSnapshot, model: Model<Api>): Message[] {
+function messages(
+  request: RequestSnapshot,
+  model: Model<Api>,
+  resources: ReadonlyMap<string, ResolvedResource>,
+  files: ReturnType<typeof filePayload>,
+): Message[] {
   const result: Message[] = []
   const toolNames = new Map<string, string>()
   for (const message of request.messages) {
-    if (message.content.some((block) => block.type === 'image' || block.type === 'file'))
-      throw new Error('当前模型驱动尚未接入附件资源读取，请使用文本消息')
     if (message.role === 'user') {
       result.push({
         role: 'user',
-        content: message.content.flatMap((block) =>
-          block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
-        ),
+        content: message.content.flatMap<ImagesInputContent>((block) => {
+          if (block.type === 'text') return [{ type: 'text', text: block.text }]
+          if (block.type !== 'image' && block.type !== 'file') return []
+          const resource = resources.get(block.resourceId)
+          if (!resource) throw new AiError('attachment_unavailable', '附件内容不可用')
+          return block.type === 'image'
+            ? [{ type: 'image', data: resource.data, mimeType: resource.mimeType }]
+            : [files.placeholder(resource, block.resourceId)]
+        }),
         timestamp: Date.now(),
       })
     } else if (message.role === 'assistant') {
@@ -170,6 +188,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
     : undefined
   return {
     id: `ai-provider:${provider.id}`,
+    fileInput: true,
     async generate(request, connection, context, update) {
       const definition = provider.models.find((model) => model.id === request.model.modelId)
       if (!definition) throw new Error('模型已不可用')
@@ -189,88 +208,111 @@ export function driver(provider: ProviderRecord): ModelDriver {
           .slice(0, 500)
         return new AiError('provider_request_failed', safe || '模型请求失败')
       }
-      const stream = api.streamSimple(
-        model,
-        normalizeContext({
-          systemPrompt: request.systemPrompt,
-          messages: messages(request, model),
-          tools: request.tools.map((tool) => ({
-            name: tool.id,
-            description: tool.description,
-            parameters: Type.Unsafe(tool.parameters),
-          })),
-        }),
-        {
-          apiKey: keyless ? 'unused' : (connection.credential ?? ''),
-          headers: {
-            ...(keyless ? { authorization: null } : {}),
-            ...provider.headers,
-          },
-          ...(builtin ? { sessionId: context.conversationId } : {}),
-          signal: context.signal,
-          env: {},
-          maxTokens: definition.maxOutputTokens,
-          ...(request.thinking ? { reasoning: request.thinking as ThinkingLevel } : {}),
-        },
-      )
-      for await (const event of stream) {
-        if (event.type === 'error')
-          throw failure(event.error.errorMessage ?? '模型请求失败，请检查提供商配置或稍后重试')
-        await update(
-          event.type === 'text_delta' || event.type === 'thinking_delta'
-            ? {
-                type: 'delta',
-                kind: event.type === 'text_delta' ? 'text' : 'thinking',
-                text: event.delta,
-              }
-            : { type: 'activity' },
-        )
-      }
-      const result = await stream.result()
-      if (result.stopReason === 'error' || result.stopReason === 'aborted')
-        throw failure(result.errorMessage ?? '模型请求失败或已取消')
-      return {
-        content: result.content.map((block) =>
-          block.type === 'toolCall'
-            ? {
-                type: 'tool-call' as const,
-                id: block.id,
-                name: block.name,
-                arguments: block.arguments as JsonObject,
-              }
-            : block.type === 'thinking'
-              ? {
-                  type: 'thinking' as const,
-                  text: block.thinking,
-                  ...(block.thinkingSignature
-                    ? {
-                        continuation: {
-                          model: request.model,
-                          driverId: `ai-provider:${provider.id}`,
-                          signature: block.thinkingSignature,
-                        },
-                      }
-                    : {}),
-                }
-              : {
-                  type: 'text' as const,
-                  text: block.text,
-                  ...(block.textSignature
-                    ? {
-                        continuation: {
-                          model: request.model,
-                          driverId: `ai-provider:${provider.id}`,
-                          signature: block.textSignature,
-                        },
-                      }
-                    : {}),
-                },
+      const headers = { ...(keyless ? { authorization: null } : {}), ...provider.headers }
+      const fileResources = new Map(
+        request.messages.flatMap((message) =>
+          message.content.flatMap((block) => {
+            const resource =
+              block.type === 'file' ? connection.resources?.get(block.resourceId) : undefined
+            return block.type === 'file' && resource ? [[block.resourceId, resource] as const] : []
+          }),
         ),
-        usage: {
-          input: result.usage.input,
-          output: result.usage.output,
-          totalTokens: result.usage.totalTokens,
+      )
+      const uploaded = await nativeFiles(
+        model.api,
+        fileResources,
+        {
+          baseUrl: model.baseUrl,
+          credential: connection.credential,
         },
+        headers,
+        context.signal,
+      )
+      try {
+        const files = filePayload(model.api, uploaded.ids)
+        const stream = api.streamSimple(
+          model,
+          normalizeContext({
+            systemPrompt: request.systemPrompt,
+            messages: messages(request, model, connection.resources ?? new Map(), files),
+            tools: request.tools.map((tool) => ({
+              name: tool.id,
+              description: tool.description,
+              parameters: Type.Unsafe(tool.parameters),
+            })),
+          }),
+          {
+            apiKey: keyless ? 'unused' : (connection.credential ?? ''),
+            headers,
+            ...(builtin ? { sessionId: context.conversationId } : {}),
+            signal: context.signal,
+            env: {},
+            onPayload: files.transform,
+            maxTokens: definition.maxOutputTokens,
+            ...(request.thinking ? { reasoning: request.thinking as ThinkingLevel } : {}),
+          },
+        )
+        for await (const event of stream) {
+          if (event.type === 'error')
+            throw failure(event.error.errorMessage ?? '模型请求失败，请检查提供商配置或稍后重试')
+          await update(
+            event.type === 'text_delta' || event.type === 'thinking_delta'
+              ? {
+                  type: 'delta',
+                  kind: event.type === 'text_delta' ? 'text' : 'thinking',
+                  text: event.delta,
+                }
+              : { type: 'activity' },
+          )
+        }
+        const result = await stream.result()
+        if (result.stopReason === 'error' || result.stopReason === 'aborted')
+          throw failure(result.errorMessage ?? '模型请求失败或已取消')
+        return {
+          content: result.content.map((block) =>
+            block.type === 'toolCall'
+              ? {
+                  type: 'tool-call' as const,
+                  id: block.id,
+                  name: block.name,
+                  arguments: block.arguments as JsonObject,
+                }
+              : block.type === 'thinking'
+                ? {
+                    type: 'thinking' as const,
+                    text: block.thinking,
+                    ...(block.thinkingSignature
+                      ? {
+                          continuation: {
+                            model: request.model,
+                            driverId: `ai-provider:${provider.id}`,
+                            signature: block.thinkingSignature,
+                          },
+                        }
+                      : {}),
+                  }
+                : {
+                    type: 'text' as const,
+                    text: block.text,
+                    ...(block.textSignature
+                      ? {
+                          continuation: {
+                            model: request.model,
+                            driverId: `ai-provider:${provider.id}`,
+                            signature: block.textSignature,
+                          },
+                        }
+                      : {}),
+                  },
+          ),
+          usage: {
+            input: result.usage.input,
+            output: result.usage.output,
+            totalTokens: result.usage.totalTokens,
+          },
+        }
+      } finally {
+        await uploaded.dispose()
       }
     },
   }

@@ -21,6 +21,7 @@ const input: JsonObject = {
     variables: { type: 'object' },
     attachments: {
       type: 'array',
+      maxItems: 20,
       items: {
         type: 'object',
         required: ['type', 'resourceId', 'mimeType'],
@@ -29,6 +30,9 @@ const input: JsonObject = {
           type: { enum: ['image', 'file'] },
           resourceId: id,
           mimeType: { type: 'string', minLength: 1 },
+          filename: { type: 'string', maxLength: 255 },
+          url: { type: 'string', maxLength: 1000 },
+          size: { type: 'integer', minimum: 0 },
         },
       },
     },

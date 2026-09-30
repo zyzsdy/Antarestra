@@ -7,7 +7,14 @@ export type ContentBlock =
       /** 驱动生成的不透明续接信息，仅能由相同连接、模型和驱动使用。 */
       continuation?: { model: ModelRef; driverId: string; signature: string }
     }
-  | { type: 'image' | 'file'; resourceId: string; mimeType: string }
+  | {
+      type: 'image' | 'file'
+      resourceId: string
+      mimeType: string
+      filename?: string
+      url?: string
+      size?: number
+    }
   | { type: 'tool-call'; id: string; name: string; arguments: JsonObject }
   | { type: 'tool-result'; id: string; content: Json; isError: boolean }
 export interface ChatMessage {

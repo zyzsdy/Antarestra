@@ -1,6 +1,7 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import type { RunContext } from '@antarestra/ai'
 import { AuthError } from '@antarestra/rbac'
+import { AiError } from '@antarestra/ai'
 import type { FileAccess } from './service.js'
 export const agentFiles = {
   inject: ['ai', 'workspaceFile', 'rbac'],
@@ -32,6 +33,65 @@ export const agentFiles = {
           return
         return { actorId: context.actorId, workspaceId: context.workspaceId, roles: ['user'] }
       },
+    })
+    ctx.ai.registerResources(ctx, {
+      async validate(resource, context) {
+        try {
+          const file = await withAccess(context, (access) =>
+            ctx.workspaceFile.resource(access, resource.resourceId),
+          )
+          if (file.mimeType !== resource.mimeType)
+            throw new AiError('invalid_attachment', '附件类型与工作空间文件不一致')
+          if (resource.type === 'image' && !/^image\/(png|jpeg|gif|webp)$/.test(file.mimeType))
+            throw new AiError(
+              'unsupported_attachment',
+              '此图片格式不能直接发送给 AI，请改用 PNG、JPEG、GIF 或 WebP',
+            )
+        } catch (error) {
+          if (error instanceof AuthError && error.status === 410)
+            throw new AiError('attachment_expired', '附件文件已过期，请重新上传')
+          throw error
+        }
+      },
+      async resolve(resource, context) {
+        try {
+          const file = await withAccess(context, (access) =>
+            ctx.workspaceFile.readResource(access, resource.resourceId),
+          )
+          return {
+            filename: file.filename,
+            mimeType: file.mimeType,
+            data: Buffer.from(file.bytes).toString('base64'),
+          }
+        } catch (error) {
+          if (error instanceof AuthError)
+            throw new AiError('attachment_unavailable', error.message, error.status)
+          throw error
+        }
+      },
+    })
+    ctx.on('ai/context', async (context, draft) => {
+      const current = new Set(
+        ctx.ai.running.get(context.runId)?.record.input.attachments?.map((file) => file.resourceId),
+      )
+      for (const message of draft.messages) {
+        for (let i = 0; i < message.content.length; i++) {
+          const block = message.content[i]!
+          if ((block.type !== 'image' && block.type !== 'file') || current.has(block.resourceId))
+            continue
+          try {
+            await withAccess(context, (access) =>
+              ctx.workspaceFile.resource(access, block.resourceId),
+            )
+          } catch (error) {
+            if (!(error instanceof AuthError) || error.status !== 410) throw error
+            message.content[i] = {
+              type: 'text',
+              text: `附件：${block.filename ?? block.resourceId}（文件已过期）`,
+            }
+          }
+        }
+      }
     })
     const parameters = {
       type: 'object',

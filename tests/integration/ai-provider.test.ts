@@ -497,7 +497,11 @@ it.each([input.apiKey, ''])(
   'pi-ai 通过 OpenAI 兼容流调用自定义服务，支持独立凭据与无密钥服务',
   async (credential) => {
     let fail = false
-    const baseUrl = await remote((req, res) => {
+    let received: { messages: { role: string; content: unknown }[] }
+    const baseUrl = await remote(async (req, res) => {
+      let body = ''
+      for await (const chunk of req) body += chunk.toString()
+      received = JSON.parse(body)
       expect(req.url).toBe('/chat/completions')
       expect(req.headers.authorization).toBe(credential ? `Bearer ${credential}` : undefined)
       expect(req.headers['x-extra']).toBe('header-value')
@@ -562,6 +566,33 @@ it.each([input.apiKey, ''])(
       instance.generate(request, { baseUrl, credential }, context, async () => {})
     const result = await generate()
     expect(result.content).toContainEqual({ type: 'text', text: '接入成功' })
+    record.models[0]!.input = ['text', 'image']
+    request.messages[0]!.content.push(
+      { type: 'image', resourceId: 'image', mimeType: 'image/png' },
+      { type: 'file', resourceId: 'pdf', mimeType: 'application/pdf', filename: '说明.pdf' },
+    )
+    await instance.generate(
+      request,
+      {
+        baseUrl,
+        credential,
+        resources: new Map([
+          ['image', { data: 'aW1hZ2U=', mimeType: 'image/png', filename: '截图.png' }],
+          ['pdf', { data: 'cGRm', mimeType: 'application/pdf', filename: '说明.pdf' }],
+        ]),
+      },
+      context,
+      async () => {},
+    )
+    expect(received!.messages.find((message) => message.role === 'user')!.content).toEqual([
+      { type: 'text', text: '你好' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1hZ2U=' } },
+      {
+        type: 'file',
+        file: { filename: '说明.pdf', file_data: 'data:application/pdf;base64,cGRm' },
+      },
+    ])
+    request.messages[0]!.content = [{ type: 'text', text: '你好' }]
     fail = true
     await expect(generate()).rejects.toMatchObject({
       code: 'provider_request_failed',

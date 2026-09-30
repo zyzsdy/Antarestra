@@ -7,7 +7,14 @@ import type {
   RequestSnapshot,
   RunRecord,
 } from '@antarestra/contracts'
-import type { ExecutionRuntime, ModelOutput, RunContext, Tool, ToolDraft } from './types.js'
+import type {
+  ExecutionRuntime,
+  ModelOutput,
+  ResolvedResource,
+  RunContext,
+  Tool,
+  ToolDraft,
+} from './types.js'
 import { abortable, AiError, canonical, check, compile, freeze, json, template } from './utils.js'
 export class Running {
   readonly controller = new AbortController()
@@ -253,7 +260,10 @@ export class Running {
         await this.validateResources(message.content)
         for (const block of message.content)
           if (block.type === 'text' || block.type === 'image' || block.type === 'file')
-            check(model.input.includes(block.type), '模型不支持输入模态')
+            check(
+              (block.type === 'file' && driver.fileInput) || model.input.includes(block.type),
+              '模型不支持输入模态',
+            )
       }
       // 完整工具调用与结果必须配对；上下文插件不得留下孤立调用。
       const pending = new Set<string>()
@@ -292,10 +302,30 @@ export class Running {
       const credential = provider.resolveCredential
         ? await abortable(provider.resolveCredential({ ...this.context, signal }), signal)
         : undefined
+      const resources = new Map<string, ResolvedResource>()
+      let attachmentBytes = 0
+      for (const message of request.messages)
+        for (const block of message.content)
+          if (
+            (block.type === 'image' || block.type === 'file') &&
+            !resources.has(block.resourceId)
+          ) {
+            const resolver = this.bound.resources?.value
+            if (!resolver?.resolve)
+              throw new AiError('capability_unavailable', '附件内容解析器不可用', 503)
+            const resource = await abortable(resolver.resolve(block, this.context), signal)
+            attachmentBytes += Buffer.byteLength(resource.data, 'base64')
+            if (attachmentBytes > 32 * 1024 * 1024)
+              throw new AiError(
+                'attachment_too_large',
+                '本次模型上下文的附件总量超过 32 MiB，请减少附件或新建对话',
+              )
+            resources.set(block.resourceId, resource)
+          }
       const output = await abortable(
         driver.generate(
           request,
-          { baseUrl: provider.baseUrl, credential },
+          { baseUrl: provider.baseUrl, credential, resources },
           { ...this.context, signal },
           async (update) => {
             this.active()

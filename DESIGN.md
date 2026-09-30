@@ -149,3 +149,5 @@ Markdown 代码块操作由 packages/markdown 统一维护：默认显示无边�
 ## 工作空间存储
 
 文件页与存储配额页沿用既有蓝白配色、系统字体与表格局部横向滚动。空间以中文来源和名称为主、ID 为辅助；已用与上传预占分列，避免混淆容量。配额编辑复用 EditorDialog、NumberField，分页复用 PaginationField；文件上传适配由存储实现插件负责。样式归 workspace-file/client/style.css，不引入新的全局令牌。
+
+聊天草稿和历史复用 `chat-webui/client/AttachmentTile.vue`：图片使用 112px 方形缩略图，其他文件为中性细边框与 16px 圆角的名称胶囊。删除按钮位于右上角，悬浮、聚焦及窄屏可见；上传进度覆盖在卡片底部。预览复用 EditorDialog，内容受视口约束，不撑宽聊天列。样式归 chat.css，保留既有聊天配色和共享图标、焦点与弹层规范。

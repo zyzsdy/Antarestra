@@ -58,11 +58,16 @@ export type ModelUpdate =
   { type: 'activity' } | { type: 'delta'; kind: 'text' | 'thinking'; text: string }
 export interface ModelDriver {
   id: string
+  fileInput?: boolean
   parameters?: JsonObject
   estimateTokens?(request: RequestSnapshot): number | Promise<number>
   generate(
     request: RequestSnapshot,
-    connection: { baseUrl: string; credential: string | undefined },
+    connection: {
+      baseUrl: string
+      credential: string | undefined
+      resources?: ReadonlyMap<string, ResolvedResource>
+    },
     context: RunContext,
     update: (event: ModelUpdate) => Promise<void>,
   ): Promise<ModelOutput>
@@ -92,10 +97,20 @@ export interface Extension {
   prepare?(context: RunContext, config: JsonObject): Promise<void>
 }
 export interface ResourceResolver {
+  resolve?(
+    resource: Extract<ContentBlock, { resourceId: string }>,
+    context: RunContext,
+  ): Promise<ResolvedResource>
   validate(
     resource: Extract<ContentBlock, { resourceId: string }>,
     context: RunContext,
   ): Promise<void>
+}
+/** 只在模型调用期间传递，不持久化附件正文或临时访问凭据。 */
+export interface ResolvedResource {
+  data: string
+  mimeType: string
+  filename: string
 }
 export interface TemplateDraft {
   systemPrompt: string

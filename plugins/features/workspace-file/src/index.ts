@@ -54,7 +54,12 @@ export default defineDatabasePlugin({
           const input = await readJson(http)
           if (input.workspaceId !== undefined && input.workspaceId !== access.workspaceId)
             throw new AuthError(403, '不能访问其他工作空间')
-          return service.begin(access, { path: input.path, size: input.size })
+          return service.begin(access, {
+            path: input.path,
+            size: input.size,
+            attachment: input.attachment === true,
+            mimeType: input.mimeType,
+          })
         })
         route('POST', '/uploads/:token/complete', async (http, access) => {
           const body = await readJson(http, 2 * 1024 * 1024)
@@ -92,6 +97,23 @@ export default defineDatabasePlugin({
           service.remove(access, (await readJson(http)).path),
         )
         route('GET', '/download', (http, access) => service.download(access, http.query.path))
+        route('GET', '/resources/:id', (http, access) =>
+          service.resource(access, textField(http.params.id, '文件标识')),
+        )
+        route('POST', '/resources/:id/remove', async (http, access) => {
+          await readJson(http)
+          return service.removeResource(access, textField(http.params.id, '文件标识'))
+        })
+        route('GET', '/resources/:id/content', async (http, access) => {
+          const url = await service.resourceDownload(
+            access,
+            textField(http.params.id, '文件标识'),
+            http.query.download === '1',
+          )
+          http.status = 302
+          http.set('Location', url)
+          return ''
+        })
         const admin = (
           method: string,
           path: string,

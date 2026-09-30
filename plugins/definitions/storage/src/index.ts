@@ -24,6 +24,7 @@ export interface StorageBackend {
   remove(key: string): Promise<void>
   download(key: string, response?: DownloadResponse): Promise<string>
   read(key: string): Promise<Uint8Array>
+  exists?(key: string): Promise<boolean>
 }
 declare module '@antarestra/plugin-sdk' {
   interface Context {
@@ -54,6 +55,7 @@ export class StorageService extends Service {
       remove: (key) => invoke(() => backend.remove(key)),
       download: (key, response) => invoke(() => backend.download(key, response)),
       read: (key) => invoke(() => backend.read(key)),
+      ...(backend.exists ? { exists: (key: string) => invoke(() => backend.exists!(key)) } : {}),
     }
     owner.effect(() => {
       this.backends.set(id, guarded)

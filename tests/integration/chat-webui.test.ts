@@ -161,6 +161,42 @@ async function mount(identity = () => session) {
   return chat
 }
 describe('聊天会话状态', () => {
+  it('纯附件消息按会话隔离，发送失败保留附件和幂等请求，确认成功后写入消息历史', async () => {
+    setupPreferences()
+    const chat = await mount()
+    const attachment = {
+      type: 'image' as const,
+      resourceId: 'file-1',
+      mimeType: 'image/png',
+      filename: '截图.png',
+      url: '/api/workspace-files/resources/file-1/content',
+      size: 10,
+    }
+    chat.attachmentDrafts.set('', [attachment])
+    const original = harness.api.getMockImplementation()!
+    let fail = true
+    harness.api.mockImplementation(async (path: string, body?: RunCommand) => {
+      if (path.endsWith('/runs') && fail) throw new Error('网络中断')
+      return original(path, body)
+    })
+    await chat.send()
+    expect(chat.currentId.value).toBe('new')
+    expect(chat.attachments.value).toEqual([attachment])
+    expect(chat.pending.get('new')?.input?.attachments).toEqual([attachment])
+    const key = chat.pending.get('new')!.idempotencyKey
+    await chat.navigate()
+    await tick()
+    expect(chat.attachments.value).toEqual([])
+    await chat.navigate('new')
+    await tick()
+    fail = false
+    await chat.send()
+    expect(chat.attachments.value).toEqual([])
+    expect(chat.detail.value!.path[0]!.content).toContainEqual(attachment)
+    expect(
+      harness.api.mock.calls.filter(([path]) => path.endsWith('/runs')).at(-1)?.[1].idempotencyKey,
+    ).toBe(key)
+  })
   function setupPreferences() {
     const data = new Map<string, string>()
     vi.stubGlobal('localStorage', {

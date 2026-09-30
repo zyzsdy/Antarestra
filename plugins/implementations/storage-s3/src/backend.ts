@@ -200,4 +200,7 @@ export class S3Backend implements StorageBackend {
     if (!value.Body) throw new Error('对象内容不存在')
     return value.Body.transformToByteArray()
   }
+  async exists(key: string) {
+    return !!(await this.head(key))
+  }
 }

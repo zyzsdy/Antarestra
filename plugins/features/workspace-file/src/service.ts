@@ -13,6 +13,7 @@ export interface Config {
   defaultQuota?: number
   maxFileSize?: number
   uploadMinutes?: number
+  attachmentDirectory?: string
 }
 export interface FileAccess {
   readonly workspaceId: string
@@ -200,9 +201,18 @@ export class WorkspaceFileService extends Service<Config> {
       entries: rows.slice((current - 1) * 50, current * 50),
     }
   }
-  async begin(access: FileAccess, input: { path: unknown; size: unknown }) {
+  async begin(
+    access: FileAccess,
+    input: { path: unknown; size: unknown; attachment?: boolean; mimeType?: unknown },
+  ) {
     await this.verify(access)
-    const path = filePath(input.path)
+    const filename = input.attachment ? filePath('/' + String(input.path)).slice(1) : ''
+    if (input.attachment && filename.includes('/')) throw new AuthError(400, '附件文件名无效')
+    const path = input.attachment
+      ? filePath(
+          `${filePath(this.options.attachmentDirectory ?? '/chat-attachments')}/${randomUUID()}/${filename}`,
+        )
+      : filePath(input.path)
     const size = sizeValue(input.size, this.options.maxFileSize ?? 1024 ** 3)
     const backendId = this.options.backendId ?? 's3'
     const backend = this.ctx.storage.backend(backendId)
@@ -210,7 +220,11 @@ export class WorkspaceFileService extends Service<Config> {
       size,
       Date.now() + (this.options.uploadMinutes ?? 30) * 60_000,
     )
-    blob.contentType = fileResponse(lookup(path) || undefined).contentType
+    blob.contentType = fileResponse(
+      typeof input.mimeType === 'string' && input.mimeType
+        ? input.mimeType
+        : lookup(path) || undefined,
+    ).contentType
     const id = randomUUID()
     await this.mutate(access.workspaceId, (state) => {
       this.available(state, path)
@@ -236,7 +250,11 @@ export class WorkspaceFileService extends Service<Config> {
     const { state } = await this.snapshot(access.workspaceId)
     const upload = state.uploads.find((u) => u.id === token)
     if (!upload) throw new AuthError(404, '上传记录不存在')
-    if (upload.status === 'complete') return { path: upload.path }
+    if (upload.status === 'complete') {
+      const file = state.files.find((f) => f.id === token || (!f.id && f.key === upload.blob.key))
+      if (!file) throw new AuthError(410, '文件已过期')
+      return this.descriptor(file)
+    }
     if (upload.status !== 'pending' || upload.blob.expiresAt <= Date.now())
       throw new AuthError(410, '上传已取消或过期')
     const blob = {
@@ -252,6 +270,7 @@ export class WorkspaceFileService extends Service<Config> {
       if (!current || current.status !== 'pending' || current.blob.expiresAt <= Date.now())
         throw new AuthError(410, '上传已取消或过期')
       state.files.push({
+        id: token,
         path: upload.path,
         kind: 'file',
         size: upload.blob.size,
@@ -262,7 +281,7 @@ export class WorkspaceFileService extends Service<Config> {
       })
       current.status = 'complete'
     })
-    return { path: upload.path }
+    return this.resource(access, token)
   }
   async cancel(access: FileAccess, token: string) {
     await this.verify(access)
@@ -335,6 +354,62 @@ export class WorkspaceFileService extends Service<Config> {
     const file = state.files.find((f) => f.path === path && f.kind === 'file')
     if (!file) throw new AuthError(404, '文件不存在')
     return file
+  }
+  private descriptor(file: FileEntry) {
+    const id = file.id ?? file.key
+    const mimeType = file.contentType ?? (lookup(file.path) || 'application/octet-stream')
+    return {
+      id,
+      path: file.path,
+      filename: file.path.split('/').at(-1)!,
+      mimeType,
+      size: file.size,
+      url: `/api/workspace-files/resources/${encodeURIComponent(id)}/content`,
+    }
+  }
+  private async resourceFile(access: FileAccess, id: string) {
+    await this.verify(access)
+    const { state } = await this.snapshot(access.workspaceId)
+    const file = state.files.find((f) => f.kind === 'file' && (f.id ?? f.key) === id)
+    if (!file) throw new AuthError(410, '文件已过期')
+    const backend = this.ctx.storage.backend(file.backend)
+    if (backend.exists && !(await backend.exists(file.key))) throw new AuthError(410, '文件已过期')
+    return file
+  }
+  async resource(access: FileAccess, id: string) {
+    return this.descriptor(await this.resourceFile(access, id))
+  }
+  async readResource(access: FileAccess, id: string, limit = 16 * 1024 * 1024) {
+    const file = await this.resourceFile(access, id)
+    if (file.size > sizeValue(limit, 16 * 1024 * 1024))
+      throw new AuthError(413, '附件超过 AI 读取上限（16 MiB）')
+    const bytes = await this.ctx.storage.backend(file.backend).read(file.key)
+    if (!bytes || bytes.length !== file.size) throw new AuthError(410, '文件已过期')
+    return { ...this.descriptor(file), bytes }
+  }
+  async removeResource(access: FileAccess, id: string) {
+    await this.verify(access)
+    // 同一空间 CAS 内按 ID 删除，避免移动和同名重新上传导致误删。
+    await this.mutate(access.workspaceId, (state) => {
+      const index = state.files.findIndex((f) => f.kind === 'file' && (f.id ?? f.key) === id)
+      if (index < 0) return
+      const [file] = state.files.splice(index, 1)
+      state.garbage.push({ key: file!.key, backend: file!.backend })
+    })
+    await this.track(this.sweep())
+    return { ok: true }
+  }
+  async resourceDownload(access: FileAccess, id: string, attachment = false) {
+    const file = await this.resourceFile(access, id)
+    const response = fileResponse(file.contentType ?? (lookup(file.path) || undefined))
+    const encoded = encodeURIComponent(file.path.split('/').at(-1)!).replace(
+      /['()*]/g,
+      (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
+    )
+    return this.ctx.storage.backend(file.backend).download(file.key, {
+      contentType: response.contentType,
+      contentDisposition: `${attachment ? 'attachment' : response.contentDisposition}; filename*=UTF-8''${encoded}`,
+    })
   }
   async download(access: FileAccess, path: unknown) {
     const file = await this.file(access, path)

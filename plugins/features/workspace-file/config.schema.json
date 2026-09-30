@@ -2,6 +2,11 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "attachmentDirectory": {
+      "type": "string",
+      "default": "/chat-attachments",
+      "description": "聊天附件保存目录，文件使用随机子目录避免同名冲突"
+    },
     "backendId": {
       "type": "string",
       "default": "s3",

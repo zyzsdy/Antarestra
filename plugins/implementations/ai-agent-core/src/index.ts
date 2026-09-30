@@ -55,7 +55,7 @@ export const backend: ExecutionBackend = {
     signal.throwIfAborted()
     await runAgentLoop(
       [],
-      { systemPrompt: '', messages: [], tools },
+      { messages: [], tools },
       {
         model: bridgeModel,
         // pi 的消息只用于推进循环，完整历史和请求转换始终由 AI 核心维护。

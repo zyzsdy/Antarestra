@@ -30,7 +30,7 @@ plugins:
 
 - `/files/`：当前空间文件，目录逐层浏览、50 项分页、上传、下载、移动 / 重命名、建目录、删除空目录和文件。
 - `/admin/storage/`：20 项服务端分页，按中文标签或 ID 查询、查看已用和上传预占、以字节修改配额。需要 `admin.console.view` 与 `admin.storage.manage`。
-- 聊天的“添加内容”菜单调用 workspace-file 的客户端接口上传，成功后插入工作空间路径；它不会将二进制自动解析成图片、PDF 或模型附件。
+- 聊天的“添加内容”菜单与图片粘贴调用 `uploadAttachment`，使用配置 `attachmentDirectory`（默认 `/chat-attachments`）与随机子目录，保存正式附件 ID 和访问地址；AI 资源解析器在当前运行的空间内读取附件。
 - AI 就绪后注册 `workspace_file_list` 与 `workspace_file_read`。后者只读取最多 1 MiB 的 UTF-8 文本。Agent 配置仍须允许这些工具；只有文件工具执行期间签发的临时凭证可获得空间授权，同时核对 AI 核心的当前运行、主体和空间。
 
 文件操作需要 `workspace.file.use`，默认开放给 user/admin。每次操作重新解析可信入口的空间，拒绝伪造授权对象，客户端传入其他 workspaceId 会返回 403。管理员的 system 权限不用于越权下载其他空间文件。
@@ -63,6 +63,10 @@ const bytes = await ctx.workspaceFile.read(access, '/upload/example.txt')
 ```
 
 浏览器业务插件通过 `@antarestra/plugin-workspace-file/client` 的 `filesSlot` 获取 `WorkspaceFilesClient`，仅调用 `upload(file, path, signal, progress)`，不依赖具体 S3 实现。后续 OSS 等实现可注册新的 driver 上传适配器。服务端 `spaces` 与 `quota` 是可信管理服务方法，HTTP 层在调用前独立检查管理员权限。
+
+聊天使用 `uploadAttachment(file, signal, progress)` 和 `remove(id, signal)`。上传确认返回 `{ id, path, filename, mimeType, size, url }`，ID 在移动文件后保持不变；重复删除旧 ID 不影响同名新文件。`GET /api/workspace-files/resources/:id` 查询详情，`GET .../:id/content` 鉴权后签发短时访问链接，`?download=1` 强制附件下载；`POST .../:id/remove` 删除文件、立即释放逻辑配额并尝试物理回收，失败保留回收任务。所有查找仅限服务端授权空间，文件或 S3 对象不存在时返回 410。存储实现可提供 `exists` 检查，S3 使用 HEAD。
+
+图片资源解析器支持 PNG、JPEG、GIF、WebP，其他格式作为普通文件保存；模型是否接收由其接口决定。附件内容只在调用期间经 `ResolvedResource` 交给模型驱动，历史与请求快照仅保留引用。单附件 AI 读取上限 16 MiB，与空间上传配额是不同限制。
 
 ## 验证
 

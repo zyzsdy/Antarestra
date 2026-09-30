@@ -18,6 +18,7 @@ import {
   ArrowPathIcon,
 } from '@antarestra/webui/icons'
 import MessageAction from './MessageAction.vue'
+import AttachmentTile from './AttachmentTile.vue'
 import { formatMessageTime } from './message-time.js'
 import type { ReplyState } from './stream.js'
 const props = defineProps<{
@@ -57,6 +58,12 @@ const body = computed(() =>
     : text(content.value, 'text'),
 )
 const thoughts = computed(() => text(content.value, 'thinking'))
+const attachments = computed(() =>
+  content.value.filter(
+    (block): block is Extract<ContentBlock, { resourceId: string }> =>
+      block.type === 'image' || block.type === 'file',
+  ),
+)
 const tools = computed(() =>
   props.live
     ? props.live.tools
@@ -100,6 +107,13 @@ const tools = computed(() =>
         </div>
       </CollapsibleContent>
     </CollapsibleRoot>
+    <div v-if="attachments.length" class="chat-attachments chat-message-attachments">
+      <AttachmentTile
+        v-for="attachment in attachments"
+        :key="attachment.resourceId"
+        :attachment="attachment"
+      />
+    </div>
     <MarkdownView
       v-if="body && node.role === 'assistant'"
       :source="body"

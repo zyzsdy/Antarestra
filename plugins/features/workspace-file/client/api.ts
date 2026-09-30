@@ -16,7 +16,21 @@ export interface WorkspaceFilesClient {
     path: string,
     signal: AbortSignal,
     progress?: (sent: number, total: number) => void,
-  ): Promise<{ path: string }>
+  ): Promise<WorkspaceFileResource>
+  uploadAttachment(
+    file: File,
+    signal: AbortSignal,
+    progress?: (sent: number, total: number) => void,
+  ): Promise<WorkspaceFileResource>
+  remove(id: string, signal: AbortSignal): Promise<void>
+}
+export interface WorkspaceFileResource {
+  id: string
+  path: string
+  filename: string
+  mimeType: string
+  size: number
+  url: string
 }
 export function createFilesClient(ctx: ClientContext): WorkspaceFilesClient {
   async function api<T>(path: string, body: object, signal: AbortSignal): Promise<T> {
@@ -32,23 +46,45 @@ export function createFilesClient(ctx: ClientContext): WorkspaceFilesClient {
       throw new Error(typeof value.error === 'string' ? value.error : '文件操作失败，请重试')
     return value as T
   }
-  return {
-    async upload(file, path, signal, progress) {
-      const ticket = await api<{ token: string; plan: UploadPlan }>(
-        '/uploads',
-        { path, size: file.size },
+  async function upload(
+    file: File,
+    path: string,
+    signal: AbortSignal,
+    progress?: (sent: number, total: number) => void,
+    attachment = false,
+  ) {
+    const ticket = await api<{ token: string; plan: UploadPlan }>(
+      '/uploads',
+      { path, size: file.size, attachment, mimeType: file.type },
+      signal,
+    )
+    try {
+      const executor = ctx.slot<UploadExecutor>(uploadSlot).get(ticket.plan.driver)
+      if (!executor) throw new Error('上传适配器尚未加载，请刷新后重试')
+      const parts = await executor(file, ticket.plan, signal, progress)
+      return await api<WorkspaceFileResource>(
+        `/uploads/${ticket.token}/complete`,
+        { parts },
         signal,
       )
-      try {
-        const executor = ctx.slot<UploadExecutor>(uploadSlot).get(ticket.plan.driver)
-        if (!executor) throw new Error('上传适配器尚未加载，请刷新后重试')
-        const parts = await executor(file, ticket.plan, signal, progress)
-        return await api<{ path: string }>(`/uploads/${ticket.token}/complete`, { parts }, signal)
-      } catch (error) {
-        // 取消使用独立短时信号；原上传信号可能已由用户中断。
-        await api(`/uploads/${ticket.token}/cancel`, {}, AbortSignal.timeout(5000)).catch(() => {})
-        throw error
-      }
+    } catch (error) {
+      // 取消使用独立短时信号；原上传信号可能已由用户中断。
+      await api(`/uploads/${ticket.token}/cancel`, {}, AbortSignal.timeout(5000)).catch(
+        async () => {
+          // 完成请求与取消竞争时，按上传 ID 删除已封存文件并释放配额。
+          await api(`/resources/${ticket.token}/remove`, {}, AbortSignal.timeout(5000)).catch(
+            () => {},
+          )
+        },
+      )
+      throw error
+    }
+  }
+  return {
+    upload,
+    uploadAttachment: (file, signal, progress) => upload(file, file.name, signal, progress, true),
+    async remove(id, signal) {
+      await api(`/resources/${encodeURIComponent(id)}/remove`, {}, signal)
     },
   }
 }
