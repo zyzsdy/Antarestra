@@ -27,7 +27,7 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*",
-    "@earendil-works/pi-ai": "^0.87.0"
+    "@earendil-works/pi-ai": "^0.99.1"
   },
   "antarestra": {
     "title": "模型提供商管理",
