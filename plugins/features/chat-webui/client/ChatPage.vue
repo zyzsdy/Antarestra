@@ -41,6 +41,7 @@ import type { WorkspaceFilesClient } from '@antarestra/plugin-workspace-file/cli
 import AttachmentTile from './AttachmentTile.vue'
 import ChatHistory from './ChatHistory.vue'
 import ChatMessage from './ChatMessage.vue'
+import ChatNotice from './ChatNotice.vue'
 import TodoPanel from './TodoPanel.vue'
 import { useChat } from './useChat.js'
 
@@ -547,12 +548,12 @@ onUnmounted(() => {
             :key="detail.conversation.id"
             :items="detail.conversation.todos ?? []"
           />
-          <p v-if="fileError" class="chat-inline-error" role="alert">{{ fileError }}</p>
+          <ChatNotice v-if="fileError" role="alert">{{ fileError }}</ChatNotice>
           <div v-if="!following" class="chat-bottom-link">
             <button class="chat-text-button" @click="bottom">回到底部 ↓</button>
           </div>
-          <p v-if="error" class="chat-inline-error" role="alert">
-            {{ error }}
+          <ChatNotice v-if="error" role="alert">
+            <span>{{ error }}</span>
             <button
               class="chat-text-button"
               :disabled="sending"
@@ -560,29 +561,26 @@ onUnmounted(() => {
             >
               {{ pending.has(currentId) ? '核对并重试发送' : '重新加载' }}
             </button>
-          </p>
-          <p v-if="disconnected" class="chat-inline-error" role="status">
-            连接已断开，生成可能仍在继续。<button class="chat-text-button" @click="load">
-              重新连接
-            </button>
-          </p>
-          <p v-if="archivedConversation" class="chat-inline-notice">
-            此对话已归档。<button
-              class="chat-text-button"
-              @click="detail && archive(detail.conversation)"
-            >
+          </ChatNotice>
+          <ChatNotice v-if="disconnected">
+            <span>连接已断开，生成可能仍在继续。</span
+            ><button class="chat-text-button" @click="load">重新连接</button>
+          </ChatNotice>
+          <ChatNotice v-if="archivedConversation">
+            <span>此对话已归档。</span
+            ><button class="chat-text-button" @click="detail && archive(detail.conversation)">
               取消归档并继续
             </button>
-          </p>
-          <div v-else-if="interrupted" class="chat-recovery" role="status">
+          </ChatNotice>
+          <ChatNotice v-else-if="interrupted">
             <span>{{ lastRun?.status === 'cancelled' ? '本轮生成已停止。' : '本轮未完成。' }}</span
             ><button class="chat-text-button" :disabled="sending || !!unavailable" @click="retry">
               重试本轮</button
             ><button class="chat-text-button" :disabled="sending" @click="continuePrevious">
               从上一完整轮次继续
             </button>
-          </div>
-          <p v-if="unavailable && !loading" class="chat-muted" role="status">{{ unavailable }}</p>
+          </ChatNotice>
+          <ChatNotice v-if="unavailable && !loading">{{ unavailable }}</ChatNotice>
           <form class="chat-composer" novalidate @submit.prevent="submit">
             <div
               v-if="attachments.length || currentUploads.length"

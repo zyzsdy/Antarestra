@@ -636,32 +636,10 @@
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
-.chat-inline-notice,
-.chat-recovery {
+.chat-inline-notice {
   color: #666;
   font-size: 13px;
   line-height: 1.6;
-}
-.chat-recovery {
-  display: flex;
-  width: fit-content;
-  max-width: 100%;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 auto 12px;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: #fff7e6;
-  color: #79521a;
-  text-align: center;
-}
-.chat-recovery .chat-text-button {
-  color: inherit;
-}
-.chat-recovery .chat-text-button:hover:not(:disabled) {
-  background: #f8e9c8;
 }
 .chat-text-button {
   border: 0;
