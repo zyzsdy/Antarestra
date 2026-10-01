@@ -96,6 +96,7 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
         <template v-for="detail in presentation.details" :key="detail.id">
           <MarkdownView
             v-if="detail.type !== 'tool'"
+            :class="detail.type === 'thinking' ? 'chat-detail-thinking' : 'chat-detail-text'"
             :source="detail.text"
             :streaming="!!live && !live.ended"
           />
