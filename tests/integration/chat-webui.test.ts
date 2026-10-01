@@ -61,7 +61,11 @@ describe('聊天事件流', () => {
   })
 })
 
-const harness = vi.hoisted(() => ({ api: vi.fn(), cleanups: [] as (() => void)[] }))
+const harness = vi.hoisted(() => ({
+  api: vi.fn(),
+  stateFetch: vi.fn(),
+  cleanups: [] as (() => void)[],
+}))
 vi.mock('vue', async (original) => ({
   ...(await original<typeof import('vue')>()),
   onUnmounted: (fn: () => void) => harness.cleanups.push(fn),
@@ -105,6 +109,7 @@ afterEach(() => {
   harness.cleanups.splice(0).forEach((fn) => fn())
   vi.restoreAllMocks()
   harness.api.mockReset()
+  harness.stateFetch.mockReset()
 })
 const tick = async () => {
   for (let i = 0; i < 10; i++) await nextTick()
@@ -152,6 +157,14 @@ const session: Session = {
   accountPath: '/auth/user/',
 }
 async function mount(identity = () => session) {
+  const fetcher = globalThis.fetch
+  if (!harness.stateFetch.getMockImplementation())
+    harness.stateFetch.mockImplementation(async () => new Response(new ReadableStream()))
+  vi.stubGlobal('fetch', (url: string, options: RequestInit) =>
+    url === '/api/ai/conversations/events'
+      ? harness.stateFetch(url, options)
+      : fetcher(url, options),
+  )
   const router = useApi().router
   await router.push({ path: '/', query: {} })
   const effect = scope()
@@ -161,6 +174,157 @@ async function mount(identity = () => session) {
   return chat
 }
 describe('聊天会话状态', () => {
+  it('独立状态流在不打开对话时同步名称和终态，忽略旧版本与其他空间', async () => {
+    let source: ReadableStreamDefaultController<Uint8Array> | undefined
+    harness.stateFetch.mockImplementation(
+      async () =>
+        new Response(new ReadableStream({ start: (controller) => (source = controller) })),
+    )
+    const original = {
+      ...history('background').conversation,
+      workspaceId: session.workspaceId,
+      title: '原名称',
+      revision: 1,
+      activeRunId: 'run',
+    }
+    harness.api.mockImplementation(async (path: string) =>
+      path === '/ai/catalog' ? catalog : path.includes('?') ? [original] : history('other'),
+    )
+    const chat = await mount()
+    await chat.navigate('other')
+    await tick()
+    const current = chat.detail.value
+    const requests = harness.api.mock.calls.length
+    const emit = (
+      sequence: number,
+      changes: Partial<
+        Omit<typeof original, 'activeRunId' | 'archivedAt'> & {
+          activeRunId: string | null
+          archivedAt: number | null
+        }
+      >,
+    ) =>
+      source!.enqueue(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ sequence, type: 'conversation', conversation: { ...original, ...changes } })}\n\n`,
+        ),
+      )
+    emit(1, { title: '新名称', revision: 2 })
+    await tick()
+    const background = () => chat.conversations.value.find((item) => item.id === 'background')
+    expect(background()?.title).toBe('新名称')
+    emit(2, { title: '新名称', revision: 3, activeRunId: null })
+    await tick()
+    expect(background()?.activeRunId).toBeNull()
+    emit(3, { revision: 1 })
+    emit(4, { workspaceId: 'other-space', revision: 100 })
+    await tick()
+    expect(background()).toMatchObject({
+      title: '新名称',
+      revision: 3,
+      activeRunId: null,
+    })
+    expect(chat.detail.value).toBe(current)
+    expect(harness.api.mock.calls).toHaveLength(requests)
+    expect(harness.stateFetch).toHaveBeenCalledTimes(1)
+    emit(5, { revision: 4, archivedAt: 1, activeRunId: null })
+    emit(6, { revision: 3, activeRunId: null })
+    await tick()
+    expect(background()).toBeUndefined()
+  })
+
+  it('身份切换回收原状态流，并清除原空间的修订号记录', async () => {
+    const identity = ref(session)
+    const sources: ReadableStreamDefaultController<Uint8Array>[] = []
+    const signals: AbortSignal[] = []
+    harness.stateFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+      signals.push(options.signal as AbortSignal)
+      return new Response(new ReadableStream({ start: (source) => sources.push(source) }))
+    })
+    harness.api.mockImplementation(async (path: string) => (path === '/ai/catalog' ? catalog : []))
+    const chat = await mount(() => identity.value)
+    const emit = (source: number, revision: number, workspaceId: string) =>
+      sources[source]!.enqueue(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ sequence: 1, type: 'conversation', conversation: { ...history('one').conversation, revision, workspaceId } })}\n\n`,
+        ),
+      )
+    emit(0, 5, session.workspaceId)
+    await tick()
+    expect(chat.conversations.value[0]?.revision).toBe(5)
+    identity.value = { ...session, workspaceId: 'new-space' }
+    await tick()
+    expect(signals[0]?.aborted).toBe(true)
+    expect(sources).toHaveLength(2)
+    expect(chat.conversations.value).toEqual([])
+    emit(1, 0, 'new-space')
+    await tick()
+    expect(chat.conversations.value[0]?.revision).toBe(0)
+  })
+
+  it('重连校准列表且快照不能覆盖期间收到的状态，卸载回收连接', async () => {
+    vi.useFakeTimers()
+    const sources: ReadableStreamDefaultController<Uint8Array>[] = []
+    const signals: AbortSignal[] = []
+    const cancel = vi.fn()
+    harness.stateFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+      signals.push(options.signal as AbortSignal)
+      return new Response(new ReadableStream({ start: (source) => sources.push(source), cancel }))
+    })
+    const original = {
+      ...history('one').conversation,
+      workspaceId: session.workspaceId,
+      revision: 1,
+      activeRunId: 'run',
+    }
+    let resolveSnapshot: (value: unknown) => void = () => {}
+    let lists = 0
+    harness.api.mockImplementation(async (path: string) => {
+      if (path === '/ai/catalog') return catalog
+      if (++lists === 1) return [original]
+      return new Promise((resolve) => (resolveSnapshot = resolve))
+    })
+    const chat = await mount()
+    sources[0]!.close()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sources).toHaveLength(2)
+    sources[1]!.enqueue(
+      new TextEncoder().encode(
+        `data: {"sequence":1,"type":"ready"}\n\ndata: ${JSON.stringify({ sequence: 2, type: 'conversation', conversation: { ...original, title: '已完成', revision: 2, activeRunId: null } })}\n\n`,
+      ),
+    )
+    await tick()
+    sources[1]!.enqueue(
+      new TextEncoder().encode(
+        `data: ${JSON.stringify({ sequence: 3, type: 'conversation', conversation: { ...original, id: 'archived-during-refresh', archivedAt: 1, revision: 2 } })}\n\n`,
+      ),
+    )
+    await tick()
+    resolveSnapshot([original, { ...original, id: 'archived-during-refresh' }])
+    await tick()
+    expect(chat.conversations.value).toHaveLength(1)
+    expect(chat.conversations.value[0]).toMatchObject({ title: '已完成', activeRunId: null })
+    harness.cleanups.splice(0).forEach((fn) => fn())
+    await tick()
+    expect(signals.at(-1)?.aborted).toBe(true)
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('加载对话详情时，将最新终态写回侧栏', async () => {
+    harness.api.mockImplementation(async (path: string) =>
+      path === '/ai/catalog'
+        ? catalog
+        : path.includes('?')
+          ? [{ ...history('one').conversation, activeRunId: 'old-run' }]
+          : history('one'),
+    )
+    const chat = await mount()
+    await chat.navigate('one')
+    await tick()
+    expect(chat.conversations.value[0]?.activeRunId).toBeNull()
+  })
+
   it('纯附件消息按会话隔离，发送失败保留附件和幂等请求，确认成功后写入消息历史', async () => {
     setupPreferences()
     const chat = await mount()
@@ -417,6 +581,10 @@ describe('聊天会话状态', () => {
 
   it('断线后携带事件游标重连，结束时原地保存内容而不重载历史', async () => {
     vi.useFakeTimers()
+    let states: ReadableStreamDefaultController<Uint8Array> | undefined
+    harness.stateFetch.mockImplementation(
+      async () => new Response(new ReadableStream({ start: (source) => (states = source) })),
+    )
     let completed = false
     const activeHistory = () => ({
       ...history('one'),
@@ -463,6 +631,12 @@ describe('聊天会话状态', () => {
     const chat = await mount()
     await chat.navigate('one')
     await tick()
+    states!.enqueue(
+      new TextEncoder().encode(
+        `data: ${JSON.stringify({ sequence: 1, type: 'conversation', conversation: { ...activeHistory().conversation, workspaceId: session.workspaceId, title: '其他标签页修改的名称', activeRunId: null, revision: 2 } })}\n\n`,
+      ),
+    )
+    await tick()
     await vi.advanceTimersByTimeAsync(500)
     await tick()
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
@@ -470,6 +644,9 @@ describe('聊天会话状态', () => {
       '/api/ai/runs/run/events?after=1',
     ])
     expect(chat.activeRunId.value).toBeNull()
+    expect(chat.conversations.value.find((item) => item.id === 'one')?.title).toBe(
+      '其他标签页修改的名称',
+    )
     expect(chat.detail.value?.path[0]?.content).toEqual([{ type: 'text', text: '最终回复' }])
     expect(
       harness.api.mock.calls.filter(([path]) => path === '/ai/conversations/one'),

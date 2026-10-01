@@ -15,6 +15,8 @@ import ai, { AiError } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
 import type { Access, AgentPreset, Config, ModelDriver, RunCommand, Tool } from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
+import type { ConversationStateEvent } from '@antarestra/contracts'
+import { readEvents } from '../../plugins/features/chat-webui/client/stream.js'
 
 const contexts: Context[] = []
 const directories: string[] = []
@@ -835,6 +837,24 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     })
     const cookie = login.headers.get('set-cookie')!.split(';')[0]!
     const headers = { Cookie: cookie, 'Content-Type': 'application/json' }
+    expect((await fetch(base + '/ai/conversations/events')).status).toBe(401)
+    expect(
+      (await fetch(base + '/ai/conversations/events?workspaceId=other-space', { headers })).status,
+    ).toBe(403)
+    const statusController = new AbortController()
+    const statusStream = await fetch(base + '/ai/conversations/events', {
+      headers,
+      signal: statusController.signal,
+    })
+    const states: ConversationStateEvent[] = []
+    const stateTask = readEvents<ConversationStateEvent>(
+      statusStream,
+      (event) => states.push(event),
+      statusController.signal,
+    ).catch((cause: unknown) => {
+      if (!statusController.signal.aborted) throw cause
+    })
+    await vi.waitFor(() => expect(states[0]?.type).toBe('ready'))
     const created = await fetch(base + '/ai/conversations', {
       method: 'POST',
       headers,
@@ -869,6 +889,24 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(text).not.toContain('secret-never-export')
     const final = await fetch(base + `/ai/runs/${run.id}`, { headers })
     expect(((await final.json()) as { status: string }).status).toBe('completed')
+    await vi.waitFor(() =>
+      expect(states).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'conversation',
+            conversation: expect.objectContaining({ id: conversation.id, activeRunId: run.id }),
+          }),
+          expect.objectContaining({
+            type: 'conversation',
+            conversation: expect.objectContaining({
+              id: conversation.id,
+              activeRunId: null,
+              revision: 2,
+            }),
+          }),
+        ]),
+      ),
+    )
     const changed = await fetch(base + `/ai/conversations/${conversation.id}`, {
       method: 'PATCH',
       headers,
@@ -879,6 +917,20 @@ describe('AI 核心与实际 SQLite 数据库', () => {
       title: 'HTTP 归档测试',
       archivedAt: expect.any(Number),
     })
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        type: 'conversation',
+        conversation: { title: 'HTTP 归档测试', archivedAt: expect.any(Number), revision: 3 },
+      }),
+    )
+    const foreign = await app.ctx.ai.createConversation(app.other, 'assistant', '其他空间的名称')
+    await app.ctx.ai.updateConversation(app.other, foreign.id, { title: '不能泄露的名称' })
+    await delay(30)
+    expect(
+      states.some((event) => event.type === 'conversation' && event.conversation.id === foreign.id),
+    ).toBe(false)
+    statusController.abort()
+    await stateTask
     expect(await (await fetch(base + '/ai/conversations', { headers })).json()).toEqual([])
     expect(
       await (await fetch(base + '/ai/conversations?archived=true', { headers })).json(),
@@ -893,5 +945,9 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         })
       ).status,
     ).toBe(400)
+    const unloading = await fetch(base + '/ai/conversations/events', { headers })
+    const tail = unloading.text()
+    await app.core.dispose()
+    expect(await tail).toContain('event: ready')
   })
 })

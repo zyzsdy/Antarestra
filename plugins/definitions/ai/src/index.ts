@@ -108,6 +108,11 @@ export class AiService extends Service<Config> {
         .map((run) => run.cancel()),
     )
   }
+  private notifyConversation(conversation: Conversation) {
+    void this.ctx
+      .parallel('ai/conversation', freeze(json(conversation)))
+      .catch(() => this.ctx.logger.warn('对话状态通知监听器执行失败'))
+  }
   private active() {
     check(!this.closing, 'AI 服务已卸载')
     this.ctx.fiber.assertActive()
@@ -301,6 +306,7 @@ export class AiService extends Service<Config> {
         .insertInto('conversations')
         .values({ ...row(value, access.workspaceId), ...conversationFields(value) })
         .execute()
+      this.notifyConversation(value)
     })
     return value
   }
@@ -349,11 +355,13 @@ export class AiService extends Service<Config> {
       if (changes.title !== undefined) conversation.title = changes.title.trim()
       if (changes.archived !== undefined)
         conversation.archivedAt = changes.archived ? (conversation.archivedAt ?? Date.now()) : null
+      conversation.revision++
       await this.db()
         .updateTable('conversations')
         .set(conversationFields(conversation))
         .where('id', '=', id)
         .execute()
+      this.notifyConversation(conversation)
       return conversation
     })
   }
@@ -446,6 +454,7 @@ export class AiService extends Service<Config> {
         .set(conversationFields(conversation))
         .where('id', '=', id)
         .execute()
+      this.notifyConversation(conversation)
       return conversation
     })
   }
@@ -681,6 +690,7 @@ export class AiService extends Service<Config> {
           .execute()
       })
       this.running.set(runId, live)
+      this.notifyConversation(conversation)
       live.start()
       return json(run)
     })
@@ -696,6 +706,7 @@ export class AiService extends Service<Config> {
         data: payload(data),
         createdAt: Date.now(),
       }
+      let changedConversation: Conversation | undefined
       await this.db().transaction(async (db) => {
         await saveRun(db, live.record)
         const existing = await db
@@ -721,6 +732,7 @@ export class AiService extends Service<Config> {
           conversation.lastActivityAt = live.record.endedAt ?? Date.now()
           conversation.activeRunId = null
           conversation.revision++
+          changedConversation = conversation
           await db
             .updateTable('conversations')
             .set(conversationFields(conversation))
@@ -729,6 +741,7 @@ export class AiService extends Service<Config> {
         }
       })
       live.sequence = event.sequence
+      if (changedConversation) this.notifyConversation(changedConversation)
       // 通知不阻塞数据库串行队列，监听器可安全调用核心读取接口。
       void this.ctx
         .parallel('ai/event', freeze(json(event)), freeze(json(live.record.agent)))

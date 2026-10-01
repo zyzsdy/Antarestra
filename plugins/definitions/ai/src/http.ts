@@ -6,6 +6,7 @@ import { AuthError, readJson } from '@antarestra/rbac'
 import type { RunCommand } from '@antarestra/contracts'
 import type { Access } from './index.js'
 import { AiError, check, identifier } from './utils.js'
+import { conversationStream } from './conversation-stream.js'
 export function routes(ctx: Context) {
   const route = (
     method: string,
@@ -66,6 +67,9 @@ export function routes(ctx: Context) {
     check(body.title === undefined || typeof body.title === 'string', '标题无效')
     http.body = await ctx.ai.createConversation(access, body.agentId, body.title)
     http.status = 201
+  })
+  route('GET', '/conversations/events', async (http, access) => {
+    conversationStream(ctx, http, access)
   })
   route('GET', '/conversations/:id', async (http, access) => {
     http.body = await ctx.ai.getConversation(access, id(http))

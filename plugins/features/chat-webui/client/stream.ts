@@ -1,11 +1,11 @@
 import type { AiEvent, ChatMessage, ContentBlock } from '@antarestra/contracts'
 
 /** 网络块不等于 SSE 帧；只在完整空行边界交付事件。 */
-export class EventDecoder {
+export class EventDecoder<T extends { sequence: number } = AiEvent> {
   private buffer = ''
-  push(text: string): AiEvent[] {
+  push(text: string): T[] {
     this.buffer += text
-    const result: AiEvent[] = []
+    const result: T[] = []
     for (;;) {
       const match = /\r?\n\r?\n/.exec(this.buffer)
       if (!match) break
@@ -17,7 +17,7 @@ export class EventDecoder {
         .map((line) => line.slice(5).replace(/^ /, ''))
         .join('\n')
       if (!data) continue
-      const event = JSON.parse(data) as AiEvent
+      const event = JSON.parse(data) as T
       if (!Number.isSafeInteger(event.sequence) || event.sequence < 1)
         throw new Error('回复连接中断，请重新连接')
       result.push(event)
@@ -96,15 +96,17 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
   state.sequence = event.sequence
 }
 
-export async function readEvents(
+export async function readEvents<T extends { sequence: number } = AiEvent>(
   response: Response,
-  onEvent: (event: AiEvent) => void,
+  onEvent: (event: T) => void,
   signal: AbortSignal,
 ) {
   if (!response.ok || !response.body) throw new Error('暂时无法连接回复流')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
-  const events = new EventDecoder()
+  const events = new EventDecoder<T>()
+  const abort = () => void reader.cancel().catch(() => {})
+  signal.addEventListener('abort', abort, { once: true })
   try {
     for (;;) {
       signal.throwIfAborted()
@@ -113,6 +115,7 @@ export async function readEvents(
       for (const event of events.push(decoder.decode(chunk.value, { stream: true }))) onEvent(event)
     }
   } finally {
+    signal.removeEventListener('abort', abort)
     await reader.cancel().catch(() => {})
     reader.releaseLock()
   }

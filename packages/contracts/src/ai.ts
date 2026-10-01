@@ -67,6 +67,11 @@ export interface Conversation {
   lastActivityAt: number
   archivedAt: number | null
 }
+/** 序号仅在本次连接内递增；ready 要求客户端重新读取列表快照。 */
+export type ConversationStateEvent =
+  | { sequence: number; type: 'ready' }
+  | { sequence: number; type: 'conversation'; conversation: Conversation }
+
 export interface MessageNode {
   id: string
   conversationId: string

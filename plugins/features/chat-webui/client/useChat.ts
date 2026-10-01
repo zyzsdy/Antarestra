@@ -4,6 +4,7 @@ import type {
   AgentPreset,
   ChatMessage,
   Conversation,
+  ConversationStateEvent,
   ContentBlock,
   MessageNode,
   ModelDefinition,
@@ -108,9 +109,22 @@ export function useChat(identity: () => Session | undefined) {
   let listEpoch = 0
   let stream: AbortController | undefined
   let alive = true
+  let stateStream: AbortController | undefined
+  let listUpdates: Map<string, Conversation> | undefined
+  const conversationRevisions = new Map<string, number>()
   const message = (cause: unknown) => (cause instanceof Error ? cause.message : '请求失败，请重试')
   const same = (id: string, turn: number) => alive && turn === epoch && currentId.value === id
   function remember(conversation: Conversation) {
+    const existing =
+      listUpdates?.get(conversation.id) ??
+      conversations.value.find((item) => item.id === conversation.id)
+    if (
+      Math.max(existing?.revision ?? -1, conversationRevisions.get(conversation.id) ?? -1) >
+      conversation.revision
+    )
+      return
+    conversationRevisions.set(conversation.id, conversation.revision)
+    listUpdates?.set(conversation.id, conversation)
     conversations.value = conversations.value.filter((item) => item.id !== conversation.id)
     if ((conversation.archivedAt !== null) === archived.value) {
       conversations.value.push(conversation)
@@ -212,23 +226,48 @@ export function useChat(identity: () => Session | undefined) {
     { flush: 'sync' },
   )
 
-  async function list(append = false) {
+  async function list(append = false, refreshLoaded = false) {
     const turn = ++listEpoch
+    const updates = new Map<string, Conversation>()
+    listUpdates = updates
+    const count = refreshLoaded ? Math.max(50, conversations.value.length) : 50
     listing.value = true
     listError.value = ''
     try {
-      const items = await api<Conversation[]>(
-        `/ai/conversations?archived=${archived.value}&offset=${append ? conversations.value.length : 0}&limit=50`,
-      )
+      const items: Conversation[] = []
+      for (let offset = 0; offset < count; offset += 50) {
+        const page = await api<Conversation[]>(
+          `/ai/conversations?archived=${archived.value}&offset=${append ? conversations.value.length : offset}&limit=50`,
+        )
+        if (turn !== listEpoch || !alive) return
+        items.push(...page)
+        more.value = page.length === 50
+        if (page.length < 50) break
+      }
       if (turn !== listEpoch || !alive) return
-      conversations.value = append
-        ? [...new Map([...conversations.value, ...items].map((item) => [item.id, item])).values()]
-        : items
-      more.value = items.length === 50
+      // 快照读取期间收到的推送优先，包含归档移出和新对话插入。
+      const merged = new Map(
+        [...(append ? conversations.value : []), ...items].map((item) => [item.id, item]),
+      )
+      for (const item of conversations.value) {
+        if (merged.has(item.id) && item.revision > merged.get(item.id)!.revision)
+          merged.set(item.id, item)
+      }
+      for (const [id, item] of updates) {
+        if ((item.archivedAt !== null) === archived.value) merged.set(id, item)
+        else merged.delete(id)
+      }
+      for (const [id, item] of merged) {
+        if ((conversationRevisions.get(id) ?? -1) > item.revision) merged.delete(id)
+      }
+      conversations.value = [...merged.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     } catch (cause) {
       if (turn === listEpoch && alive) listError.value = message(cause)
     } finally {
-      if (turn === listEpoch) listing.value = false
+      if (turn === listEpoch) {
+        listing.value = false
+        listUpdates = undefined
+      }
     }
   }
   watch(archived, () => {
@@ -269,6 +308,7 @@ export function useChat(identity: () => Session | undefined) {
       replies.clear()
       for (const run of records) runs.set(run.id, run)
       detail.value = result
+      remember(result.conversation)
       const latest = records.at(-1)
       chooseModel(latest?.model, latest?.thinking)
       if (result.conversation.activeRunId) void connect(result.conversation.activeRunId, id, turn)
@@ -324,12 +364,20 @@ export function useChat(identity: () => Session | undefined) {
                 const content = [...reply.value.completed, ...reply.value.pending]
                 const finish = (node: MessageNode) =>
                   node.id === run.replyNodeId ? { ...node, content } : node
-                const conversation = {
-                  ...history.conversation,
-                  activeRunId: null,
-                  revision: history.conversation.revision + 1,
-                  lastActivityAt: event.createdAt,
-                }
+                const latest = conversations.value.find((item) => item.id === id)
+                const conversation =
+                  latest?.activeRunId === null && latest.revision > history.conversation.revision
+                    ? latest
+                    : {
+                        ...history.conversation,
+                        title: latest?.title ?? history.conversation.title,
+                        activeRunId: null,
+                        revision: Math.max(
+                          history.conversation.revision + 1,
+                          latest?.activeRunId === runId ? latest.revision + 1 : 0,
+                        ),
+                        lastActivityAt: event.createdAt,
+                      }
                 detail.value = {
                   conversation,
                   nodes: history.nodes.map(finish),
@@ -379,13 +427,69 @@ export function useChat(identity: () => Session | undefined) {
       catalog.value.agents[0]?.id ??
       ''
   }
+  async function connectStates(identityTurn: number) {
+    stateStream?.abort()
+    const controller = new AbortController()
+    stateStream = controller
+    const valid = () => alive && identityTurn === identityEpoch && !controller.signal.aborted
+    let attempt = 0
+    while (valid()) {
+      try {
+        const response = await fetch('/api/ai/conversations/events', {
+          signal: controller.signal,
+          credentials: 'same-origin',
+          cache: 'no-store',
+        })
+        if (!valid()) {
+          await response.body?.cancel()
+          return
+        }
+        if (response.status === 401 || response.status === 403) {
+          await api('/ai/conversations?archived=false&offset=0&limit=50')
+          return
+        }
+        let sequence = 0
+        await readEvents<ConversationStateEvent>(
+          response,
+          (event) => {
+            if (!valid() || event.sequence <= sequence) return
+            if (event.sequence !== sequence + 1) throw new Error('对话状态事件缺失')
+            sequence = event.sequence
+            if (event.type === 'ready') {
+              attempt = 0
+              void list(false, true)
+            } else if (event.type === 'conversation') {
+              if (event.conversation.workspaceId === identity()?.workspaceId)
+                remember(event.conversation)
+            }
+          },
+          controller.signal,
+        )
+      } catch (cause) {
+        if (valid() && cause instanceof ApiError && [401, 403].includes(cause.status)) return
+      }
+      if (!valid()) return
+      listError.value = '对话状态连接已断开，正在重新连接。'
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer)
+          controller.signal.removeEventListener('abort', done)
+          resolve()
+        }
+        const timer = setTimeout(done, Math.min(1000 * 2 ** attempt++, 10_000))
+        controller.signal.addEventListener('abort', done, { once: true })
+      })
+    }
+  }
   async function initialize() {
     if (!identity()) return
     const turn = ++epoch
+    const identityTurn = identityEpoch
     try {
       await refreshCatalog()
       if (!alive || turn !== epoch) return
       await Promise.all([list(), load()])
+      if (alive && identityTurn === identityEpoch) void connectStates(identityTurn)
     } catch (cause) {
       if (alive) error.value = message(cause)
     }
@@ -400,6 +504,7 @@ export function useChat(identity: () => Session | undefined) {
       epoch++
       listEpoch++
       stream?.abort()
+      stateStream?.abort()
       drafts.clear()
       attachmentDrafts.clear()
       pending.clear()
@@ -407,6 +512,8 @@ export function useChat(identity: () => Session | undefined) {
       replies.clear()
       detail.value = undefined
       conversations.value = []
+      conversationRevisions.clear()
+      listUpdates = undefined
       void initialize()
     },
     { immediate: true },
@@ -636,11 +743,13 @@ export function useChat(identity: () => Session | undefined) {
   }
   onUnmounted(() => {
     alive = false
+    stateStream?.abort()
     epoch++
     listEpoch++
     stream?.abort()
     drafts.clear()
     pending.clear()
+    conversationRevisions.clear()
   })
   return {
     catalog,
