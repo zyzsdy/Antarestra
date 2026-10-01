@@ -20,6 +20,7 @@ import {
 import MessageAction from './MessageAction.vue'
 import AttachmentTile from './AttachmentTile.vue'
 import { formatMessageTime } from './message-time.js'
+import { formatProcessingTime } from './processing-time.js'
 import type { ReplyState } from './stream.js'
 import { historyToolDetails } from './tool-details.js'
 import { replyContent } from './reply-content.js'
@@ -60,12 +61,24 @@ const body = computed(() =>
     : presentation.value.body,
 )
 const presentation = computed(() => replyContent(content.value, tools.value))
-const detailsOpen = ref(!!props.live && !props.live.ended)
+const running = computed(() => (props.live ? !props.live.ended : props.run?.status === 'running'))
+const processingNow = ref(Date.now())
+const processingTime = computed(() => {
+  if (!props.run) return ''
+  const end = running.value ? processingNow.value : props.run.endedAt
+  return end === null ? '' : formatProcessingTime(end - props.run.createdAt)
+})
+const detailsOpen = ref(running.value)
 watch(
-  () => !!props.live && !props.live.ended,
-  (running) => {
-    detailsOpen.value = running
+  running,
+  (active, _previous, onCleanup) => {
+    detailsOpen.value = active
+    processingNow.value = Date.now()
+    if (!active) return
+    const timer = setInterval(() => (processingNow.value = Date.now()), 1000)
+    onCleanup(() => clearInterval(timer))
   },
+  { immediate: true },
 )
 const attachments = computed(() =>
   content.value.filter(
@@ -85,22 +98,35 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
     @focusin="now = new Date()"
   >
     <CollapsibleRoot
-      v-if="node.role === 'assistant' && presentation.details.length"
+      v-if="node.role === 'assistant' && (running || presentation.details.length)"
       v-model:open="detailsOpen"
       class="chat-details"
     >
-      <CollapsibleTrigger class="chat-detail-trigger"
-        ><ChevronDownIcon class="ui-icon" />思考与工具详情</CollapsibleTrigger
-      >
+      <CollapsibleTrigger class="chat-detail-trigger">
+        <ChevronDownIcon class="ui-icon" />{{ running ? '正在处理' : '已处理' }}
+        <span v-if="processingTime" class="chat-processing-time">{{ processingTime }}</span>
+      </CollapsibleTrigger>
       <CollapsibleContent>
         <template v-for="detail in presentation.details" :key="detail.id">
           <MarkdownView
-            v-if="detail.type !== 'tool'"
-            :class="detail.type === 'thinking' ? 'chat-detail-thinking' : 'chat-detail-text'"
+            v-if="detail.type === 'text'"
+            class="chat-detail-text"
             :source="detail.text"
             :streaming="!!live && !live.ended"
           />
-          <CollapsibleRoot v-else class="chat-tool">
+          <CollapsibleRoot v-else-if="detail.type === 'thinking'" class="chat-thought">
+            <CollapsibleTrigger class="chat-detail-trigger">
+              <ChevronDownIcon class="ui-icon" />已思考
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <MarkdownView
+                class="chat-detail-thinking"
+                :source="detail.text"
+                :streaming="!!live && !live.ended"
+              />
+            </CollapsibleContent>
+          </CollapsibleRoot>
+          <CollapsibleRoot v-else-if="detail.type === 'tool'" class="chat-tool">
             <CollapsibleTrigger class="chat-detail-trigger chat-tool-trigger">
               <ChevronDownIcon class="ui-icon" />
               <span class="chat-tool-name">已调用 {{ detail.tool.name }}</span>
