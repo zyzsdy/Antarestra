@@ -134,7 +134,10 @@ export interface ToolDraft {
 }
 declare module '@antarestra/plugin-sdk' {
   interface Events {
-    'ai/conversation'(conversation: Readonly<import('@antarestra/contracts').Conversation>): void
+    'ai/conversation'(
+      conversation: Readonly<import('@antarestra/contracts').Conversation>,
+      deleted?: boolean,
+    ): void
     'ai/prepare'(context: RunContext): void | Promise<void>
     'ai/template'(context: RunContext, draft: TemplateDraft): void | Promise<void>
     'ai/request'(context: RunContext, draft: RequestSnapshot): void | Promise<void>

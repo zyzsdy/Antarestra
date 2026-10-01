@@ -110,6 +110,8 @@ Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认�
 
 ## Reka UI 组件优先策略
 
+已归档对话的永久删除入口沿用聊天错误色 #a32b24，通过 chat.css 的 `--chat-danger` 统一供菜单与归档信息条使用。菜单配合垃圾桶图标，确认复用 FeedbackHost，保持现有聊天布局与窄屏换行。
+
 所有 UI 插件必须优先复用 Reka UI：只要库中已有对应交互组件，就使用该组件或 WebUI 对它的共享封装，不再自行实现同类键盘导航、焦点约束、弹层关闭、选中状态与无障碍角色。保留既有蓝白配色、间距及业务文案；Reka UI 是无样式基础组件，视觉样式仍由本文件及共享组件维护。官方组件说明见 [Reka UI](https://reka-ui.com/docs/overview/introduction)。
 
 - 统一从 `@antarestra/webui/components` 具名导入，该入口完整再导出 Reka UI 的组件、工具和类型。仅 WebUI 直接依赖 `reka-ui`，业务插件不重复安装或直接导入。

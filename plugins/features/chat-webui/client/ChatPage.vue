@@ -228,7 +228,9 @@ const {
   stop,
   continuePrevious,
   update,
+  remove,
 } = useChat(() => props.session)
+const deleting = ref(false)
 const sidebar = ref(false)
 const narrow = ref(false)
 const media = matchMedia('(max-width: 760px)')
@@ -398,6 +400,27 @@ async function archive(item: Conversation) {
     feedback.toast(cause instanceof Error ? cause.message : '归档操作失败')
   }
 }
+async function deleteConversation(item: Conversation) {
+  if (deleting.value || item.archivedAt === null) return
+  const owner = props.session
+  deleting.value = true
+  try {
+    if (
+      !(await feedback.modal(
+        '永久删除对话？',
+        `“${item.title || '新对话'}”及其中的所有消息将永久消失，无法恢复。确定删除此对话吗？`,
+      ))
+    )
+      return
+    if (props.session !== owner) return
+    await remove(item.id)
+    feedback.toast('对话已永久删除')
+  } catch (cause) {
+    feedback.toast(cause instanceof Error ? cause.message : '删除失败，请重试')
+  } finally {
+    deleting.value = false
+  }
+}
 async function retry() {
   if (await feedback.modal('重试本轮对话', '将重新执行本轮请求，工具可能再次执行。'))
     await send(true)
@@ -480,6 +503,7 @@ onUnmounted(() => {
           :items="conversations"
           :current-id="currentId"
           :archived="archived"
+          :deleting="deleting"
           :loading="listing"
           :more="more"
           :error="listError"
@@ -490,6 +514,7 @@ onUnmounted(() => {
           @refresh="list()"
           @rename="edit"
           @archive="archive"
+          @delete="deleteConversation"
         />
       </component>
       <main class="chat-main">
@@ -570,6 +595,13 @@ onUnmounted(() => {
             <span>此对话已归档。</span
             ><button class="chat-text-button" @click="detail && archive(detail.conversation)">
               取消归档并继续
+            </button>
+            <button
+              class="chat-text-button chat-danger"
+              :disabled="deleting"
+              @click="detail && deleteConversation(detail.conversation)"
+            >
+              删除此对话
             </button>
           </ChatNotice>
           <ChatNotice v-else-if="interrupted">

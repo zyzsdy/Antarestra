@@ -110,9 +110,9 @@ export class AiService extends Service<Config> {
         .map((run) => run.cancel()),
     )
   }
-  private notifyConversation(conversation: Conversation) {
+  private notifyConversation(conversation: Conversation, deleted = false) {
     void this.ctx
-      .parallel('ai/conversation', freeze(json(conversation)))
+      .parallel('ai/conversation', freeze(json(conversation)), deleted)
       .catch(() => this.ctx.logger.warn('对话状态通知监听器执行失败'))
   }
   private active() {
@@ -377,6 +377,28 @@ export class AiService extends Service<Config> {
         .execute()
       this.notifyConversation(conversation)
       return conversation
+    })
+  }
+  async deleteConversation(access: Access, id: string) {
+    await this.verify(access)
+    return this.locked(async () => {
+      const conversation = await this.conversation(access, id)
+      if (conversation.archivedAt === null)
+        throw new AiError('not_archived', '仅可删除已归档对话', 409)
+      if (conversation.activeRunId) throw new AiError('busy', '请等待生成结束后删除', 409)
+      await this.db().transaction(async (db) => {
+        const runs = await db
+          .selectFrom('runs')
+          .selectAll()
+          .where('conversation_id', '=', id)
+          .execute()
+        for (const run of runs) await db.deleteFrom('events').where('run_id', '=', run.id).execute()
+        await db.deleteFrom('runs').where('conversation_id', '=', id).execute()
+        await db.deleteFrom('nodes').where('conversation_id', '=', id).execute()
+        await db.deleteFrom('conversations').where('id', '=', id).execute()
+      })
+      conversation.revision++
+      this.notifyConversation(conversation, true)
     })
   }
   /** 只接受核心签发的正在执行的工具上下文，更新在会话队列内原子完成。 */

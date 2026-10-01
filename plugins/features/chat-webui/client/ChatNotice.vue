@@ -34,4 +34,7 @@ withDefaults(defineProps<{ role?: 'status' | 'alert' }>(), { role: 'status' })
 .chat-notice :deep(.chat-text-button:hover:not(:disabled)) {
   background: #f8e9c8;
 }
+.chat-notice :deep(.chat-text-button.chat-danger) {
+  color: var(--chat-danger);
+}
 </style>

@@ -174,6 +174,69 @@ async function mount(identity = () => session) {
   return chat
 }
 describe('聊天会话状态', () => {
+  it('删除推送清除当前对话，忽略其他空间及删除后的旧摘要', async () => {
+    let source: ReadableStreamDefaultController<Uint8Array> | undefined
+    harness.stateFetch.mockImplementation(
+      async () =>
+        new Response(new ReadableStream({ start: (controller) => (source = controller) })),
+    )
+    const original = {
+      ...history('one'),
+      conversation: { ...history('one').conversation, workspaceId: session.workspaceId },
+    }
+    harness.api.mockImplementation(async (path: string) =>
+      path === '/ai/catalog' ? catalog : path.includes('?') ? [original.conversation] : original,
+    )
+    const chat = await mount()
+    await chat.navigate('one')
+    await tick()
+    const push = (event: object) =>
+      source!.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
+    push({ sequence: 1, type: 'deleted', conversationId: 'one', workspaceId: 'other' })
+    await tick()
+    expect(chat.currentId.value).toBe('one')
+    push({ sequence: 2, type: 'deleted', conversationId: 'one', workspaceId: session.workspaceId })
+    await tick()
+    push({ sequence: 3, type: 'conversation', conversation: original.conversation })
+    await tick()
+    expect(chat.currentId.value).toBe('')
+    expect(chat.detail.value).toBeUndefined()
+    expect(chat.conversations.value).toEqual([])
+  })
+  it('删除失败保留对话与草稿，成功后清除当前会话且旧快照不能恢复它', async () => {
+    const original = history('one')
+    harness.api.mockImplementation(async (path: string, _body: unknown, method: string) => {
+      if (method === 'DELETE') throw new Error('删除失败')
+      return path === '/ai/catalog'
+        ? catalog
+        : path.includes('?')
+          ? [original.conversation]
+          : original
+    })
+    const chat = await mount()
+    await chat.navigate('one')
+    await tick()
+    chat.draft.value = '保留草稿'
+    await expect(chat.remove('one')).rejects.toThrow('删除失败')
+    expect(chat.currentId.value).toBe('one')
+    expect(chat.draft.value).toBe('保留草稿')
+    harness.api.mockImplementation(async (path: string, _body: unknown, method: string) =>
+      method === 'DELETE'
+        ? undefined
+        : path === '/ai/catalog'
+          ? catalog
+          : path.includes('?')
+            ? [original.conversation]
+            : original,
+    )
+    await chat.remove('one')
+    expect(harness.api).toHaveBeenCalledWith('/ai/conversations/one', {}, 'DELETE')
+    await tick()
+    expect(chat.currentId.value).toBe('')
+    expect(chat.detail.value).toBeUndefined()
+    expect(chat.conversations.value).toEqual([])
+    expect(chat.draft.value).toBe('')
+  })
   it('工具状态和终态早于发送响应到达时保留最新列表，不重复增加修订号', async () => {
     let source: ReadableStreamDefaultController<Uint8Array> | undefined
     let respond: ((value: unknown) => void) | undefined

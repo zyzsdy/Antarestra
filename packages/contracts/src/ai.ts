@@ -78,6 +78,7 @@ export interface Conversation {
 export type ConversationStateEvent =
   | { sequence: number; type: 'ready' }
   | { sequence: number; type: 'conversation'; conversation: Conversation }
+  | { sequence: number; type: 'deleted'; conversationId: string; workspaceId: string }
 
 export interface MessageNode {
   id: string

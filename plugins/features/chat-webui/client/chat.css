@@ -630,6 +630,11 @@
   font-size: 13px;
   padding: 0 12px;
 }
+.chat-menu-item.chat-danger,
+.chat-text-button.chat-danger {
+  --chat-danger: #a32b24;
+  color: var(--chat-danger);
+}
 .chat-inline-error {
   color: #a32b24;
   font-size: 13px;

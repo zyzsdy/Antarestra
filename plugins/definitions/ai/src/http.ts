@@ -74,6 +74,10 @@ export function routes(ctx: Context) {
   route('GET', '/conversations/:id', async (http, access) => {
     http.body = await ctx.ai.getConversation(access, id(http))
   })
+  route('DELETE', '/conversations/:id', async (http, access) => {
+    await ctx.ai.deleteConversation(access, id(http))
+    http.status = 204
+  })
   route('PATCH', '/conversations/:id', async (http, access) => {
     const body = await readJson(http)
     check(body.title === undefined || typeof body.title === 'string', '标题无效')

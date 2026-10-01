@@ -23,6 +23,7 @@ import {
   ArrowLeftIcon,
   EllipsisVerticalIcon,
   ArchiveBoxIcon,
+  TrashIcon,
   PencilSquareIcon,
   ArrowTopRightOnSquareIcon,
   ArrowRightStartOnRectangleIcon,
@@ -39,6 +40,7 @@ const props = defineProps<{
   loading: boolean
   more: boolean
   error: string
+  deleting: boolean
 }>()
 defineEmits<{
   select: [id: string]
@@ -48,6 +50,7 @@ defineEmits<{
   refresh: []
   rename: [item: Conversation]
   archive: [item: Conversation]
+  delete: [item: Conversation]
 }>()
 const loggingOut = ref(false)
 const logoutError = ref('')
@@ -150,6 +153,13 @@ async function logout() {
                 }}</DropdownMenuItem
               >
               <small v-if="item.activeRunId" class="chat-menu-note">生成结束后可归档</small>
+              <DropdownMenuItem
+                v-if="item.archivedAt !== null"
+                class="chat-menu-item chat-danger"
+                :disabled="deleting || !!item.activeRunId"
+                @select="$emit('delete', item)"
+                ><TrashIcon class="ui-icon" />删除</DropdownMenuItem
+              >
             </DropdownMenuContent></DropdownMenuPortal
           >
         </DropdownMenuRoot>

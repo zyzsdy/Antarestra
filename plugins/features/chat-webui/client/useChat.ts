@@ -112,9 +112,11 @@ export function useChat(identity: () => Session | undefined) {
   let stateStream: AbortController | undefined
   let listUpdates: Map<string, Conversation> | undefined
   const conversationRevisions = new Map<string, number>()
+  const deletedConversations = new Set<string>()
   const message = (cause: unknown) => (cause instanceof Error ? cause.message : '请求失败，请重试')
   const same = (id: string, turn: number) => alive && turn === epoch && currentId.value === id
   function remember(conversation: Conversation) {
+    if (deletedConversations.has(conversation.id)) return
     const existing =
       listUpdates?.get(conversation.id) ??
       conversations.value.find((item) => item.id === conversation.id)
@@ -265,7 +267,8 @@ export function useChat(identity: () => Session | undefined) {
         else merged.delete(id)
       }
       for (const [id, item] of merged) {
-        if ((conversationRevisions.get(id) ?? -1) > item.revision) merged.delete(id)
+        if (deletedConversations.has(id) || (conversationRevisions.get(id) ?? -1) > item.revision)
+          merged.delete(id)
       }
       conversations.value = [...merged.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
       const current = merged.get(currentId.value)
@@ -472,6 +475,8 @@ export function useChat(identity: () => Session | undefined) {
             } else if (event.type === 'conversation') {
               if (event.conversation.workspaceId === identity()?.workspaceId)
                 remember(event.conversation)
+            } else if (event.type === 'deleted' && event.workspaceId === identity()?.workspaceId) {
+              void forgetConversation(event.conversationId)
             }
           },
           controller.signal,
@@ -524,6 +529,7 @@ export function useChat(identity: () => Session | undefined) {
       detail.value = undefined
       conversations.value = []
       conversationRevisions.clear()
+      deletedConversations.clear()
       listUpdates = undefined
       void initialize()
     },
@@ -742,6 +748,36 @@ export function useChat(identity: () => Session | undefined) {
       sending.value = false
     }
   }
+  async function forgetConversation(id: string) {
+    deletedConversations.add(id)
+    conversations.value = conversations.value.filter((item) => item.id !== id)
+    listUpdates?.delete(id)
+    drafts.delete(id)
+    attachmentDrafts.delete(id)
+    pending.delete(id)
+    for (const [runId, run] of runs) {
+      if (run.conversationId === id) {
+        runs.delete(runId)
+        replies.delete(runId)
+      }
+    }
+    if (currentId.value === id) {
+      epoch++
+      stream?.abort()
+      detail.value = undefined
+      reply.value = emptyReply()
+      loading.value = false
+      error.value = ''
+      await navigate()
+    }
+  }
+  async function remove(id: string) {
+    const identityTurn = identityEpoch
+    await api(`/ai/conversations/${encodeURIComponent(id)}`, {}, 'DELETE')
+    if (!alive || identityTurn !== identityEpoch) return
+    await forgetConversation(id)
+    await list(false, true)
+  }
   async function update(id: string, changes: { title?: string; archived?: boolean }) {
     const result = await api<Conversation>(
       `/ai/conversations/${encodeURIComponent(id)}`,
@@ -803,5 +839,6 @@ export function useChat(identity: () => Session | undefined) {
     stop,
     continuePrevious,
     update,
+    remove,
   }
 }

@@ -129,6 +129,47 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('仅允许删除本空间已归档对话，并永久清除消息、运行与事件', async () => {
+    const app = await setup()
+    const { ctx, access, other, conversation } = app
+    await expect(ctx.ai.deleteConversation(access, conversation.id)).rejects.toMatchObject({
+      code: 'not_archived',
+      status: 409,
+    })
+    const run = await send(app)
+    const preserved = await ctx.ai.createConversation(access, 'assistant', '保留')
+    await ctx.ai.updateConversation(access, conversation.id, { archived: true })
+    await expect(ctx.ai.deleteConversation(other, conversation.id)).rejects.toMatchObject({
+      status: 404,
+    })
+    const db = ctx.database.scope<Tables>(ctx, '@antarestra/ai')
+    expect(
+      await db.selectFrom('events').selectAll().where('run_id', '=', run.id).execute(),
+    ).not.toHaveLength(0)
+    const listener = vi.fn()
+    ctx.on('ai/conversation', listener)
+    await ctx.ai.deleteConversation(access, conversation.id)
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ id: conversation.id }), true)
+    for (const table of ['conversations', 'nodes', 'runs'] as const)
+      expect(
+        await db
+          .selectFrom(table)
+          .selectAll()
+          .where('conversation_id', '=', conversation.id)
+          .execute(),
+      ).toEqual([])
+    expect(
+      await db.selectFrom('events').selectAll().where('run_id', '=', run.id).execute(),
+    ).toEqual([])
+    await expect(ctx.ai.getConversation(access, conversation.id)).rejects.toMatchObject({
+      status: 404,
+    })
+    await expect(ctx.ai.getRun(access, run.id)).rejects.toMatchObject({ status: 404 })
+    await expect(ctx.ai.deleteConversation(access, conversation.id)).rejects.toMatchObject({
+      status: 404,
+    })
+    expect((await ctx.ai.getConversation(access, preserved.id)).conversation.id).toBe(preserved.id)
+  })
   it('基本工具列表通过 SQLite 文件跨服务重启保留，卸载取消运行并回收工具', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'antarestra-todos-'))
     directories.push(directory)
@@ -1249,12 +1290,25 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(
       states.some((event) => event.type === 'conversation' && event.conversation.id === foreign.id),
     ).toBe(false)
+    expect(
+      (await fetch(base + `/ai/conversations/${foreign.id}`, { method: 'DELETE', headers })).status,
+    ).toBe(404)
+    expect(
+      (await fetch(base + `/ai/conversations/${conversation.id}`, { method: 'DELETE' })).status,
+    ).toBe(401)
+    expect(
+      (await fetch(base + `/ai/conversations/${conversation.id}`, { method: 'DELETE', headers }))
+        .status,
+    ).toBe(204)
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({ type: 'deleted', conversationId: conversation.id }),
+    )
     statusController.abort()
     await stateTask
     expect(await (await fetch(base + '/ai/conversations', { headers })).json()).toEqual([])
     expect(
       await (await fetch(base + '/ai/conversations?archived=true', { headers })).json(),
-    ).toMatchObject([{ id: conversation.id }])
+    ).toEqual([])
     expect((await fetch(base + '/ai/conversations?archived=invalid', { headers })).status).toBe(400)
     expect(
       (
