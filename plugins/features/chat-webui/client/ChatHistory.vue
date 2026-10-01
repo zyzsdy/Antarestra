@@ -87,7 +87,15 @@ async function logout() {
         :title="item.title || '新对话'"
         @click="$emit('select', item.id)"
       >
-        {{ item.title || '新对话' }}
+        <span class="chat-history-status">
+          <span
+            v-if="item.activeRunId"
+            class="chat-history-spinner"
+            role="status"
+            aria-label="正在生成"
+          />
+        </span>
+        <span class="chat-history-label">{{ item.title || '新对话' }}</span>
       </button>
       <DropdownMenuRoot>
         <DropdownMenuTrigger
