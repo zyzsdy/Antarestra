@@ -1,6 +1,7 @@
 export * from 'reka-ui'
 export { default as AntarestraLogo } from './AntarestraLogo.vue'
 export { default as SidebarIcon } from './SidebarIcon.vue'
+export { default as CopyIcon } from './CopyIcon.vue'
 export { default as EditorDialog } from './EditorDialog.vue'
 export { default as EditableSelect } from './EditableSelect.vue'
 export { default as SelectField } from './SelectField.vue'

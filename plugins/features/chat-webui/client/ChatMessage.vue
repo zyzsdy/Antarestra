@@ -8,12 +8,12 @@ import {
   CollapsibleTrigger,
   CollapsibleContent,
   TooltipProvider,
+  CopyIcon,
 } from '@antarestra/webui/components'
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ClipboardIcon,
   PencilSquareIcon,
   ArrowPathIcon,
 } from '@antarestra/webui/icons'
@@ -149,7 +149,7 @@ const tools = computed(() =>
           formatMessageTime(node.createdAt, now)
         }}</time>
         <MessageAction label="复制" :disabled="!body || copying" @click="copy"
-          ><ClipboardIcon class="ui-icon"
+          ><CopyIcon class="ui-icon"
         /></MessageAction>
         <MessageAction
           v-if="node.role === 'user'"
