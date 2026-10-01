@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watchEffect } from 'vue'
+import { formatActivityTime } from './message-time.js'
 import type { Conversation } from '@antarestra/contracts'
 import type { Session } from './session.js'
 import {
@@ -11,6 +12,11 @@ import {
   DropdownMenuPortal,
   DropdownMenuContent,
   DropdownMenuItem,
+  TooltipProvider,
+  TooltipRoot,
+  TooltipTrigger,
+  TooltipPortal,
+  TooltipContent,
 } from '@antarestra/webui/components'
 import {
   PlusIcon,
@@ -45,6 +51,15 @@ defineEmits<{
 }>()
 const loggingOut = ref(false)
 const logoutError = ref('')
+const historyElement = ref<HTMLElement>()
+const tooltipOpen = ref(false)
+const now = ref(new Date())
+watchEffect((onCleanup) => {
+  if (!tooltipOpen.value) return
+  now.value = new Date()
+  const timer = setInterval(() => (now.value = new Date()), 30_000)
+  onCleanup(() => clearInterval(timer))
+})
 async function logout() {
   if (loggingOut.value) return
   loggingOut.value = true
@@ -74,64 +89,83 @@ async function logout() {
       <ArrowLeftIcon class="ui-icon" />
     </button>
   </div>
-  <nav class="chat-history" aria-label="对话历史">
-    <div
-      v-for="item in items"
-      :key="item.id"
-      class="chat-history-row"
-      :class="{ selected: item.id === currentId }"
-    >
-      <button
-        class="chat-history-title"
-        :aria-current="item.id === currentId ? 'page' : undefined"
-        :title="item.title || '新对话'"
-        @click="$emit('select', item.id)"
+  <TooltipProvider :delay-duration="250">
+    <nav ref="historyElement" class="chat-history" aria-label="对话历史">
+      <div
+        v-for="item in items"
+        :key="item.id"
+        class="chat-history-row"
+        :class="{ selected: item.id === currentId }"
       >
-        <span class="chat-history-status">
-          <span
-            v-if="item.activeRunId"
-            class="chat-history-spinner"
-            role="status"
-            aria-label="正在生成"
-          />
-        </span>
-        <span class="chat-history-label">{{ item.title || '新对话' }}</span>
+        <TooltipRoot @update:open="tooltipOpen = $event">
+          <TooltipTrigger as-child>
+            <button
+              class="chat-history-title"
+              :aria-current="item.id === currentId ? 'page' : undefined"
+              @click="$emit('select', item.id)"
+            >
+              <span class="chat-history-status">
+                <span
+                  v-if="item.activeRunId"
+                  class="chat-history-spinner"
+                  role="status"
+                  aria-label="正在生成"
+                />
+              </span>
+              <span class="chat-history-label">{{ item.title || '新对话' }}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipPortal :to="historyElement ?? 'body'">
+            <TooltipContent
+              class="chat-message-tooltip chat-history-tooltip"
+              side="bottom"
+              align="start"
+              :side-offset="8"
+              :collision-padding="12"
+            >
+              <span>{{ item.title || '新对话' }}</span>
+              <time :datetime="new Date(item.lastActivityAt).toISOString()">
+                {{ formatActivityTime(item.lastActivityAt, now) }}
+              </time>
+            </TooltipContent>
+          </TooltipPortal>
+        </TooltipRoot>
+        <DropdownMenuRoot>
+          <DropdownMenuTrigger
+            class="chat-icon-button chat-history-actions"
+            :aria-label="`${item.title || '新对话'}的操作`"
+            ><EllipsisVerticalIcon class="ui-icon"
+          /></DropdownMenuTrigger>
+          <DropdownMenuPortal
+            ><DropdownMenuContent class="chat-popover" :side-offset="5" :collision-padding="12">
+              <DropdownMenuItem class="chat-menu-item" @select="$emit('rename', item)"
+                ><PencilSquareIcon class="ui-icon" />重命名</DropdownMenuItem
+              >
+              <DropdownMenuItem
+                class="chat-menu-item"
+                :disabled="!!item.activeRunId"
+                @select="$emit('archive', item)"
+                ><ArchiveBoxIcon class="ui-icon" />{{
+                  item.archivedAt ? '取消归档' : '归档'
+                }}</DropdownMenuItem
+              >
+              <small v-if="item.activeRunId" class="chat-menu-note">生成结束后可归档</small>
+            </DropdownMenuContent></DropdownMenuPortal
+          >
+        </DropdownMenuRoot>
+      </div>
+      <p v-if="!items.length && !loading && !error" class="chat-muted">
+        {{ archived ? '没有已归档的对话' : '开始一段新对话吧。' }}
+      </p>
+      <p v-if="loading" class="chat-muted" role="status">正在加载…</p>
+      <p v-if="error" class="chat-inline-error" role="alert">
+        {{ error }}<button class="chat-text-button" @click="$emit('refresh')">重试</button>
+      </p>
+      <button v-if="more" class="chat-text-button" :disabled="loading" @click="$emit('more')">
+        加载更多
       </button>
-      <DropdownMenuRoot>
-        <DropdownMenuTrigger
-          class="chat-icon-button chat-history-actions"
-          :aria-label="`${item.title || '新对话'}的操作`"
-          ><EllipsisVerticalIcon class="ui-icon"
-        /></DropdownMenuTrigger>
-        <DropdownMenuPortal
-          ><DropdownMenuContent class="chat-popover" :side-offset="5" :collision-padding="12">
-            <DropdownMenuItem class="chat-menu-item" @select="$emit('rename', item)"
-              ><PencilSquareIcon class="ui-icon" />重命名</DropdownMenuItem
-            >
-            <DropdownMenuItem
-              class="chat-menu-item"
-              :disabled="!!item.activeRunId"
-              @select="$emit('archive', item)"
-              ><ArchiveBoxIcon class="ui-icon" />{{
-                item.archivedAt ? '取消归档' : '归档'
-              }}</DropdownMenuItem
-            >
-            <small v-if="item.activeRunId" class="chat-menu-note">生成结束后可归档</small>
-          </DropdownMenuContent></DropdownMenuPortal
-        >
-      </DropdownMenuRoot>
-    </div>
-    <p v-if="!items.length && !loading && !error" class="chat-muted">
-      {{ archived ? '没有已归档的对话' : '开始一段新对话吧。' }}
-    </p>
-    <p v-if="loading" class="chat-muted" role="status">正在加载…</p>
-    <p v-if="error" class="chat-inline-error" role="alert">
-      {{ error }}<button class="chat-text-button" @click="$emit('refresh')">重试</button>
-    </p>
-    <button v-if="more" class="chat-text-button" :disabled="loading" @click="$emit('more')">
-      加载更多
-    </button>
-  </nav>
+    </nav>
+  </TooltipProvider>
   <DropdownMenuRoot>
     <DropdownMenuTrigger class="chat-profile" aria-label="用户菜单"
       ><AvatarRoot class="chat-avatar"

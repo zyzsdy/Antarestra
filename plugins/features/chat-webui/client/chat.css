@@ -402,6 +402,19 @@
     'Microsoft YaHei',
     sans-serif;
 }
+.chat-history-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: min(360px, calc(100vw - 24px));
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 14px;
+}
+.chat-history-tooltip time {
+  color: #d1d1d1;
+  font-size: 12px;
+}
 .chat-rename-form textarea {
   width: 100%;
   min-height: 160px;
