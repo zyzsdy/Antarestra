@@ -1,4 +1,12 @@
-import type { ModelDefinition } from '@antarestra/ai'
+import type { ModelDefinition, JsonObject } from '@antarestra/ai'
+
+export interface BuiltinTool {
+  name: string
+  type: string
+  modelIds: string[]
+  options: JsonObject
+  enabled: boolean
+}
 
 export interface ProviderRecord {
   id: string
@@ -10,6 +18,7 @@ export interface ProviderRecord {
   apiKey: string
   headers: Record<string, string>
   models: ModelDefinition[]
+  builtinTools?: BuiltinTool[]
   revision: number
 }
 export type ProviderView = Omit<ProviderRecord, 'apiKey'> & { apiKeyPlaceholder: string }

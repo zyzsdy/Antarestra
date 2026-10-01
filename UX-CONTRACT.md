@@ -125,3 +125,9 @@ Markdown 助理消息的代码复制按钮由 `MarkdownContent.vue` 在 `.md-bod
 ## 工具调用详情
 
 依据本次用户要求与 AI 核心运行契约：模型响应中的工具名称和参数在执行授权校验前保存，未提供工具和参数校验失败也可查看，但仍拒绝执行。ChatMessage 和 tool-details.ts 按调用 ID 合并调用与返回；实时事件及历史使用同一展示规则，重复事件不增加项目。详情使用 WebUI 导出的 Reka UI Collapsible，可通过键盘独立展开；终态保留错误代码与说明，取消或中断且无结果时明确显示未返回，不冒充执行完成。并发工具已返回的结果独立持久化，不因其他调用失败丢失。
+
+## 提供商内置工具
+
+依据：用户要求及 AI Provider 的 Responses 驱动契约。提供商详情可添加、编辑和删除内置工具，复用 EditorDialog、SelectField、CheckboxField、useApi 和 FeedbackHost。工具类型由用户自由填写，常见类型只作为建议；工具名用于 Agent 选择和调用详情，发送给提供商的声明使用类型及 JSON 选项，不伪造 function 定义。每项绑定已有模型，可独立停用。
+
+Agents 的可用工具目录包含带提供商范围的内置工具。仅当所选模型匹配、工具启用且 Agent 授权时追加到请求。提供商在内部执行，客户端不执行或回传 function_call_output。调用状态与返回结果经统一事件流和历史展示；图片生成结果提供预览。当前接入 OpenAI Responses 系列接口，其他协议需要对应驱动适配，不宣称已经支持。

@@ -17,6 +17,7 @@ export type ContentBlock =
     }
   | { type: 'tool-call'; id: string; name: string; arguments: JsonObject }
   | { type: 'tool-result'; id: string; content: Json; isError: boolean }
+  | { type: 'provider-tool'; id: string; name: string; status: string; result: JsonObject }
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'tool'
   content: ContentBlock[]
@@ -97,7 +98,12 @@ export interface RequestSnapshot {
   parameters: JsonObject
   systemPrompt: string
   messages: ChatMessage[]
-  tools: { id: string; description: string; parameters: JsonObject }[]
+  tools: {
+    id: string
+    description: string
+    parameters: JsonObject
+    providerTool?: { name: string; type: string; options: JsonObject }
+  }[]
 }
 export interface RunRecord {
   id: string
@@ -136,6 +142,7 @@ export interface AiEvent {
     | 'run-start'
     | 'request'
     | 'model-activity'
+    | 'provider-tool'
     | 'message-delta'
     | 'message'
     | 'tool-start'

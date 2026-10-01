@@ -6,11 +6,47 @@ export interface ToolDetail {
   arguments: Json
   status: string
   result?: Json
+  image?: string
   isError: boolean
 }
 
 export function mergeToolBlocks(tools: ToolDetail[], blocks: ContentBlock[], executing = false) {
   for (const block of blocks) {
+    if (block.type === 'provider-tool') {
+      const detail: ToolDetail = {
+        id: block.id,
+        name: `${block.name}（提供商内置）`,
+        arguments: block.result.action ?? {},
+        status:
+          block.status === 'completed'
+            ? '执行完成'
+            : block.status === 'failed'
+              ? '执行失败'
+              : block.status === 'in_progress'
+                ? '正在执行'
+                : '未返回结果',
+        ...(block.status === 'completed' || block.status === 'failed'
+          ? { result: block.result }
+          : {}),
+        isError: block.status === 'failed',
+      }
+      if (
+        block.result.type === 'image_generation_call' &&
+        typeof block.result.result === 'string'
+      ) {
+        const format =
+          block.result.output_format === 'jpeg'
+            ? 'jpeg'
+            : block.result.output_format === 'webp'
+              ? 'webp'
+              : 'png'
+        detail.image = `data:image/${format};base64,${block.result.result}`
+        detail.result = { ...block.result, result: '[图片内容见预览]' }
+      }
+      const index = tools.findIndex((tool) => tool.id === block.id)
+      if (index < 0) tools.push(detail)
+      else tools[index] = detail
+    }
     if (block.type === 'tool-call') {
       const existing = tools.find((tool) => tool.id === block.id)
       if (existing) {
@@ -51,7 +87,9 @@ export function finishToolDetails(
   }
 }
 
-export function historyToolDetails(run?: RunRecord): ToolDetail[] {
+export function historyToolDetails(
+  run?: Pick<RunRecord, 'messages' | 'status' | 'error'>,
+): ToolDetail[] {
   const tools: ToolDetail[] = []
   for (const message of run?.messages ?? []) mergeToolBlocks(tools, message.content)
   if (run && run.status !== 'running') finishToolDetails(tools, run.status, run.error)

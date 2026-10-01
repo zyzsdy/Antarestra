@@ -8,7 +8,13 @@ import { driver } from './driver.js'
 import { name } from './store.js'
 import type { Tables } from './store.js'
 import type { ProviderRecord } from './types.js'
-import { check, publicProvider, validateModel, validateProvider } from './validation.js'
+import {
+  check,
+  publicProvider,
+  validateModel,
+  validateProvider,
+  validateBuiltinTools,
+} from './validation.js'
 
 declare module '@antarestra/plugin-sdk' {
   interface Context {
@@ -59,6 +65,27 @@ export class AiProviderService extends Service {
         baseUrl: record.baseUrl,
         driverId: `ai-provider:${record.id}`,
         models: record.models,
+        builtinTools: (record.builtinTools ?? []).map((tool) => ({
+          id: `provider:${record.id}:${tool.name}`,
+          name: tool.name,
+          description: `${tool.name} · ${tool.type}`,
+          type: tool.type,
+          options: tool.options,
+          modelIds: tool.enabled
+            ? tool.modelIds.filter((id) =>
+                record.models.some(
+                  (m) =>
+                    m.id === id &&
+                    m.tools &&
+                    [
+                      'openai-responses',
+                      'azure-openai-responses',
+                      'openai-codex-responses',
+                    ].includes(record.api),
+                ),
+              )
+            : [],
+        })),
         resolveCredential: async () => record.apiKey,
       })
       this.entries.set(record.id, {
@@ -155,5 +182,19 @@ export class AiProviderService extends Service {
     } finally {
       this.requests.delete(request)
     }
+  }
+  builtinTools(id: string, body: Record<string, unknown>) {
+    return this.lock(async () => {
+      check(Number.isSafeInteger(body.revision), '缺少配置版本')
+      const previous = this.current(id, body.revision)
+      check(
+        ['openai-responses', 'azure-openai-responses', 'openai-codex-responses'].includes(
+          previous.api,
+        ),
+        '内置工具需要 OpenAI Responses 接口',
+      )
+      const builtinTools = validateBuiltinTools(body.tools, previous.models)
+      return this.commit({ ...previous, builtinTools, revision: previous.revision + 1 }, previous)
+    })
   }
 }

@@ -149,7 +149,15 @@ export class AiService extends Service<Config> {
     this.active()
     return json({
       providers: this.providers.list().map((p) => ({ id: p.id, title: p.title, models: p.models })),
-      tools: this.tools.list().map((t) => ({ id: t.id, description: t.description })),
+      tools: [
+        ...this.tools.list().map((t) => ({ id: t.id, description: t.description })),
+        ...this.providers.list().flatMap((p) =>
+          (p.builtinTools ?? []).map((t) => ({
+            id: t.id,
+            description: `${p.title} · ${t.description}（提供商内部执行）`,
+          })),
+        ),
+      ],
       backends: this.backends.list().map((b) => b.id),
       skillsAvailable: this.skills.list().length > 0,
     })
@@ -190,7 +198,11 @@ export class AiService extends Service<Config> {
     return this.providers.register(
       owner,
       value.id,
-      Object.freeze({ ...value, models: freeze(json(value.models)) }),
+      Object.freeze({
+        ...value,
+        models: freeze(json(value.models)),
+        ...(value.builtinTools ? { builtinTools: freeze(json(value.builtinTools)) } : {}),
+      }),
     )
   }
   registerDriver(owner: Context, value: ModelDriver) {
@@ -578,7 +590,12 @@ export class AiService extends Service<Config> {
       bound.providers.set(ref.providerId, provider)
       bound.drivers.set(provider.value.driverId, this.drivers.get(provider.value.driverId))
     }
-    for (const id of agent.value.toolIds) bound.tools.set(id, this.tools.get(id))
+    const builtinIds = new Set(
+      this.providers.list().flatMap((p) => (p.builtinTools ?? []).map((t) => t.id)),
+    )
+    for (const id of agent.value.toolIds) {
+      if (!builtinIds.has(id)) bound.tools.set(id, this.tools.get(id))
+    }
     for (const [id, config] of Object.entries(agent.value.extensions)) {
       const extension = this.extensions.get(id)
       compile(extension.value.schema)(config)

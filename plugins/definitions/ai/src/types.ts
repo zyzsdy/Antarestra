@@ -47,6 +47,14 @@ export interface Provider {
   baseUrl: string
   driverId: string
   models: ModelDefinition[]
+  builtinTools?: {
+    id: string
+    name: string
+    description: string
+    type: string
+    modelIds: string[]
+    options: JsonObject
+  }[]
   idleTimeoutMs?: number
   resolveCredential?(context: RunContext): Promise<string>
 }
@@ -55,7 +63,9 @@ export interface ModelOutput {
   usage?: JsonObject
 }
 export type ModelUpdate =
-  { type: 'activity' } | { type: 'delta'; kind: 'text' | 'thinking'; text: string }
+  | { type: 'activity' }
+  | { type: 'delta'; kind: 'text' | 'thinking'; text: string }
+  | { type: 'provider-tool'; content: Extract<ContentBlock, { type: 'provider-tool' }> }
 export interface ModelDriver {
   id: string
   fileInput?: boolean

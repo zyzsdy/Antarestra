@@ -49,6 +49,10 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
   if (event.sequence !== state.sequence + 1) throw new Error('回复事件缺失，请重新连接')
   const data = event.data as Record<string, unknown>
   switch (event.type) {
+    case 'provider-tool':
+      mergeToolBlocks(state.tools, [event.data as unknown as ContentBlock])
+      state.status = '提供商正在处理工具'
+      break
     case 'request':
       state.pending = []
       state.status = '正在思考'

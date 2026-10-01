@@ -97,6 +97,12 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
             <p class="chat-tool-label">调用参数</p>
             <pre>{{ JSON.stringify(tool.arguments, null, 2) }}</pre>
             <p class="chat-tool-label">返回结果</p>
+            <img
+              v-if="tool.image"
+              :src="tool.image"
+              alt="提供商生成的图片"
+              class="chat-generated-image"
+            />
             <pre v-if="tool.result !== undefined" :class="{ 'chat-run-error': tool.isError }">{{
               JSON.stringify(tool.result, null, 2)
             }}</pre>

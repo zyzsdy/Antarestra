@@ -211,7 +211,13 @@ export class Running {
         )
       } else if (block.type === 'text' || block.type === 'thinking')
         check(typeof block.text === 'string', '文本内容无效')
-      else check(block.type === 'tool-call' || block.type === 'tool-result', '消息内容类型无效')
+      else
+        check(
+          block.type === 'tool-call' ||
+            block.type === 'tool-result' ||
+            block.type === 'provider-tool',
+          '消息内容类型无效',
+        )
     }
   }
   private async request(): Promise<ModelOutput> {
@@ -243,14 +249,39 @@ export class Running {
       await abortable(this.service.context.serial('ai/context', this.context, draft), signal)
       this.active()
       const { provider, model, driver } = this.validateSelection(draft.model, draft.thinking)
+      const builtinTools = (provider.builtinTools ?? []).filter(
+        (tool) =>
+          model.tools &&
+          tool.modelIds.includes(model.id) &&
+          this.record.agent.toolIds.includes(tool.id),
+      )
       check(
         typeof draft.systemPrompt === 'string' &&
           Array.isArray(draft.messages) &&
           Array.isArray(draft.tools),
         '请求草稿无效',
       )
+      draft.tools.push(
+        ...builtinTools.map((tool) => ({
+          id: tool.id,
+          description: tool.description,
+          parameters: {},
+          providerTool: { name: tool.name, type: tool.type, options: json(tool.options) },
+        })),
+      )
       check(
         draft.tools.every((tool) => {
+          if (tool.providerTool)
+            return builtinTools.some(
+              (original) =>
+                original.id === tool.id &&
+                canonical(tool.providerTool) ===
+                  canonical({
+                    name: original.name,
+                    type: original.type,
+                    options: original.options,
+                  }),
+            )
           const original = this.tools.get(tool.id)
           return original && canonical(tool.parameters) === canonical(original.parameters)
         }),
@@ -336,6 +367,19 @@ export class Running {
             this.active()
             signal.throwIfAborted()
             touch()
+            if (update.type === 'provider-tool') {
+              const block = update.content
+              check(
+                request.tools.some((tool) => tool.providerTool?.name === block.name),
+                '提供商调用了未授权的内置工具',
+              )
+              const existing = this.record.messages
+                .flatMap((message) => message.content)
+                .find((item) => item.type === 'provider-tool' && item.id === block.id)
+              if (existing) Object.assign(existing, json(block))
+              else this.record.messages.push({ role: 'assistant', content: [json(block)] })
+              await this.service.persist(this, 'provider-tool', json(block))
+            }
             if (update.type === 'delta') {
               check(
                 typeof update.text === 'string' && ['text', 'thinking'].includes(update.kind),
@@ -354,6 +398,17 @@ export class Running {
       await this.validateResources(output.content)
       // 先保存模型给出的调用，再校验是否允许执行，拒绝的调用也能在历史中查看。
       const message: ChatMessage = { role: 'assistant', content: json(output.content) }
+      const hostedIds = new Set(
+        output.content.flatMap((block) => (block.type === 'provider-tool' ? [block.id] : [])),
+      )
+      this.record.messages = this.record.messages
+        .map((entry) => ({
+          ...entry,
+          content: entry.content.filter(
+            (block) => block.type !== 'provider-tool' || !hostedIds.has(block.id),
+          ),
+        }))
+        .filter((entry) => entry.content.length > 0)
       this.record.messages.push(message)
       this.reply = this.record.messages
         .filter((m) => m.role === 'assistant')
@@ -361,6 +416,13 @@ export class Running {
       await this.service.persist(this, 'message', { ...message, usage: output.usage ?? null })
       const calls: typeof this.pending = []
       for (const block of output.content) {
+        if (block.type === 'provider-tool') {
+          check(
+            request.tools.some((tool) => tool.providerTool?.name === block.name),
+            '提供商调用了未授权的内置工具',
+          )
+          continue
+        }
         if (block.type === 'text' || block.type === 'image' || block.type === 'file')
           check(model.output.includes(block.type), '模型不支持输出模态')
         check(block.type !== 'tool-result', '模型不能生成工具结果')

@@ -63,6 +63,9 @@ export default defineDatabasePlugin({
         route('PUT', '/:id/models', async (http) =>
           ctx.aiProvider.models(id(http), await readJson(http, 4_194_304)),
         )
+        route('PUT', '/:id/builtin-tools', async (http) =>
+          ctx.aiProvider.builtinTools(id(http), await readJson(http, 131072)),
+        )
         route('GET', '/:id/candidates', async (http) => ctx.aiProvider.discover(id(http), false))
         route('POST', '/:id/discover', async (http) => {
           await readJson(http)

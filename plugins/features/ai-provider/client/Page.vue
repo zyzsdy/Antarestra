@@ -5,7 +5,8 @@ import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from '@antarestra/webui/api'
 import { PlusIcon, ArrowPathIcon, ArrowLeftIcon } from '@antarestra/webui/icons'
 import type { ModelDefinition } from '@antarestra/ai'
-import type { ProviderView, Candidate, Discovery } from '../src/types.js'
+import type { ProviderView, Candidate, Discovery, BuiltinTool } from '../src/types.js'
+import BuiltinToolForm from './BuiltinToolForm.vue'
 import ProviderForm from './ProviderForm.vue'
 import ModelForm from './ModelForm.vue'
 import { syncModels } from './models.js'
@@ -43,6 +44,54 @@ const editingProvider = ref<ProviderView>()
 const modelDialog = ref(false)
 const editingModel = ref<ModelDefinition>()
 const dirty = ref(false)
+const toolDialog = ref(false)
+const editingTool = ref<BuiltinTool>()
+function editTool(value?: BuiltinTool) {
+  editingTool.value = value
+  dirty.value = false
+  message.value = ''
+  toolDialog.value = true
+}
+function saveTool(tool: BuiltinTool) {
+  void run(async () => {
+    const provider = current.value!
+    const tools = (provider.builtinTools ?? []).filter((t) => t.name !== editingTool.value?.name)
+    tools.push(tool)
+    const result = await api<ProviderView>(
+      path() + '/builtin-tools',
+      { revision: provider.revision, tools },
+      'PUT',
+    )
+    if (!alive) return
+    update(result)
+    dirty.value = toolDialog.value = false
+    feedback.toast('内置工具已保存')
+  })
+}
+function removeTool(tool: BuiltinTool) {
+  void run(async () => {
+    if (
+      !(await feedback.modal(
+        `删除内置工具 ${tool.name}？`,
+        '删除后此提供商不再提供该工具，正在使用此提供商的运行会中断。',
+      ))
+    )
+      return
+    const provider = current.value!
+    const result = await api<ProviderView>(
+      path() + '/builtin-tools',
+      {
+        revision: provider.revision,
+        tools: (provider.builtinTools ?? []).filter((t) => t.name !== tool.name),
+      },
+      'PUT',
+    )
+    if (alive) {
+      update(result)
+      feedback.toast('内置工具已删除')
+    }
+  })
+}
 const syncDialog = ref(false)
 const candidates = ref<Candidate[]>([])
 const warning = ref('')
@@ -131,7 +180,7 @@ async function discard() {
 }
 async function closeEditor() {
   if (busy.value || !(await discard())) return
-  providerDialog.value = modelDialog.value = dirty.value = false
+  providerDialog.value = modelDialog.value = toolDialog.value = dirty.value = false
   message.value = ''
 }
 function saveProvider(body: Record<string, unknown>) {
@@ -275,7 +324,11 @@ onUnmounted(() => {
         </button>
       </div>
     </header>
-    <p v-if="message && !providerDialog && !modelDialog && !syncDialog" class="error" role="alert">
+    <p
+      v-if="message && !providerDialog && !modelDialog && !toolDialog && !syncDialog"
+      class="error"
+      role="alert"
+    >
       {{ message }}
     </p>
     <p v-if="!loaded" class="state" role="status">
@@ -342,6 +395,58 @@ onUnmounted(() => {
           <button :disabled="busy" @click="editProvider(current)">编辑提供商</button
           ><button class="danger" :disabled="busy" @click="removeProvider">删除提供商</button>
         </div>
+      </div>
+      <div class="model-heading">
+        <h2>
+          提供商内置工具 <span class="count">{{ current.builtinTools?.length ?? 0 }}</span>
+        </h2>
+        <button
+          class="primary"
+          :disabled="
+            busy ||
+            !['openai-responses', 'azure-openai-responses', 'openai-codex-responses'].includes(
+              current.api,
+            )
+          "
+          @click="editTool()"
+        >
+          添加内置工具
+        </button>
+      </div>
+      <p class="hint">
+        内置工具由提供商内部调用，可在 Agents 中选择。需要 OpenAI Responses
+        接口；修改后正在使用此提供商的运行会中断。
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>工具名 / 类型</th>
+              <th>可用模型</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tool in current.builtinTools ?? []" :key="tool.name">
+              <td>
+                <strong>{{ tool.name }}</strong
+                ><code>{{ tool.type }}</code>
+              </td>
+              <td>{{ tool.modelIds.join('、') }}</td>
+              <td>{{ tool.enabled ? '已启用' : '已停用' }}</td>
+              <td>
+                <div class="actions">
+                  <button :disabled="busy" @click="editTool(tool)">编辑</button
+                  ><button class="danger" :disabled="busy" @click="removeTool(tool)">删除</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="!current.builtinTools?.length" class="state">
+          尚无内置工具，添加后可为已有模型启用搜索或图片生成。
+        </p>
       </div>
       <div class="model-heading">
         <h2>
@@ -530,6 +635,21 @@ onUnmounted(() => {
           同步并覆盖所选（{{ selection.length }}）
         </button>
       </template>
+    </EditorDialog>
+    <EditorDialog
+      v-if="toolDialog"
+      :title="editingTool ? '编辑内置工具' : '添加内置工具'"
+      :busy="busy"
+      @close="closeEditor"
+    >
+      <BuiltinToolForm
+        v-bind="editingTool ? { value: editingTool } : {}"
+        :models="models"
+        :busy="busy"
+        :error="message"
+        @dirty="dirty = $event"
+        @save="saveTool"
+      />
     </EditorDialog>
   </section>
 </template>

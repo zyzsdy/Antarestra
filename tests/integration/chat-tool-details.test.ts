@@ -67,3 +67,38 @@ describe('聊天工具详情', () => {
     },
   )
 })
+
+it('提供商内置工具状态去重、图片预览与取消后的历史保持一致', () => {
+  const state = emptyReply()
+  const started = {
+    type: 'provider-tool' as const,
+    id: 'hosted',
+    name: 'web_search',
+    status: 'in_progress',
+    result: { type: 'web_search_call', action: { query: '测试' } },
+  }
+  applyEvent(state, event(1, 'provider-tool', started))
+  expect(state.tools[0]).toMatchObject({ status: '正在执行' })
+  expect(state.tools[0]?.result).toBeUndefined()
+  applyEvent(state, event(2, 'run-end', { status: 'cancelled', error: null }))
+  expect(state.tools[0]?.status).toBe('已取消')
+  expect(state.tools).toEqual(
+    historyToolDetails({
+      messages: [{ role: 'assistant', content: [started] }],
+      status: 'cancelled',
+      error: null,
+    }),
+  )
+  const completed = {
+    ...started,
+    name: 'draw',
+    status: 'completed',
+    result: { type: 'image_generation_call', result: 'aW1hZ2U=', output_format: 'webp' },
+  }
+  const image = emptyReply()
+  applyEvent(image, event(1, 'provider-tool', completed))
+  applyEvent(image, event(2, 'message', { role: 'assistant', content: [completed] }))
+  expect(image.tools).toHaveLength(1)
+  expect(image.tools[0]?.image).toBe('data:image/webp;base64,aW1hZ2U=')
+  expect(image.tools[0]?.result).toMatchObject({ result: '[图片内容见预览]' })
+})

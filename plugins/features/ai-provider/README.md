@@ -27,3 +27,11 @@ pi-ai 使用当前维护的 `@earendil-works/pi-ai` 包，旧 `@mariozechner/pi-
 `tests/integration/ai-provider.test.ts` 覆盖鉴权、密钥边界、修订冲突、模型校验、SQLite 文件重启恢复、卸载和依赖恢复，以及本地 HTTP 模拟目录和 OpenAI 兼容流。模拟服务测试不代表外部真实模型集成验证。
 
 模型返回的文本/思考续接签名随项目 DTO 持久化；下一轮只向同一连接、模型及驱动回传，避免思考模型的历史转换丢失协议字段。客户端不展示这些不透明字段。
+
+## 提供商内置工具
+
+在提供商详情的“提供商内置工具”区域添加工具，填写工具名、接口类型、可用模型、启用状态及 JSON 选项。类型由用户自由填写，`web_search`、`image_generation`、`file_search` 仅作为建议；例如文件搜索可以填写 `{"vector_store_ids":["vs_..."]}`。同一提供商的类型唯一，名称也唯一，避免提供方仅返回类型时无法确定对应配置。
+
+Agent 工具列表用 `provider:提供商ID:工具名` 区分不同提供商的配置。允许全部工具的 Agent 自动包含新配置；指定工具列表的 Agent 需要显式勾选。调用仅在工具启用、当前模型匹配且 Agent 授权时生效，声明以 `{ type, ...options }` 追加到提供商请求中；工具名用于配置和展示，不写入不支持 name 字段的原生工具声明。
+
+当前适配 OpenAI Responses、Azure OpenAI Responses 和 OpenAI Codex Responses 接口。工具由提供商内部执行，返回的 `类型_call` 输出项保存为独立的 `provider-tool` 内容，不进入客户端函数工具循环，也不发送 `function_call_output`。调用状态和原始结果经事件流及历史保存，取消时保留已收到的状态，图片生成结果可在工具详情中预览。网关、模型及工具类型是否可用由真实提供商决定；工具选项须符合该提供商接口。

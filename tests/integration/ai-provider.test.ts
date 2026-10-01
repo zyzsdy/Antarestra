@@ -3,7 +3,8 @@ import type { RequestListener } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import * as agentCore from '@antarestra/plugin-ai-agent-core'
 import { Context } from '@antarestra/plugin-sdk'
 import DatabaseProvider from '@antarestra/database'
 import * as database from '@antarestra/plugin-database-kysely'
@@ -29,6 +30,7 @@ import {
   publicProvider,
   validateModel,
   validateProvider,
+  validateBuiltinTools,
 } from '../../plugins/features/ai-provider/src/validation.js'
 import type { Tables } from '../../plugins/features/ai-provider/src/store.js'
 const contexts: Context[] = []
@@ -690,4 +692,162 @@ it('思考续接信息经过项目 DTO 往返，仅回传给同一连接和模�
   expect(
     requests[2]?.messages.find((item) => item.role === 'assistant')?.reasoning_content,
   ).toBeUndefined()
+})
+
+it('内置工具经 Responses 请求发送，提供商执行不会进入客户端工具循环，并受模型和 Agent 范围限制', async () => {
+  const { ctx, access, fiber } = await setup()
+  const received: { tools?: { type: string; name?: string }[] }[] = []
+  const baseUrl = await remote(async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk.toString()
+    const payload = JSON.parse(body)
+    received.push(payload)
+    const hosted = (payload.tools ?? [])
+      .filter((t: { type: string }) => t.type !== 'function')
+      .map((t: { type: string }) => ({
+        id: `hosted-${t.type}`,
+        type: `${t.type}_call`,
+        status: 'completed',
+        ...(t.type === 'web_search'
+          ? { action: { type: 'search', query: '测试' } }
+          : { result: 'aW1hZ2U=', output_format: 'png' }),
+      }))
+    const message = {
+      id: 'msg-test',
+      type: 'message',
+      role: 'assistant',
+      status: 'completed',
+      content: [{ type: 'output_text', text: '已完成', annotations: [] }],
+    }
+    const events = [
+      { type: 'response.created', response: { id: 'resp-test', status: 'in_progress' } },
+      ...hosted.flatMap((item: object, index: number) => [
+        { type: 'response.output_item.added', output_index: index, item },
+        { type: 'response.output_item.done', output_index: index, item },
+      ]),
+      { type: 'response.output_item.added', output_index: hosted.length, item: message },
+      { type: 'response.output_item.done', output_index: hosted.length, item: message },
+      {
+        type: 'response.completed',
+        response: {
+          id: 'resp-test',
+          status: 'completed',
+          output: [...hosted, message],
+          usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+        },
+      },
+    ]
+    res.setHeader('content-type', 'text/event-stream')
+    res.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''))
+  })
+  let saved = await ctx.aiProvider.save({ ...input, api: 'openai-responses', baseUrl })
+  saved = await ctx.aiProvider.models(input.id, {
+    revision: saved.revision,
+    models: [model, { ...model, id: 'other' }],
+  })
+  const tools = [
+    {
+      name: 'web_search',
+      type: 'web_search',
+      modelIds: [model.id],
+      enabled: true,
+      options: { search_context_size: 'low' },
+    },
+    {
+      name: 'draw_image',
+      type: 'image_generation',
+      modelIds: [model.id],
+      enabled: true,
+      options: {},
+    },
+    {
+      name: 'documents',
+      type: 'file_search',
+      modelIds: [model.id],
+      enabled: true,
+      options: { vector_store_ids: ['vs-test'] },
+    },
+  ]
+  saved = await ctx.aiProvider.builtinTools(input.id, { revision: saved.revision, tools })
+  expect(ctx.ai.capabilities().tools).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: 'provider:example:web_search' })]),
+  )
+  await expect(
+    ctx.aiProvider.builtinTools(input.id, { revision: saved.revision - 1, tools }),
+  ).rejects.toMatchObject({ status: 409 })
+  expect(() =>
+    validateBuiltinTools([{ ...tools[0], modelIds: ['missing'] }], saved.models),
+  ).toThrow()
+  expect(() =>
+    validateBuiltinTools([{ ...tools[0], options: { type: 'function' } }], saved.models),
+  ).toThrow()
+  await ctx.plugin(agentCore)
+  const execute = vi.fn(async () => '客户端结果')
+  ctx.ai.registerTool(ctx, {
+    id: 'local_tool',
+    description: '本地工具',
+    parameters: { type: 'object', properties: {} },
+    execute,
+  })
+  async function run(id: string, modelId: string, toolIds: string[]) {
+    const ref = { providerId: input.id, modelId }
+    ctx.ai.registerAgent(ctx, {
+      id,
+      version: '1',
+      title: '测试',
+      backendId: 'ai-agent-core',
+      systemTemplate: '',
+      userTemplate: '{{input}}',
+      models: [ref],
+      defaultModel: ref,
+      toolIds,
+      skillIds: [],
+      extensions: {},
+    })
+    const conversation = await ctx.ai.createConversation(access, id)
+    const started = await ctx.ai.start(access, conversation.id, {
+      operation: 'send',
+      input: { text: '测试' },
+      idempotencyKey: id,
+      expectedRevision: conversation.revision,
+      expectedNodeId: null,
+    })
+    await vi.waitFor(async () =>
+      expect((await ctx.ai.getRun(access, started.id)).status).not.toBe('running'),
+    )
+    const result = await ctx.ai.getRun(access, started.id)
+    expect(result.status).toBe('completed')
+    expect(result.requests).toHaveLength(1)
+    return result
+  }
+  const result = await run('allowed', model.id, [
+    'local_tool',
+    'provider:example:web_search',
+    'provider:example:draw_image',
+    'provider:example:documents',
+  ])
+  expect(received[0]?.tools).toEqual(
+    expect.arrayContaining([
+      { type: 'web_search', search_context_size: 'low' },
+      { type: 'image_generation' },
+      { type: 'file_search', vector_store_ids: ['vs-test'] },
+      expect.objectContaining({ type: 'function', name: 'local_tool' }),
+    ]),
+  )
+  expect(
+    result.messages.flatMap((m) => m.content).filter((b) => b.type === 'provider-tool'),
+  ).toHaveLength(3)
+  expect(execute).not.toHaveBeenCalled()
+  await run('wrong-model', 'other', ['provider:example:web_search'])
+  expect(received.at(-1)?.tools ?? []).toEqual([])
+  await run('not-authorized', model.id, [])
+  expect(received.at(-1)?.tools ?? []).toEqual([])
+  await ctx.aiProvider.builtinTools(input.id, {
+    revision: saved.revision,
+    tools: tools.map((tool) => ({ ...tool, enabled: false })),
+  })
+  await run('disabled', model.id, ['provider:example:web_search'])
+  expect(received.at(-1)?.tools ?? []).toEqual([])
+  await fiber.dispose()
+  expect(ctx.ai.capabilities().tools.map((t) => t.id)).not.toContain('provider:example:web_search')
 })

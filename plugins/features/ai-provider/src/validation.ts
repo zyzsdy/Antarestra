@@ -2,6 +2,47 @@ import { AuthError } from '@antarestra/rbac'
 import type { ModelDefinition } from '@antarestra/ai'
 import { apiFormats, thinkingLevels } from './types.js'
 import type { ProviderRecord, ProviderView } from './types.js'
+import type { BuiltinTool } from './types.js'
+
+export function validateBuiltinTools(value: unknown, models: ModelDefinition[]): BuiltinTool[] {
+  check(Array.isArray(value) && value.length <= 100, '内置工具列表无效')
+  const tools = value.map((entry) => {
+    const v = object(entry)
+    const name = identifier(v.name)
+    check(
+      /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(name),
+      '工具名需为字母开头的 1–64 位字母、数字、下划线或短横线',
+    )
+    const type = identifier(v.type)
+    check(
+      /^[a-zA-Z][a-zA-Z0-9_.-]{0,99}$/.test(type) && !['function', 'custom'].includes(type),
+      '内置工具类型需为 1–100 位标识，不能使用客户端 function 或 custom 类型',
+    )
+    check(typeof v.enabled === 'boolean', '启用状态无效')
+    check(
+      Array.isArray(v.modelIds) &&
+        v.modelIds.length > 0 &&
+        v.modelIds.every((id) => models.some((m) => m.id === id && m.tools)),
+      '请选择已有且支持工具的模型',
+    )
+    const options = object(v.options)
+    check(
+      !Object.hasOwn(options, 'type') && !Object.hasOwn(options, 'name'),
+      '选项不能覆盖工具类型或名称',
+    )
+    check(JSON.stringify(options).length <= 16000, '工具选项最多 16000 字')
+    return {
+      name,
+      type,
+      enabled: v.enabled,
+      modelIds: [...new Set(v.modelIds as string[])],
+      options,
+    } as BuiltinTool
+  })
+  check(new Set(tools.map((t) => t.name)).size === tools.length, '内置工具名称重复')
+  check(new Set(tools.map((t) => t.type)).size === tools.length, '同一提供商的内置工具类型不能重复')
+  return tools
+}
 
 export function check(value: unknown, message: string): asserts value {
   if (!value) throw new AuthError(400, message)
@@ -107,6 +148,7 @@ export function validateProvider(value: unknown, previous?: ProviderRecord): Pro
     apiKey: replacement || previous?.apiKey || '',
     headers: normalized,
     models: previous?.models ?? [],
+    builtinTools: previous?.builtinTools ?? [],
     revision: (previous?.revision ?? 0) + 1,
   }
 }
