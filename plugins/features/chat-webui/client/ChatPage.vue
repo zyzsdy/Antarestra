@@ -41,6 +41,7 @@ import type { WorkspaceFilesClient } from '@antarestra/plugin-workspace-file/cli
 import AttachmentTile from './AttachmentTile.vue'
 import ChatHistory from './ChatHistory.vue'
 import ChatMessage from './ChatMessage.vue'
+import TodoPanel from './TodoPanel.vue'
 import { useChat } from './useChat.js'
 
 const props = defineProps<{
@@ -541,6 +542,11 @@ onUnmounted(() => {
           <div v-if="loading" class="chat-loading" role="status"><span>正在加载对话…</span></div>
         </div>
         <footer class="chat-composer-area">
+          <TodoPanel
+            v-if="detail"
+            :key="detail.conversation.id"
+            :items="detail.conversation.todos ?? []"
+          />
           <p v-if="fileError" class="chat-inline-error" role="alert">{{ fileError }}</p>
           <div v-if="!following" class="chat-bottom-link">
             <button class="chat-text-button" @click="bottom">回到底部 ↓</button>

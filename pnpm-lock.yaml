@@ -38,6 +38,9 @@ importers:
       '@antarestra/plugin-auth-local':
         specifier: workspace:*
         version: link:plugins/implementations/auth-local
+      '@antarestra/plugin-basic-tools':
+        specifier: workspace:*
+        version: link:plugins/features/basic-tools
       '@antarestra/plugin-chat-webui':
         specifier: workspace:*
         version: link:plugins/features/chat-webui
@@ -146,6 +149,9 @@ importers:
       '@antarestra/plugin-auth-local':
         specifier: workspace:*
         version: link:../../plugins/implementations/auth-local
+      '@antarestra/plugin-basic-tools':
+        specifier: workspace:*
+        version: link:../../plugins/features/basic-tools
       '@antarestra/plugin-chat-webui':
         specifier: workspace:*
         version: link:../../plugins/features/chat-webui
@@ -481,6 +487,15 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  plugins/features/basic-tools:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
 
   plugins/features/chat-webui:
     dependencies:

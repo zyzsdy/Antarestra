@@ -54,12 +54,18 @@ export interface UserInput {
   variables?: JsonObject
   attachments?: Extract<ContentBlock, { resourceId: string }>[]
 }
+export interface ConversationTodo {
+  id: string
+  text: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
 export interface Conversation {
   id: string
   workspaceId: string
   actorId: string
   agentId: string
   title: string
+  todos?: ConversationTodo[]
   selectedNodeId: string | null
   revision: number
   activeRunId: string | null

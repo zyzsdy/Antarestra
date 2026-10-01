@@ -26,6 +26,7 @@ plugins:
     defaultQuota: 1073741824
   ai: {}
   ai-agent-core: {}
+  basic-tools: {}
   auth-local:
     providerId: local
     allowRegistration: false

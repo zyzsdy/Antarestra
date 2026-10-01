@@ -1,0 +1,30 @@
+{
+  "name": "@antarestra/plugin-basic-tools",
+  "description": "为 AI 提供当前会话标题修改与待办列表管理工具。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "基本工具",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*"
+  }
+}

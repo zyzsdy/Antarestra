@@ -13,6 +13,7 @@ import WebUI from '@antarestra/webui'
 import local from '@antarestra/plugin-auth-local'
 import ai, { AiError } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
+import * as basicTools from '@antarestra/plugin-basic-tools'
 import type { Access, AgentPreset, Config, ModelDriver, RunCommand, Tool } from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
 import type { ConversationStateEvent } from '@antarestra/contracts'
@@ -128,6 +129,243 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('基本工具列表通过 SQLite 文件跨服务重启保留，卸载取消运行并回收工具', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'antarestra-todos-'))
+    directories.push(directory)
+    const filename = join(directory, 'todos.sqlite')
+    let generated = false
+    const app = await setup({
+      filename,
+      agent: agent({ toolIds: ['todo'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (generated) return { content: [{ type: 'text', text: '保留计划' }] }
+          generated = true
+          return {
+            content: [
+              {
+                type: 'tool-call',
+                id: 'set',
+                name: 'todo',
+                arguments: {
+                  action: 'set',
+                  items: [{ id: 'a', text: '未完成任务', status: 'pending' }],
+                },
+              },
+            ],
+          }
+        },
+      },
+    })
+    await app.ctx.plugin(basicTools)
+    await send(app)
+    const id = app.conversation.id
+    await app.ctx.fiber.dispose()
+    contexts.splice(contexts.indexOf(app.ctx), 1)
+    const next = await setup({
+      filename,
+      agent: agent({ toolIds: ['todo'] }),
+      driver: {
+        id: 'driver',
+        async generate(_request, _connection, context) {
+          await new Promise<void>((resolve) =>
+            context.signal.addEventListener('abort', () => resolve(), { once: true }),
+          )
+          return { content: [] }
+        },
+      },
+    })
+    const plugin = await next.ctx.plugin(basicTools)
+    expect((await next.ctx.ai.getConversation(next.access, id)).conversation.todos).toEqual([
+      { id: 'a', text: '未完成任务', status: 'pending' },
+    ])
+    const run = await next.ctx.ai.start(next.access, id, await command(next.ctx, next.access, id))
+    await plugin.dispose()
+    expect((await next.ctx.ai.getRun(next.access, run.id)).status).toBe('cancelled')
+    expect(
+      (await next.ctx.ai.getConversation(next.access, id)).conversation.todos?.[0]?.status,
+    ).toBe('pending')
+    expect(next.ctx.ai.capabilities().tools).toEqual([])
+    const restored = await next.ctx.plugin(basicTools)
+    expect(next.ctx.ai.capabilities().tools.map((tool) => tool.id)).toEqual([
+      'rename_conversation',
+      'todo',
+    ])
+    await restored.dispose()
+  })
+  it('基本工具原子更新标题和待办，支持跨轮次、并发单项更新与全部完成', async () => {
+    let calls: Extract<import('@antarestra/ai').ContentBlock, { type: 'tool-call' }>[] = []
+    const app = await setup({
+      agent: agent({ toolIds: ['rename_conversation', 'todo'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (calls.length) {
+            const content = calls
+            calls = []
+            return { content }
+          }
+          return { content: [{ type: 'text', text: '完成' }] }
+        },
+      },
+    })
+    const plugin = await app.ctx.plugin(basicTools)
+    const todo = (id: string, arguments_: import('@antarestra/ai').JsonObject) => ({
+      type: 'tool-call' as const,
+      id,
+      name: 'todo',
+      arguments: arguments_,
+    })
+    calls = [
+      {
+        type: 'tool-call',
+        id: 'title',
+        name: 'rename_conversation',
+        arguments: { title: '项目计划' },
+      },
+      todo('create', {
+        action: 'set',
+        items: [
+          { id: 'research', text: '调查需求', status: 'in_progress' },
+          { id: 'implement', text: '实现功能', status: 'pending' },
+        ],
+      }),
+    ]
+    expect((await send(app)).status).toBe('completed')
+    const created = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+    expect(created.conversation).toMatchObject({
+      title: '项目计划',
+      todos: [
+        { id: 'research', status: 'in_progress' },
+        { id: 'implement', status: 'pending' },
+      ],
+    })
+    await expect(app.ctx.ai.getConversation(app.other, app.conversation.id)).rejects.toMatchObject({
+      status: 404,
+    })
+    calls = [
+      todo('one', { action: 'update', id: 'research', status: 'completed' }),
+      todo('two', { action: 'update', id: 'implement', status: 'in_progress' }),
+    ]
+    await send(app)
+    expect(
+      (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation.todos?.map(
+        (item) => item.status,
+      ),
+    ).toEqual(['completed', 'in_progress'])
+    const unrelated = await app.ctx.ai.createConversation(app.access, 'assistant', '另一对话')
+    calls = [todo('all', { action: 'complete_all' })]
+    await send(app)
+    expect(
+      (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation.todos?.every(
+        (item) => item.status === 'completed',
+      ),
+    ).toBe(true)
+    expect(
+      (await app.ctx.ai.getConversation(app.access, unrelated.id)).conversation.todos,
+    ).toBeUndefined()
+    await plugin.dispose()
+    expect(app.ctx.ai.capabilities().tools).toEqual([])
+  })
+  it('基本工具拒绝重复标识、未知待办项和空白标题，保留已有列表', async () => {
+    let calls: Extract<import('@antarestra/ai').ContentBlock, { type: 'tool-call' }>[] = []
+    const app = await setup({
+      agent: agent({ toolIds: ['todo', 'rename_conversation'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          const content = calls.length ? calls : [{ type: 'text' as const, text: '结束' }]
+          calls = []
+          return { content }
+        },
+      },
+    })
+    await app.ctx.plugin(basicTools)
+    calls = [
+      {
+        type: 'tool-call',
+        id: 'set',
+        name: 'todo',
+        arguments: {
+          action: 'set',
+          items: [{ id: 'a', text: '任务', status: 'pending' }],
+        },
+      },
+    ]
+    await send(app)
+    calls = [
+      {
+        type: 'tool-call',
+        id: 'duplicate',
+        name: 'todo',
+        arguments: {
+          action: 'set',
+          items: [
+            { id: 'a', text: '新任务', status: 'pending' },
+            { id: 'a', text: '重复', status: 'pending' },
+          ],
+        },
+      },
+      {
+        type: 'tool-call',
+        id: 'unknown',
+        name: 'todo',
+        arguments: { action: 'update', id: 'missing', status: 'completed' },
+      },
+      { type: 'tool-call', id: 'blank', name: 'rename_conversation', arguments: { title: '   ' } },
+    ]
+    const run = await send(app)
+    expect(
+      run.messages
+        .filter((message) => message.role === 'tool')
+        .flatMap((message) => message.content)
+        .every((block) => block.type === 'tool-result' && block.isError),
+    ).toBe(true)
+    expect(
+      (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation.todos,
+    ).toEqual([{ id: 'a', text: '任务', status: 'pending' }])
+  })
+  it('会话工具更新拒绝伪造、跨空间及执行完成后的上下文', async () => {
+    let captured: import('@antarestra/ai').RunContext | undefined
+    let called = false
+    const app = await setup({
+      agent: agent({ toolIds: ['probe'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (called) return { content: [{ type: 'text', text: '结束' }] }
+          called = true
+          return { content: [{ type: 'tool-call', id: 'probe', name: 'probe', arguments: {} }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'probe',
+      description: '测试上下文',
+      parameters: { type: 'object' },
+      async execute(_args, context) {
+        captured = context
+        await expect(
+          app.ctx.ai.updateRunConversation({ ...context }, () => ({ title: '伪造' })),
+        ).rejects.toMatchObject({ status: 403 })
+        await expect(
+          app.ctx.ai.updateRunConversation({ ...context, workspaceId: 'other' }, () => ({
+            title: '越界',
+          })),
+        ).rejects.toMatchObject({ status: 403 })
+        await app.ctx.ai.updateRunConversation(context, () => ({ title: '合法工具' }))
+        return null
+      },
+    })
+    await send(app)
+    expect(
+      (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation.title,
+    ).toBe('合法工具')
+    await expect(
+      app.ctx.ai.updateRunConversation(captured!, () => ({ title: '过期' })),
+    ).rejects.toMatchObject({ status: 403 })
+  })
   it('运行失败记录安全详情并通过 logger.error 输出上下文', async () => {
     const app = await setup({
       driver: {

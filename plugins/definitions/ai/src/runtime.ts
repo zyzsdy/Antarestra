@@ -1,4 +1,4 @@
-import type { AiService, Bound } from './index.js'
+import type { Access, AiService, Bound } from './index.js'
 import type {
   ChatMessage,
   ContentBlock,
@@ -22,6 +22,7 @@ export class Running {
   sequence = 0
   reply: ContentBlock[] = []
   private tools = new Map<string, Tool>()
+  private toolContexts = new WeakSet<RunContext>()
   private systemPrompt = ''
   private transcript: ChatMessage[]
   private pending: Extract<ContentBlock, { type: 'tool-call' }>[] = []
@@ -35,6 +36,7 @@ export class Running {
     readonly record: RunRecord,
     readonly bound: Bound,
     history: ChatMessage[],
+    readonly access: Access,
   ) {
     this.transcript = json(history)
     this.context = Object.freeze({
@@ -49,6 +51,9 @@ export class Running {
   }
   start() {
     this.done = this.execute()
+  }
+  ownsToolContext(context: RunContext) {
+    return this.toolContexts.has(context) && !context.signal.aborted
   }
   async cancel() {
     if (!this.finishing) this.controller.abort(new AiError('cancelled', '运行已取消'))
@@ -403,7 +408,7 @@ export class Running {
           const tool = this.tools.get(call.name)!
           const local = new AbortController()
           const signal = AbortSignal.any([this.context.signal, batch.signal, local.signal])
-          const context = { ...this.context, signal }
+          const context = Object.freeze({ ...this.context, signal })
           const draft: ToolDraft = { call: json(call), blocked: null, result: null, isError: false }
           let timer: ReturnType<typeof setTimeout> | undefined
           try {
@@ -428,6 +433,7 @@ export class Running {
                   timeout,
                 )
               try {
+                this.toolContexts.add(context)
                 draft.result = json(
                   await abortable(
                     Promise.resolve().then(() => tool.execute(json(draft.call.arguments), context)),
@@ -462,6 +468,7 @@ export class Running {
             await this.service.persist(this, 'tool-end', result)
             return result
           } finally {
+            this.toolContexts.delete(context)
             if (timer) clearTimeout(timer)
             local.abort()
           }

@@ -174,6 +174,108 @@ async function mount(identity = () => session) {
   return chat
 }
 describe('聊天会话状态', () => {
+  it('工具状态和终态早于发送响应到达时保留最新列表，不重复增加修订号', async () => {
+    let source: ReadableStreamDefaultController<Uint8Array> | undefined
+    let respond: ((value: unknown) => void) | undefined
+    harness.stateFetch.mockImplementation(
+      async () =>
+        new Response(new ReadableStream({ start: (controller) => (source = controller) })),
+    )
+    const original = { ...history('one').conversation, workspaceId: session.workspaceId }
+    harness.api.mockImplementation(async (path: string) => {
+      if (path === '/ai/catalog') return catalog
+      if (path.endsWith('/runs')) return new Promise((resolve) => (respond = resolve))
+      if (path.includes('?')) return [original]
+      return { ...history('one'), conversation: original }
+    })
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response(
+          `data: ${JSON.stringify({ ...event(1, 'run-end', { status: 'completed' }), runId: 'run', conversationId: 'one' })}\n\n`,
+        ),
+    )
+    const chat = await mount()
+    await chat.navigate('one')
+    await tick()
+    chat.draft.value = '创建任务'
+    const sending = chat.send()
+    await tick()
+    source!.enqueue(
+      new TextEncoder().encode(
+        `data: ${JSON.stringify({ sequence: 1, type: 'conversation', conversation: { ...original, title: '新标题', selectedNodeId: 'reply', activeRunId: null, revision: 4, todos: [{ id: 'a', text: '任务', status: 'pending' }] } })}\n\n`,
+      ),
+    )
+    await tick()
+    respond!({
+      id: 'run',
+      conversationId: 'one',
+      userNodeId: 'user',
+      replyNodeId: 'reply',
+      status: 'running',
+      input: { text: '创建任务' },
+      model,
+      thinking: null,
+      createdAt: 1,
+    })
+    await sending
+    await tick()
+    expect(chat.detail.value?.conversation).toMatchObject({
+      title: '新标题',
+      revision: 4,
+      activeRunId: null,
+      todos: [{ id: 'a', text: '任务', status: 'pending' }],
+    })
+  })
+  it('当前会话实时接收待办进度和标题，保留消息与草稿并拒绝旧状态', async () => {
+    let source: ReadableStreamDefaultController<Uint8Array> | undefined
+    harness.stateFetch.mockImplementation(
+      async () =>
+        new Response(new ReadableStream({ start: (controller) => (source = controller) })),
+    )
+    const original = {
+      ...history('one').conversation,
+      workspaceId: session.workspaceId,
+      revision: 1,
+    }
+    harness.api.mockImplementation(async (path: string) =>
+      path === '/ai/catalog'
+        ? catalog
+        : path.includes('?')
+          ? [original]
+          : path.endsWith('/two')
+            ? history('two')
+            : { ...history('one'), conversation: original },
+    )
+    const chat = await mount()
+    await chat.navigate('one')
+    await tick()
+    chat.draft.value = '保留草稿'
+    const path = chat.detail.value?.path
+    const emit = (sequence: number, revision: number, status: string) =>
+      source!.enqueue(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({ sequence, type: 'conversation', conversation: { ...original, revision, title: 'AI 修改的标题', todos: [{ id: 'a', text: '实现功能', status }] } })}\n\n`,
+        ),
+      )
+    emit(1, 2, 'in_progress')
+    await tick()
+    expect(chat.detail.value?.conversation).toMatchObject({
+      title: 'AI 修改的标题',
+      todos: [{ status: 'in_progress' }],
+    })
+    emit(2, 3, 'completed')
+    emit(3, 2, 'pending')
+    await tick()
+    expect(chat.detail.value?.conversation.todos).toEqual([
+      { id: 'a', text: '实现功能', status: 'completed' },
+    ])
+    expect(chat.detail.value?.path).toBe(path)
+    expect(chat.draft.value).toBe('保留草稿')
+    await chat.navigate('two')
+    await tick()
+    expect(chat.detail.value?.conversation.todos).toBeUndefined()
+  })
   it('独立状态流在不打开对话时同步名称和终态，忽略旧版本与其他空间', async () => {
     let source: ReadableStreamDefaultController<Uint8Array> | undefined
     harness.stateFetch.mockImplementation(

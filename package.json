@@ -34,6 +34,7 @@
     "@antarestra/plugin-ai-agents": "workspace:*",
     "@antarestra/plugin-ai-provider": "workspace:*",
     "@antarestra/plugin-auth-local": "workspace:*",
+    "@antarestra/plugin-basic-tools": "workspace:*",
     "@antarestra/plugin-chat-webui": "workspace:*",
     "@antarestra/plugin-config-panel": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",

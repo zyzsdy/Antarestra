@@ -8,6 +8,7 @@ import type {
   AgentPreset,
   AiEvent,
   Conversation,
+  ConversationTodo,
   MessageNode,
   RunCommand,
   RunRecord,
@@ -22,6 +23,7 @@ import type {
   Provider,
   Registration,
   ResourceResolver,
+  RunContext,
   SkillService,
   Tool,
 } from './types.js'
@@ -365,6 +367,67 @@ export class AiService extends Service<Config> {
       return conversation
     })
   }
+  /** 只接受核心签发的正在执行的工具上下文，更新在会话队列内原子完成。 */
+  async updateRunConversation(
+    context: RunContext,
+    update: (conversation: Readonly<Conversation>) => {
+      title?: string
+      todos?: ConversationTodo[]
+    },
+  ) {
+    const live = this.running.get(context.runId)
+    const assertContext = () => {
+      if (!live || live.record.status !== 'running' || !live.ownsToolContext(context))
+        throw new AiError('forbidden', '工具运行上下文已失效', 403)
+    }
+    assertContext()
+    await this.verify(live!.access)
+    return this.locked(async () => {
+      assertContext()
+      const conversation = await this.conversation(live!.access, context.conversationId)
+      check(conversation.activeRunId === context.runId, '工具不属于当前会话运行')
+      const changes = update(freeze(json(conversation)))
+      if (changes.title !== undefined) {
+        check(
+          typeof changes.title === 'string' &&
+            changes.title.trim().length > 0 &&
+            changes.title.trim().length <= 200,
+          '标题须为 1–200 个字符',
+        )
+        conversation.title = changes.title.trim()
+      }
+      if (changes.todos !== undefined) {
+        const todos = changes.todos
+        check(Array.isArray(todos) && todos.length <= 100, '待办列表最多 100 项')
+        check(
+          todos.every(
+            (item) =>
+              item &&
+              typeof item.id === 'string' &&
+              item.id.trim().length > 0 &&
+              item.id.length <= 100 &&
+              typeof item.text === 'string' &&
+              item.text.trim().length > 0 &&
+              item.text.length <= 500 &&
+              ['pending', 'in_progress', 'completed'].includes(item.status),
+          ) && new Set(todos.map((item) => item.id)).size === todos.length,
+          '待办项的标识、内容或状态无效',
+        )
+        conversation.todos = json(todos)
+      }
+      check(changes.title !== undefined || changes.todos !== undefined, '缺少会话更新内容')
+      assertContext()
+      conversation.revision++
+      await this.db()
+        .updateTable('conversations')
+        .set(conversationFields(conversation))
+        .where('id', '=', conversation.id)
+        .where('workspace_id', '=', context.workspaceId)
+        .execute()
+      this.notifyConversation(conversation)
+      return json(conversation)
+    })
+  }
   async backfillHistory() {
     await this.db().transaction(async (db) => {
       const rows = await db
@@ -664,6 +727,7 @@ export class AiService extends Service<Config> {
         run,
         bound,
         history.flatMap((item) => item.messages),
+        access,
       )
       live.validateSelection(model, run.thinking)
       conversation.lastActivityAt = run.createdAt

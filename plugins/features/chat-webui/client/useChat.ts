@@ -124,6 +124,11 @@ export function useChat(identity: () => Session | undefined) {
     )
       return
     conversationRevisions.set(conversation.id, conversation.revision)
+    if (
+      detail.value?.conversation.id === conversation.id &&
+      conversation.revision >= detail.value.conversation.revision
+    )
+      detail.value = { ...detail.value, conversation }
     listUpdates?.set(conversation.id, conversation)
     conversations.value = conversations.value.filter((item) => item.id !== conversation.id)
     if ((conversation.archivedAt !== null) === archived.value) {
@@ -165,13 +170,15 @@ export function useChat(identity: () => Session | undefined) {
       versionCount: siblings.length + 1,
     }
     const parentIndex = history.path.findIndex((item) => item.id === user.parentId)
-    const conversation = {
+    const started = {
       ...history.conversation,
       selectedNodeId: node.id,
       activeRunId: run.id,
       revision: command.expectedRevision + 1,
       lastActivityAt: run.createdAt,
     }
+    const latest = conversations.value.find((item) => item.id === run.conversationId)
+    const conversation = latest && latest.revision >= started.revision ? latest : started
     detail.value = {
       conversation,
       nodes: [
@@ -261,6 +268,8 @@ export function useChat(identity: () => Session | undefined) {
         if ((conversationRevisions.get(id) ?? -1) > item.revision) merged.delete(id)
       }
       conversations.value = [...merged.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      const current = merged.get(currentId.value)
+      if (current) remember(current)
     } catch (cause) {
       if (turn === listEpoch && alive) listError.value = message(cause)
     } finally {
@@ -307,6 +316,8 @@ export function useChat(identity: () => Session | undefined) {
       reply.value = emptyReply()
       replies.clear()
       for (const run of records) runs.set(run.id, run)
+      const current = conversations.value.find((item) => item.id === id)
+      if (current && current.revision > result.conversation.revision) result.conversation = current
       detail.value = result
       remember(result.conversation)
       const latest = records.at(-1)
@@ -366,7 +377,7 @@ export function useChat(identity: () => Session | undefined) {
                   node.id === run.replyNodeId ? { ...node, content } : node
                 const latest = conversations.value.find((item) => item.id === id)
                 const conversation =
-                  latest?.activeRunId === null && latest.revision > history.conversation.revision
+                  latest?.activeRunId === null && latest.revision >= history.conversation.revision
                     ? latest
                     : {
                         ...history.conversation,
