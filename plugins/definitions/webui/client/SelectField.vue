@@ -79,7 +79,13 @@ onMounted(() => {
   portalTarget.value = host.value?.closest('[role="dialog"], [role="alertdialog"]') ?? document.body
 })
 watch(open, (isOpen) => {
-  if (isOpen) return
+  if (isOpen) {
+    if (!props.editable && !filtering.value) {
+      query.value = ''
+      filtering.value = true
+    }
+    return
+  }
   filtering.value = false
   query.value = ''
 })
@@ -97,6 +103,16 @@ function select(selected: unknown) {
 }
 function focus() {
   host.value?.querySelector<HTMLElement>('input, button')?.focus()
+}
+function startSearch() {
+  if (props.editable || filtering.value) return
+  query.value = ''
+  filtering.value = true
+}
+function blur() {
+  if (open.value) return
+  filtering.value = false
+  query.value = ''
 }
 defineExpose({ focus })
 function clear() {
@@ -140,6 +156,8 @@ function keydown(event: KeyboardEvent) {
           :maxlength="maxlength"
           :autocomplete="autocomplete"
           :disabled="disabled"
+          @focus="startSearch"
+          @blur="blur"
         />
         <button
           v-if="inputValue && (editable || filtering)"

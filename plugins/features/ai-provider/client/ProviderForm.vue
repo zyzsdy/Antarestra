@@ -79,6 +79,7 @@ function save(event: Event) {
         id="provider-builtin"
         v-model="template"
         label="提供商模板"
+        placeholder="搜索提供商模板"
         :options="options"
         searchable
         @update:model-value="preset"
