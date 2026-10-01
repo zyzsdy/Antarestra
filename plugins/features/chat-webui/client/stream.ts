@@ -1,4 +1,5 @@
-import type { AiEvent, ChatMessage, ContentBlock } from '@antarestra/contracts'
+import type { AiEvent, ChatMessage, ContentBlock, RunRecord } from '@antarestra/contracts'
+import { finishToolDetails, mergeToolBlocks, type ToolDetail } from './tool-details.js'
 
 /** 网络块不等于 SSE 帧；只在完整空行边界交付事件。 */
 export class EventDecoder<T extends { sequence: number } = AiEvent> {
@@ -30,7 +31,7 @@ export interface ReplyState {
   sequence: number
   completed: ContentBlock[]
   pending: ContentBlock[]
-  tools: { id: string; name: string; status: string; detail: string }[]
+  tools: ToolDetail[]
   status: string
   ended: boolean
 }
@@ -63,32 +64,29 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
     }
     case 'message': {
       const message = event.data as unknown as ChatMessage
+      mergeToolBlocks(state.tools, message.content)
       if (message.role === 'assistant') {
         state.completed.push(...message.content)
         state.pending = []
       }
       break
     }
-    case 'tool-start':
+    case 'tool-start': {
+      state.status = '正在执行工具'
+      mergeToolBlocks(state.tools, [event.data as unknown as ContentBlock], true)
+      break
+    }
     case 'tool-end': {
-      state.status = event.type === 'tool-start' ? '正在执行工具' : '正在思考'
-      const id = String(data.id ?? event.sequence)
-      const tool = state.tools.find((item) => item.id === id)
-      const status =
-        event.type === 'tool-start' ? '正在执行' : data.isError ? '执行失败' : '执行完成'
-      if (tool) {
-        tool.status = status
-        tool.detail += '\n' + JSON.stringify(event.data, null, 2)
-      } else
-        state.tools.push({
-          id,
-          name: String(data.name ?? data.id ?? '工具'),
-          status,
-          detail: JSON.stringify(event.data, null, 2),
-        })
+      state.status = '正在思考'
+      mergeToolBlocks(state.tools, (event.data as unknown as ChatMessage).content)
       break
     }
     case 'run-end':
+      finishToolDetails(
+        state.tools,
+        data.status as RunRecord['status'],
+        (data.error as RunRecord['error']) ?? null,
+      )
       state.ended = true
       state.status = ''
       break

@@ -352,6 +352,13 @@ export class Running {
       signal.throwIfAborted()
       check(Array.isArray(output.content), '模型响应无效')
       await this.validateResources(output.content)
+      // 先保存模型给出的调用，再校验是否允许执行，拒绝的调用也能在历史中查看。
+      const message: ChatMessage = { role: 'assistant', content: json(output.content) }
+      this.record.messages.push(message)
+      this.reply = this.record.messages
+        .filter((m) => m.role === 'assistant')
+        .flatMap((m) => m.content)
+      await this.service.persist(this, 'message', { ...message, usage: output.usage ?? null })
       const calls: typeof this.pending = []
       for (const block of output.content) {
         if (block.type === 'text' || block.type === 'image' || block.type === 'file')
@@ -376,14 +383,8 @@ export class Running {
           calls.push(json(block))
         }
       }
-      const message: ChatMessage = { role: 'assistant', content: json(output.content) }
-      this.record.messages.push(message)
       this.transcript.push(json(message))
       this.pending = calls
-      this.reply = this.record.messages
-        .filter((m) => m.role === 'assistant')
-        .flatMap((m) => m.content)
-      await this.service.persist(this, 'message', { ...message, usage: output.usage ?? null })
       return json(output)
     } finally {
       if (timer) clearTimeout(timer)
@@ -402,6 +403,7 @@ export class Running {
     )
     this.executing = true
     const batch = new AbortController()
+    const resultIndex = this.record.messages.length
     try {
       const results = await Promise.all(
         calls.map(async (call) => {
@@ -465,6 +467,8 @@ export class Running {
                 },
               ],
             }
+            // 单项完成即保存，其他并发工具失败或取消时也保留已返回的详情。
+            this.record.messages.push(json(result))
             await this.service.persist(this, 'tool-end', result)
             return result
           } finally {
@@ -475,7 +479,8 @@ export class Running {
         }),
       )
       this.active()
-      this.record.messages.push(...results)
+      // 完整批次按调用顺序提供上下文；中途失败时保留已经独立保存的结果。
+      this.record.messages.splice(resultIndex, results.length, ...json(results))
       this.transcript.push(...json(results))
       this.pending = []
       for (const result of results) await this.service.persist(this, 'message', result)

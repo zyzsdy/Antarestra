@@ -641,6 +641,88 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(run.error?.code).toBe('invalid_request')
     expect(run.requests).toHaveLength(1)
     expect(executed).toBe(false)
+    expect(run.messages.at(-1)?.content).toEqual([
+      { type: 'tool-call', id: 'bad', name: 'strict', arguments: {} },
+    ])
+    expect(
+      (await app.ctx.ai.events(app.access, run.id)).some(
+        (event) => event.type === 'message' && JSON.stringify(event.data).includes('strict'),
+      ),
+    ).toBe(true)
+  })
+  it('未提供的工具调用被拒绝执行，但名称与参数仍保存在事件和回复节点中', async () => {
+    const call = {
+      type: 'tool-call' as const,
+      id: 'unknown',
+      name: 'rename_conversation',
+      arguments: { title: '晚餐建议' },
+    }
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        async generate() {
+          return { content: [call] }
+        },
+      },
+    })
+    const run = await send(app)
+    expect(run.status).toBe('failed')
+    expect(run.error?.message).toBe('模型调用了未提供的工具')
+    expect(run.messages.at(-1)?.content).toEqual([call])
+    const events = await app.ctx.ai.events(app.access, run.id)
+    expect(
+      events.find(
+        (event) =>
+          event.type === 'message' && JSON.stringify(event.data).includes('rename_conversation'),
+      )?.data,
+    ).toMatchObject({ content: [call] })
+    expect(events.some((event) => event.type === 'tool-start')).toBe(false)
+    const conversation = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+    expect(conversation.nodes.find((node) => node.id === run.replyNodeId)?.content).toEqual([call])
+  })
+  it('并发工具中止后仍保留已经返回的结果', async () => {
+    const app = await setup({
+      agent: agent({ toolIds: ['probe'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          return {
+            content: [
+              { type: 'tool-call', id: 'fast', name: 'probe', arguments: { slow: false } },
+              { type: 'tool-call', id: 'slow', name: 'probe', arguments: { slow: true } },
+            ],
+          }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'probe',
+      description: '',
+      parameters: { type: 'object' },
+      async execute(args, context) {
+        if (args.slow) await delay(10000, undefined, { signal: context.signal })
+        return { saved: true }
+      },
+    })
+    const run = await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id),
+    )
+    await expect
+      .poll(async () =>
+        (await app.ctx.ai.events(app.access, run.id)).some((event) => event.type === 'tool-end'),
+      )
+      .toBe(true)
+    await app.ctx.ai.cancel(app.access, run.id)
+    const saved = await app.ctx.ai.getRun(app.access, run.id)
+    expect(saved.status).toBe('cancelled')
+    expect(saved.messages.filter((message) => message.role === 'tool')).toEqual([
+      {
+        role: 'tool',
+        content: [{ type: 'tool-result', id: 'fast', content: { saved: true }, isError: false }],
+      },
+    ])
   })
   it('保存完整请求与历史，拒绝伪造上下文和跨空间访问，凭据不进入导出', async () => {
     const app = await setup()

@@ -21,6 +21,7 @@ import MessageAction from './MessageAction.vue'
 import AttachmentTile from './AttachmentTile.vue'
 import { formatMessageTime } from './message-time.js'
 import type { ReplyState } from './stream.js'
+import { historyToolDetails } from './tool-details.js'
 const props = defineProps<{
   node: MessageNode
   run?: RunRecord | undefined
@@ -64,24 +65,7 @@ const attachments = computed(() =>
       block.type === 'image' || block.type === 'file',
   ),
 )
-const tools = computed(() =>
-  props.live
-    ? props.live.tools
-    : (props.run?.messages ?? [])
-        .flatMap((message) => message.content)
-        .flatMap((block) =>
-          block.type === 'tool-call' || block.type === 'tool-result'
-            ? [
-                {
-                  id: `${block.type}:${block.id}`,
-                  name: block.type === 'tool-call' ? block.name : '工具结果',
-                  status: block.type === 'tool-call' ? '调用' : block.isError ? '失败' : '完成',
-                  detail: JSON.stringify(block, null, 2),
-                },
-              ]
-            : [],
-        ),
-)
+const tools = computed(() => (props.live ? props.live.tools : historyToolDetails(props.run)))
 </script>
 
 <template>
@@ -101,10 +85,30 @@ const tools = computed(() =>
       >
       <CollapsibleContent>
         <MarkdownView v-if="thoughts" :source="thoughts" :streaming="!!live && !live.ended" />
-        <div v-for="tool in tools" :key="tool.id" class="chat-tool">
-          <strong>{{ tool.name }} · {{ tool.status }}</strong>
-          <pre>{{ tool.detail }}</pre>
-        </div>
+        <CollapsibleRoot v-for="tool in tools" :key="tool.id" class="chat-tool">
+          <CollapsibleTrigger class="chat-detail-trigger chat-tool-trigger">
+            <ChevronDownIcon class="ui-icon" />
+            <span class="chat-tool-name">已调用 {{ tool.name }}</span>
+            <span class="chat-tool-status" :class="{ 'chat-run-error': tool.isError }">{{
+              tool.status
+            }}</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent class="chat-tool-content">
+            <p class="chat-tool-label">调用参数</p>
+            <pre>{{ JSON.stringify(tool.arguments, null, 2) }}</pre>
+            <p class="chat-tool-label">返回结果</p>
+            <pre v-if="tool.result !== undefined" :class="{ 'chat-run-error': tool.isError }">{{
+              JSON.stringify(tool.result, null, 2)
+            }}</pre>
+            <p v-else class="chat-tool-empty">
+              {{
+                (live && !live.ended) || run?.status === 'running'
+                  ? '等待工具返回…'
+                  : '工具未返回结果'
+              }}
+            </p>
+          </CollapsibleContent>
+        </CollapsibleRoot>
       </CollapsibleContent>
     </CollapsibleRoot>
     <div v-if="attachments.length" class="chat-attachments chat-message-attachments">

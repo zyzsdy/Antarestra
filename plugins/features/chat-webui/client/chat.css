@@ -449,7 +449,36 @@
   overflow: auto;
 }
 .chat-tool {
-  margin-top: 12px;
+  margin-top: 6px;
+  min-width: 0;
+}
+.chat-tool-trigger {
+  width: 100%;
+  text-align: left;
+  align-items: baseline;
+}
+.chat-tool-trigger > svg {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.chat-tool-name {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.chat-tool-status {
+  flex-shrink: 0;
+  font-size: 12px;
+  margin-left: auto;
+}
+.chat-tool-content {
+  padding-left: 22px;
+}
+.chat-tool-label {
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+.chat-tool-empty {
+  margin: 4px 0 10px;
 }
 .chat-run-status {
   font-size: 13px;
