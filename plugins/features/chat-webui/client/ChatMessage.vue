@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { MarkdownView } from '@antarestra/plugin-markdown-render/client'
 import type { ContentBlock, MessageNode, RunRecord } from '@antarestra/contracts'
@@ -22,6 +22,7 @@ import AttachmentTile from './AttachmentTile.vue'
 import { formatMessageTime } from './message-time.js'
 import type { ReplyState } from './stream.js'
 import { historyToolDetails } from './tool-details.js'
+import { replyContent } from './reply-content.js'
 const props = defineProps<{
   node: MessageNode
   run?: RunRecord | undefined
@@ -56,9 +57,16 @@ const text = (blocks: ContentBlock[], kind: 'text' | 'thinking') =>
 const body = computed(() =>
   props.node.role === 'user'
     ? (props.node.input?.text ?? text(content.value, 'text'))
-    : text(content.value, 'text'),
+    : presentation.value.body,
 )
-const thoughts = computed(() => text(content.value, 'thinking'))
+const presentation = computed(() => replyContent(content.value, tools.value))
+const detailsOpen = ref(!!props.live && !props.live.ended)
+watch(
+  () => !!props.live && !props.live.ended,
+  (running) => {
+    detailsOpen.value = running
+  },
+)
 const attachments = computed(() =>
   content.value.filter(
     (block): block is Extract<ContentBlock, { resourceId: string }> =>
@@ -77,44 +85,52 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
     @focusin="now = new Date()"
   >
     <CollapsibleRoot
-      v-if="node.role === 'assistant' && (thoughts || tools.length)"
+      v-if="node.role === 'assistant' && presentation.details.length"
+      v-model:open="detailsOpen"
       class="chat-details"
     >
       <CollapsibleTrigger class="chat-detail-trigger"
         ><ChevronDownIcon class="ui-icon" />思考与工具详情</CollapsibleTrigger
       >
       <CollapsibleContent>
-        <MarkdownView v-if="thoughts" :source="thoughts" :streaming="!!live && !live.ended" />
-        <CollapsibleRoot v-for="tool in tools" :key="tool.id" class="chat-tool">
-          <CollapsibleTrigger class="chat-detail-trigger chat-tool-trigger">
-            <ChevronDownIcon class="ui-icon" />
-            <span class="chat-tool-name">已调用 {{ tool.name }}</span>
-            <span class="chat-tool-status" :class="{ 'chat-run-error': tool.isError }">{{
-              tool.status
-            }}</span>
-          </CollapsibleTrigger>
-          <CollapsibleContent class="chat-tool-content">
-            <p class="chat-tool-label">调用参数</p>
-            <pre>{{ JSON.stringify(tool.arguments, null, 2) }}</pre>
-            <p class="chat-tool-label">返回结果</p>
-            <img
-              v-if="tool.image"
-              :src="tool.image"
-              alt="提供商生成的图片"
-              class="chat-generated-image"
-            />
-            <pre v-if="tool.result !== undefined" :class="{ 'chat-run-error': tool.isError }">{{
-              JSON.stringify(tool.result, null, 2)
-            }}</pre>
-            <p v-else class="chat-tool-empty">
-              {{
-                (live && !live.ended) || run?.status === 'running'
-                  ? '等待工具返回…'
-                  : '工具未返回结果'
-              }}
-            </p>
-          </CollapsibleContent>
-        </CollapsibleRoot>
+        <template v-for="detail in presentation.details" :key="detail.id">
+          <MarkdownView
+            v-if="detail.type !== 'tool'"
+            :source="detail.text"
+            :streaming="!!live && !live.ended"
+          />
+          <CollapsibleRoot v-else class="chat-tool">
+            <CollapsibleTrigger class="chat-detail-trigger chat-tool-trigger">
+              <ChevronDownIcon class="ui-icon" />
+              <span class="chat-tool-name">已调用 {{ detail.tool.name }}</span>
+              <span class="chat-tool-status" :class="{ 'chat-run-error': detail.tool.isError }">{{
+                detail.tool.status
+              }}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent class="chat-tool-content">
+              <p class="chat-tool-label">调用参数</p>
+              <pre>{{ JSON.stringify(detail.tool.arguments, null, 2) }}</pre>
+              <p class="chat-tool-label">返回结果</p>
+              <img
+                v-if="detail.tool.image"
+                :src="detail.tool.image"
+                alt="提供商生成的图片"
+                class="chat-generated-image"
+              />
+              <pre
+                v-if="detail.tool.result !== undefined"
+                :class="{ 'chat-run-error': detail.tool.isError }"
+                >{{ JSON.stringify(detail.tool.result, null, 2) }}</pre>
+              <p v-else class="chat-tool-empty">
+                {{
+                  (live && !live.ended) || run?.status === 'running'
+                    ? '等待工具返回…'
+                    : '工具未返回结果'
+                }}
+              </p>
+            </CollapsibleContent>
+          </CollapsibleRoot>
+        </template>
       </CollapsibleContent>
     </CollapsibleRoot>
     <div v-if="attachments.length" class="chat-attachments chat-message-attachments">

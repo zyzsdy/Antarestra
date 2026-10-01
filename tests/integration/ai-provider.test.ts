@@ -1,3 +1,6 @@
+import { applyEvent, emptyReply } from '../../plugins/features/chat-webui/client/stream.js'
+import { replyContent } from '../../plugins/features/chat-webui/client/reply-content.js'
+import { historyToolDetails } from '../../plugins/features/chat-webui/client/tool-details.js'
 import { createServer } from 'node:http'
 import type { RequestListener } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -719,20 +722,29 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       status: 'completed',
       content: [{ type: 'output_text', text: '已完成', annotations: [] }],
     }
+    const commentary = {
+      ...message,
+      id: 'msg-commentary',
+      phase: 'commentary',
+      content: [{ type: 'output_text', text: '先检索资料。', annotations: [] }],
+    }
     const events = [
       { type: 'response.created', response: { id: 'resp-test', status: 'in_progress' } },
+      { type: 'response.output_item.added', output_index: 0, item: commentary },
+      { type: 'response.output_text.delta', output_index: 0, delta: '先检索资料。' },
+      { type: 'response.output_item.done', output_index: 0, item: commentary },
       ...hosted.flatMap((item: object, index: number) => [
-        { type: 'response.output_item.added', output_index: index, item },
-        { type: 'response.output_item.done', output_index: index, item },
+        { type: 'response.output_item.added', output_index: index + 1, item },
+        { type: 'response.output_item.done', output_index: index + 1, item },
       ]),
-      { type: 'response.output_item.added', output_index: hosted.length, item: message },
-      { type: 'response.output_item.done', output_index: hosted.length, item: message },
+      { type: 'response.output_item.added', output_index: hosted.length + 1, item: message },
+      { type: 'response.output_item.done', output_index: hosted.length + 1, item: message },
       {
         type: 'response.completed',
         response: {
           id: 'resp-test',
           status: 'completed',
-          output: [...hosted, message],
+          output: [commentary, ...hosted, message],
           usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
         },
       },
@@ -837,6 +849,27 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
   expect(
     result.messages.flatMap((m) => m.content).filter((b) => b.type === 'provider-tool'),
   ).toHaveLength(3)
+  const content = result.messages
+    .filter((message) => message.role === 'assistant')
+    .flatMap((message) => message.content)
+  expect(content.map((block) => block.type)).toEqual([
+    'text',
+    'provider-tool',
+    'provider-tool',
+    'provider-tool',
+    'text',
+  ])
+  const replay = emptyReply()
+  const events = await ctx.ai.events(access, result.id, 0)
+  for (const event of events) {
+    applyEvent(replay, event)
+    if (event.type === 'provider-tool') {
+      expect(replay.pending[0]).toEqual({ type: 'text', text: '先检索资料。' })
+      expect(replyContent(replay.pending, replay.tools).body).toBe('')
+    }
+  }
+  expect(replay.completed).toEqual(content)
+  expect(replyContent(content, historyToolDetails(result)).body).toBe('已完成')
   expect(execute).not.toHaveBeenCalled()
   await run('wrong-model', 'other', ['provider:example:web_search'])
   expect(received.at(-1)?.tools ?? []).toEqual([])

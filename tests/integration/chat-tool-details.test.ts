@@ -1,3 +1,4 @@
+import { replyContent } from '../../plugins/features/chat-webui/client/reply-content.js'
 import { describe, expect, it } from 'vitest'
 import type { AiEvent, ChatMessage, RunRecord } from '@antarestra/contracts'
 import { applyEvent, emptyReply } from '../../plugins/features/chat-webui/client/stream.js'
@@ -101,4 +102,78 @@ it('提供商内置工具状态去重、图片预览与取消后的历史保持�
   expect(image.tools).toHaveLength(1)
   expect(image.tools[0]?.image).toBe('data:image/webp;base64,aW1hZ2U=')
   expect(image.tools[0]?.result).toMatchObject({ result: '[图片内容见预览]' })
+})
+
+describe('回复内容顺序', () => {
+  it('实时说明穿插在思考与工具之间，最终消息替换增量且历史一致', () => {
+    const state = emptyReply()
+    const hosted = {
+      type: 'provider-tool' as const,
+      id: 'hosted',
+      name: 'web_search',
+      status: 'in_progress',
+      result: {},
+    }
+    applyEvent(state, event(1, 'message-delta', { kind: 'thinking', text: '核对范围' }))
+    applyEvent(state, event(2, 'message-delta', { kind: 'text', text: '先检索资料。' }))
+    applyEvent(state, event(3, 'provider-tool', hosted))
+    applyEvent(state, event(4, 'message-delta', { kind: 'text', text: '继续核对。' }))
+    applyEvent(state, event(5, 'provider-tool', { ...hosted, id: 'second' }))
+    applyEvent(state, event(6, 'message-delta', { kind: 'text', text: '最终结论。' }))
+    expect(replyContent(state.pending, state.tools)).toMatchObject({
+      body: '最终结论。',
+      details: [
+        { type: 'thinking', text: '核对范围' },
+        { type: 'text', text: '先检索资料。' },
+        { type: 'tool' },
+        { type: 'text', text: '继续核对。' },
+        { type: 'tool' },
+      ],
+    })
+    const content = structuredClone(state.pending)
+    const message: ChatMessage = { role: 'assistant', content }
+    applyEvent(state, event(7, 'message', message))
+    applyEvent(state, event(7, 'message', message))
+    applyEvent(state, event(8, 'run-end', { status: 'completed', error: null }))
+    expect(state.pending).toEqual([])
+    expect(replyContent(state.completed, state.tools)).toEqual(
+      replyContent(
+        content,
+        historyToolDetails({ messages: [message], status: 'completed', error: null }),
+      ),
+    )
+  })
+
+  it('本地工具前的文字进入详情，纯文字回答完整保留', () => {
+    const blocks = [
+      { type: 'text' as const, text: '准备搜索' },
+      call,
+      { type: 'thinking' as const, text: '检查结果' },
+      { type: 'text' as const, text: '答案' },
+      { type: 'text' as const, text: '续段' },
+    ]
+    expect(replyContent(blocks, []).body).toBe('答案续段')
+    expect(replyContent([{ type: 'text', text: '直接回答' }], [])).toEqual({
+      body: '直接回答',
+      details: [],
+    })
+    expect(replyContent([blocks[0]!, call], []).body).toBe('')
+  })
+
+  it('旧记录的 commentary 签名可区分中途说明与正文', () => {
+    const blocks = [
+      {
+        type: 'text' as const,
+        text: '正在查找',
+        continuation: {
+          model: { providerId: 'p', modelId: 'm' },
+          driverId: 'd',
+          signature: JSON.stringify({ v: 1, id: 'old', phase: 'commentary' }),
+        },
+      },
+      { type: 'text' as const, text: '正式回答' },
+    ]
+    expect(replyContent(blocks, []).body).toBe('正式回答')
+    expect(replyContent(blocks, []).details[0]).toMatchObject({ text: '正在查找' })
+  })
 })

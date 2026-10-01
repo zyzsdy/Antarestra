@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import * as vue from 'vue'
 import type { ClientContext } from '@antarestra/webui/client'
-import type { MessageNode } from '@antarestra/contracts'
+import type { MessageNode, Json } from '@antarestra/contracts'
 import { router, session } from '../../plugins/definitions/webui/client/runtime.js'
 import applyMarkdown from '../../plugins/features/markdown-render/client/index.js'
 import {
@@ -9,7 +9,7 @@ import {
   registerCodeRenderer,
 } from '../../plugins/features/markdown-render/client/api.js'
 import ChatMessage from '../../plugins/features/chat-webui/client/ChatMessage.vue'
-import { emptyReply } from '../../plugins/features/chat-webui/client/stream.js'
+import { applyEvent, emptyReply } from '../../plugins/features/chat-webui/client/stream.js'
 import PreviewValue from './MarkdownPreviewValue.vue'
 import { detailsSample } from './markdown-details.js'
 
@@ -131,6 +131,41 @@ function stop() {
   clearInterval(timer)
   reply.ended = true
 }
+function timeline() {
+  clearInterval(timer)
+  Object.assign(reply, emptyReply())
+  const content = [
+    { type: 'thinking', text: '核对最近三个完整年份。' },
+    { type: 'text', text: '我会先检索气象部门资料。' },
+    {
+      type: 'provider-tool',
+      id: 'search-1',
+      name: 'web_search',
+      status: 'completed',
+      result: { action: { query: '上海台风' } },
+    },
+    { type: 'text', text: '已找到年度资料，继续核对统计口径。' },
+    {
+      type: 'provider-tool',
+      id: 'search-2',
+      name: 'web_search',
+      status: 'completed',
+      result: { action: { query: '上海降雨' } },
+    },
+    { type: 'text', text: '我按最近三个完整年份整理了上海的台风与降雨情况。' },
+  ] as MessageNode['content']
+  const state = emptyReply()
+  applyEvent(state, {
+    sequence: 1,
+    runId: 'preview',
+    conversationId: 'preview',
+    workspaceId: 'preview',
+    createdAt: Date.now(),
+    type: 'message',
+    data: { role: 'assistant', content } as unknown as Json,
+  })
+  Object.assign(reply, state)
+}
 vue.onBeforeUnmount(() => {
   clearInterval(timer)
   effects.reverse().forEach((dispose) => dispose())
@@ -147,6 +182,7 @@ reply.ended = true
       <div class="actions">
         <button @click="start()">开始流式输出</button>
         <button @click="stop">停止输出</button>
+        <button @click="timeline">思考与工具交错示例</button>
         <button @click="start(true)">未闭合代码块</button>
         <button @click="toggle">{{ registered ? '卸载代码扩展' : '重新注册扩展' }}</button>
       </div>

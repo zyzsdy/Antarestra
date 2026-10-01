@@ -131,3 +131,5 @@ Markdown 助理消息的代码复制按钮由 `MarkdownContent.vue` 在 `.md-bod
 依据：用户要求及 AI Provider 的 Responses 驱动契约。提供商详情可添加、编辑和删除内置工具，复用 EditorDialog、SelectField、CheckboxField、useApi 和 FeedbackHost。工具类型由用户自由填写，常见类型只作为建议；工具名用于 Agent 选择和调用详情，发送给提供商的声明使用类型及 JSON 选项，不伪造 function 定义。每项绑定已有模型，可独立停用。
 
 Agents 的可用工具目录包含带提供商范围的内置工具。仅当所选模型匹配、工具启用且 Agent 授权时追加到请求。提供商在内部执行，客户端不执行或回传 function_call_output。调用状态与返回结果经统一事件流和历史展示；图片生成结果提供预览。当前接入 OpenAI Responses 系列接口，其他协议需要对应驱动适配，不宣称已经支持。
+
+聊天回复按内容原始顺序穿插思考、中途说明和工具调用，最后一次思考或工具之后的文字作为正文；提供商明确标记的 commentary 也进入详情。运行期间详情默认展开，用户可自行开合，结束后统一折叠；复制仅复制正文。提供商驱动保存 Responses 输出顺序，实时流与历史复用同一展示规则。旧记录若已丢失工具交错位置无法精确还原，但保留的 commentary 阶段仍用于分离说明文字。依据：用户要求及 AI 内容块、事件流契约。

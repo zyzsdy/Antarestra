@@ -17,6 +17,7 @@ import type {
   ResolvedResource,
   ContentBlock,
 } from '@antarestra/ai'
+import { orderOutput } from './output-order.js'
 import { filePayload } from './attachments.js'
 import { nativeFiles } from './native-files.js'
 import { builtinProviders } from '@earendil-works/pi-ai/providers/all'
@@ -240,6 +241,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
         )
           throw new AiError('unsupported_builtin_tool', '内置工具需要 OpenAI Responses 接口')
         const hosted = new Map<string, Extract<ContentBlock, { type: 'provider-tool' }>>()
+        const outputOrder = new Map<string, number>()
         const stream = api.streamSimple(
           model,
           normalizeContext({
@@ -275,6 +277,20 @@ export function driver(provider: ProviderRecord): ModelDriver {
               await update({ type: 'activity' })
               if (!value || typeof value !== 'object') return
               const event = value as Record<string, unknown>
+              // 内置工具与文字必须走同一个原始流，避免 pi 队列消费速度改变顺序。
+              if (builtinTools.length && typeof event.delta === 'string') {
+                const kind =
+                  event.type === 'response.output_text.delta' ||
+                  event.type === 'response.refusal.delta'
+                    ? 'text'
+                    : event.type === 'response.reasoning_summary_text.delta' ||
+                        event.type === 'response.reasoning_text.delta'
+                      ? 'thinking'
+                      : null
+                if (kind) await update({ type: 'delta', kind, text: event.delta })
+              }
+              if (builtinTools.length && event.type === 'response.reasoning_summary_part.done')
+                await update({ type: 'delta', kind: 'thinking', text: '\n\n' })
               const items =
                 event.type === 'response.completed'
                   ? ((event.response as { output?: unknown[] } | undefined)?.output ?? [])
@@ -282,9 +298,13 @@ export function driver(provider: ProviderRecord): ModelDriver {
                       event.type === 'response.output_item.done'
                     ? [event.item]
                     : []
-              for (const value of items) {
+              for (const [index, value] of items.entries()) {
                 if (!value || typeof value !== 'object') continue
                 const item = value as JsonObject
+                if (typeof item.id === 'string') {
+                  const position = event.type === 'response.completed' ? index : event.output_index
+                  if (typeof position === 'number') outputOrder.set(item.id, position)
+                }
                 const tool = builtinTools.find((t) => `${t.providerTool!.type}_call` === item.type)
                 if (!tool || typeof item.id !== 'string') continue
                 const block: Extract<ContentBlock, { type: 'provider-tool' }> = {
@@ -307,7 +327,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
           if (event.type === 'error')
             throw failure(event.error.errorMessage ?? '模型请求失败，请检查提供商配置或稍后重试')
           await update(
-            event.type === 'text_delta' || event.type === 'thinking_delta'
+            !builtinTools.length && (event.type === 'text_delta' || event.type === 'thinking_delta')
               ? {
                   type: 'delta',
                   kind: event.type === 'text_delta' ? 'text' : 'thinking',
@@ -320,45 +340,48 @@ export function driver(provider: ProviderRecord): ModelDriver {
         if (result.stopReason === 'error' || result.stopReason === 'aborted')
           throw failure(result.errorMessage ?? '模型请求失败或已取消')
         return {
-          content: [
-            ...hosted.values(),
-            ...result.content.map((block) =>
-              block.type === 'toolCall'
-                ? {
-                    type: 'tool-call' as const,
-                    id: block.id,
-                    name: block.name,
-                    arguments: block.arguments as JsonObject,
-                  }
-                : block.type === 'thinking'
+          content: orderOutput(
+            [
+              ...hosted.values(),
+              ...result.content.map((block) =>
+                block.type === 'toolCall'
                   ? {
-                      type: 'thinking' as const,
-                      text: block.thinking,
-                      ...(block.thinkingSignature
-                        ? {
-                            continuation: {
-                              model: request.model,
-                              driverId: `ai-provider:${provider.id}`,
-                              signature: block.thinkingSignature,
-                            },
-                          }
-                        : {}),
+                      type: 'tool-call' as const,
+                      id: block.id,
+                      name: block.name,
+                      arguments: block.arguments as JsonObject,
                     }
-                  : {
-                      type: 'text' as const,
-                      text: block.text,
-                      ...(block.textSignature
-                        ? {
-                            continuation: {
-                              model: request.model,
-                              driverId: `ai-provider:${provider.id}`,
-                              signature: block.textSignature,
-                            },
-                          }
-                        : {}),
-                    },
-            ),
-          ],
+                  : block.type === 'thinking'
+                    ? {
+                        type: 'thinking' as const,
+                        text: block.thinking,
+                        ...(block.thinkingSignature
+                          ? {
+                              continuation: {
+                                model: request.model,
+                                driverId: `ai-provider:${provider.id}`,
+                                signature: block.thinkingSignature,
+                              },
+                            }
+                          : {}),
+                      }
+                    : {
+                        type: 'text' as const,
+                        text: block.text,
+                        ...(block.textSignature
+                          ? {
+                              continuation: {
+                                model: request.model,
+                                driverId: `ai-provider:${provider.id}`,
+                                signature: block.textSignature,
+                              },
+                            }
+                          : {}),
+                      },
+              ),
+            ],
+            outputOrder,
+          ),
           usage: {
             input: result.usage.input,
             output: result.usage.output,

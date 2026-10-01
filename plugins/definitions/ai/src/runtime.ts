@@ -378,6 +378,11 @@ export class Running {
                 .find((item) => item.type === 'provider-tool' && item.id === block.id)
               if (existing) Object.assign(existing, json(block))
               else this.record.messages.push({ role: 'assistant', content: [json(block)] })
+              const replyBlock = this.reply.find(
+                (item) => item.type === 'provider-tool' && item.id === block.id,
+              )
+              if (replyBlock) Object.assign(replyBlock, json(block))
+              else this.reply.push(json(block))
               await this.service.persist(this, 'provider-tool', json(block))
             }
             if (update.type === 'delta') {
