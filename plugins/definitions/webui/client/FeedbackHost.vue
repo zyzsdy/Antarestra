@@ -68,8 +68,8 @@ onUnmounted(() => {
       class="feedback-message"
       @update:open="!$event && remove(item.id)"
     >
-      <ToastDescription>{{ item.text }}</ToastDescription>
-      <ToastClose aria-label="关闭通知"
+      <ToastDescription class="feedback-message-text">{{ item.text }}</ToastDescription>
+      <ToastClose class="feedback-message-close" aria-label="关闭通知" title="关闭通知"
         ><XMarkIcon class="ui-icon" aria-hidden="true"
       /></ToastClose>
     </ToastRoot>
@@ -98,27 +98,76 @@ onUnmounted(() => {
 <style scoped>
 :deep(.feedback-messages) {
   position: fixed;
-  right: 20px;
-  top: 20px;
+  right: 0;
+  top: 0;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: min(392px, 100vw);
+  max-height: 100dvh;
+  overflow-y: auto;
   list-style: none;
   margin: 0;
-  padding: 0;
-  max-width: min(420px, calc(100vw - 40px));
+  padding: 16px;
+  pointer-events: none;
 }
 :deep(.feedback-message) {
-  padding: 16px;
-  margin-bottom: 8px;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 6px 24px #0001;
-  overflow-wrap: anywhere;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: start;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 14px 12px 14px 16px;
+  border: 1px solid #dce3ef;
+  border-radius: 10px;
+  background: #fff;
+  color: #263047;
+  font-size: 14px;
+  line-height: 24px;
+  box-shadow:
+    0 4px 16px #111d3214,
+    0 1px 3px #111d3208;
+  pointer-events: auto;
 }
-:deep(.feedback-message button) {
-  margin-left: 16px;
+:deep(.feedback-message-text) {
+  min-width: 0;
+  padding-block: 2px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+:deep(button.feedback-message-close) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
   border: 0;
+  border-radius: 7px;
   background: transparent;
+  color: #637089;
+  cursor: pointer;
+}
+:deep(button.feedback-message-close:hover) {
+  background: #f4f6fa;
+  color: #263047;
+}
+:deep(button.feedback-message-close:active) {
+  background: #e4e9f1;
+}
+:deep(button.feedback-message-close:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+:deep(.feedback-message-close .ui-icon) {
+  width: 18px;
+  height: 18px;
 }
 .feedback-dialog {
   position: fixed;
