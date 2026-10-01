@@ -9,10 +9,10 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   schemaConfig(new URL('../config.schema.json', import.meta.url), config)
   ctx.ai.registerTool(ctx, {
     id: 'rename_conversation',
-    description: '修改当前会话标题。使用简洁、准确的标题概括当前话题，最多 200 字。',
+    description: '修改当前会话标题。使用简洁、准确的标题概括当前话题，一般不要超过20字。',
     parameters: {
       type: 'object',
-      properties: { title: { type: 'string', minLength: 1, maxLength: 200 } },
+      properties: { title: { type: 'string', minLength: 1, maxLength: 50 } },
       required: ['title'],
       additionalProperties: false,
     },
@@ -26,7 +26,7 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   ctx.ai.registerTool(ctx, {
     id: 'todo',
     description:
-      '管理当前会话的待办计划。set 创建或替换完整列表（每项使用稳定且唯一的 id）；update 修改指定项的状态；complete_all 将整个列表标记完成。pending 为待完成，in_progress 为正在进行，completed 为已完成。创建后及时更新进度，只在实际完成时标记完成。未完成列表会显示在聊天页面。',
+      '当要处理的事项较为复杂，且可以分步进行时，调用此工具生成待办计划。每轮循环中必须检查计划是否完成，并设置已完成的项目。set 创建或替换完整列表（每项使用稳定且唯一的 id）；update 修改指定项的状态；complete_all 将整个列表标记完成。pending 为待完成，in_progress 为正在进行，completed 为已完成。创建后及时更新进度，只在实际完成时标记完成。未完成列表会显示在聊天页面。',
     parameters: {
       type: 'object',
       properties: {
