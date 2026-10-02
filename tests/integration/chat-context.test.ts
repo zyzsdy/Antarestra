@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick } from 'vue'
-import type { AiEvent, ContextOperation, MessageNode } from '@antarestra/contracts'
+import { createApp, h, nextTick, ref } from 'vue'
+import type { AiEvent, ContextBudget, ContextOperation, MessageNode } from '@antarestra/contracts'
 import { contextRun } from '../fixtures/context-run.js'
 import { applyEvent, emptyReply } from '../../plugins/features/chat-webui/client/stream.js'
 import { replyContent } from '../../plugins/features/chat-webui/client/reply-content.js'
@@ -94,17 +94,36 @@ it('已处理默认折叠，展开可见分割线，复制正文不包含摘要�
   expect(replyContent(node.content, [], run.contextOperations).body).toBe('最终原文')
 })
 
-it('环形预算控件可聚焦，初始没有伪造的用量', () => {
+it('无预算时隐藏环形控件，有预算时可聚焦，清空后重新隐藏', async () => {
+  const budget = ref<ContextBudget>()
   const host = document.createElement('div')
   document.body.append(host)
-  const app = createApp({ render: () => h(ContextMeter, { model: '["p","m"]' }) })
+  const app = createApp({
+    render: () => h(ContextMeter, { budget: budget.value, model: '["p","m"]' }),
+  })
   app.mount(host)
   cleanup.push(() => app.unmount())
+  expect(host.querySelector('button')).toBeNull()
+  budget.value = {
+    model: { providerId: 'p', modelId: 'm' },
+    window: 100000,
+    used: 0,
+    remaining: 100000,
+    reserve: 16000,
+    available: 84000,
+    phase: 'after',
+    source: 'usage',
+    createdAt: 0,
+  }
+  await nextTick()
   const trigger = host.querySelector<HTMLButtonElement>('button')!
   expect(trigger.getAttribute('aria-label')).toBe('查看上下文预算')
   trigger.focus()
   expect(document.activeElement).toBe(trigger)
   expect(host.querySelector('circle[pathLength]')?.getAttribute('stroke-dasharray')).toBe('0 100')
+  budget.value = undefined
+  await nextTick()
+  expect(host.querySelector('button')).toBeNull()
 })
 
 it('高级配置继承选项可挂载，保留默认值与关闭时的草稿', async () => {

@@ -7,6 +7,7 @@ import FeedbackHost from '../../plugins/definitions/webui/client/FeedbackHost.vu
 import ChatMessage from '../../plugins/features/chat-webui/client/ChatMessage.vue'
 import ContextMeter from '../../plugins/features/chat-webui/client/ContextMeter.vue'
 const model = ref('["preview","model"]')
+const showBudget = ref(true)
 const modelOptions = [
   { id: '["preview","model"]', name: '当前模型' },
   { id: '["preview","other"]', name: '切换模型' },
@@ -73,6 +74,7 @@ const budget: ContextBudget = {
     ><main class="context-preview">
       <h1>上下文管理交互验证</h1>
       <p>本页使用模拟记录验证实际聊天组件，不请求模型。</p>
+      <label><input v-model="showBudget" type="checkbox" />显示上下文预算数据</label>
       <ChatMessage :node="node" :run="run" />
       <form class="chat-composer" @submit.prevent>
         <label for="preview-input">消息</label
@@ -80,7 +82,7 @@ const budget: ContextBudget = {
         <div class="chat-composer-toolbar">
           <button type="button">添加附件</button>
           <div class="chat-model-controls">
-            <ContextMeter :budget="budget" :model="model" />
+            <ContextMeter :budget="showBudget ? budget : undefined" :model="model" />
             <SelectField v-model="model" label="模型" :options="modelOptions" />
           </div>
         </div>

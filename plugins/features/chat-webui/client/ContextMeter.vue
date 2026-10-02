@@ -21,7 +21,7 @@ const previous = computed(
 const number = (value: number) => value.toLocaleString('zh-CN')
 </script>
 <template>
-  <TooltipProvider
+  <TooltipProvider v-if="budget"
     ><TooltipRoot v-model:open="open">
       <TooltipTrigger as-child>
         <button
