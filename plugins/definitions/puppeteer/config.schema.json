@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "executablePath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Chrome/Chromium 可执行文件路径；省略时自动查找系统安装。相对路径基于进程工作目录。"
+    },
+    "headless": { "type": "boolean", "default": true, "description": "使用无头模式。" },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "追加的浏览器启动参数。"
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30000,
+      "description": "浏览器启动超时，单位毫秒。"
+    },
+    "protocolTimeout": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 180000,
+      "description": "浏览器协议调用超时，单位毫秒。"
+    },
+    "acceptInsecureCerts": {
+      "type": "boolean",
+      "default": false,
+      "description": "是否接受无效 HTTPS 证书。"
+    },
+    "defaultViewport": {
+      "type": "object",
+      "description": "新页面的默认视口。",
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "deviceScaleFactor": { "type": "number", "exclusiveMinimum": 0 },
+        "isMobile": { "type": "boolean" },
+        "hasTouch": { "type": "boolean" },
+        "isLandscape": { "type": "boolean" }
+      },
+      "required": ["width", "height"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

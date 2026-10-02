@@ -1,0 +1,31 @@
+{
+  "name": "@antarestra/http",
+  "description": "提供统一 HTTP 请求与按请求指定的 HTTP、SOCKS5 代理。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "HTTP 请求服务",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@cordisjs/plugin-http": "^1.5.2",
+    "undici": "^8.11.2"
+  }
+}

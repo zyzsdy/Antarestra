@@ -1,0 +1,31 @@
+{
+  "name": "@antarestra/puppeteer",
+  "description": "提供网页读取、HTML 截图和可配置的 Chrome、Chromium 浏览器。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "无头浏览器服务",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@puppeteer/browsers": "^3.2.3",
+    "puppeteer-core": "^25.12.0"
+  }
+}

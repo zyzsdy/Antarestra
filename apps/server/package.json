@@ -13,6 +13,7 @@
     "@antarestra/ai": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/database": "workspace:*",
+    "@antarestra/http": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-ai-agent-core": "workspace:*",
     "@antarestra/plugin-ai-agents": "workspace:*",
@@ -29,6 +30,7 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/plugin-storage-s3": "workspace:*",
     "@antarestra/plugin-workspace-file": "workspace:*",
+    "@antarestra/puppeteer": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/storage": "workspace:*",
     "@antarestra/webui": "workspace:*"

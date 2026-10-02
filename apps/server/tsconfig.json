@@ -7,6 +7,8 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
+    { "path": "../../plugins/definitions/http" },
+    { "path": "../../plugins/definitions/puppeteer" },
     { "path": "../../plugins/features/basic-tools" },
     {
       "path": "../../plugins/features/markdown-render"

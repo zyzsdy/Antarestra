@@ -1,5 +1,7 @@
 # Antarestra
 
+插件开发可使用 [HTTP 请求服务](plugins/definitions/http/README.md)（按请求指定 HTTP/SOCKS5 代理）和 [无头浏览器服务](plugins/definitions/puppeteer/README.md)（网页读取、HTML 截图与 Puppeteer Page API）。默认配置已启用两者，浏览器按需启动。
+
 Antarestra 是一个面向多用户、多 Agent 的 Cloud AI Harness。目标是让同一套智能体能力既能通过网页登录使用，也能嵌入其他网站，或进入工作 IM 的群组与话题。
 
 项目以 **Cordis 为插件运行时、TypeScript 为开发语言、Vue 为网页技术栈、pnpm workspace 为工程基础**。一切业务能力都通过插件提供，Agent 运行核心与 LLM 接入也不例外。
