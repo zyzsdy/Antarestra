@@ -8,7 +8,7 @@ import type {
   ThinkingLevel,
   ImagesInputContent,
 } from '@earendil-works/pi-ai'
-import { AiError } from '@antarestra/ai'
+import { AiError, toolResultContent } from '@antarestra/ai'
 import type {
   ModelDefinition,
   ModelDriver,
@@ -123,13 +123,7 @@ function messages(
             role: 'toolResult',
             toolCallId: block.id,
             toolName: toolNames.get(block.id) ?? 'tool',
-            content: [
-              {
-                type: 'text',
-                text:
-                  typeof block.content === 'string' ? block.content : JSON.stringify(block.content),
-              },
-            ],
+            content: toolResultContent(block, resources),
             isError: block.isError,
             timestamp: Date.now(),
           })

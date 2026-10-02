@@ -21,6 +21,12 @@ export function estimateMessage(message: ChatMessage): number {
     message.content.reduce((sum, block) => {
       if (block.type === 'image') return sum + 4096
       if (block.type === 'file') return sum + Math.max(4096, block.size ?? 0)
+      if (block.type === 'tool-result' && block.images?.length)
+        return (
+          sum +
+          block.images.length * 4096 +
+          Math.ceil(Buffer.byteLength(JSON.stringify(block.content), 'utf8') / 2)
+        )
       const value =
         block.type === 'text' || block.type === 'thinking' ? block.text : JSON.stringify(block)
       return sum + Math.ceil(Buffer.byteLength(value, 'utf8') / 2)

@@ -283,6 +283,42 @@ export class WorkspaceFileService extends Service<Config> {
     })
     return this.resource(access, token)
   }
+  writeAttachment(
+    access: FileAccess,
+    input: { filename: string; mimeType: string; data: Uint8Array },
+    signal: AbortSignal,
+  ) {
+    return this.track(
+      (async () => {
+        signal.throwIfAborted()
+        const backend = this.ctx.storage.backend(this.options.backendId ?? 's3')
+        if (!backend.write) throw new AuthError(503, '当前存储不支持服务端附件写入')
+        const upload = await this.begin(access, {
+          path: input.filename,
+          size: input.data.byteLength,
+          mimeType: input.mimeType,
+          attachment: true,
+        })
+        const { state } = await this.snapshot(access.workspaceId)
+        const entry = state.uploads.find((item) => item.id === upload.token)!
+        try {
+          const parts = await backend.write(entry.blob, input.data, signal)
+          signal.throwIfAborted()
+          const result = await this.complete(access, upload.token, parts)
+          await backend.discard(entry.blob).catch(() => {})
+          return result
+        } catch (error) {
+          await this.cancel(access, upload.token).catch(() => {})
+          await backend.discard(entry.blob).catch(() => {})
+          // complete 在封存后登记失败时，不能留下无归属的对象。
+          const current = await this.snapshot(access.workspaceId).catch(() => undefined)
+          if (current && !current.state.files.some((file) => file.id === upload.token))
+            await backend.remove(entry.blob.key).catch(() => {})
+          throw error
+        }
+      })(),
+    )
+  }
   async cancel(access: FileAccess, token: string) {
     await this.verify(access)
     await this.mutate(access.workspaceId, (state) => {

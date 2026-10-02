@@ -35,6 +35,26 @@ export const agentFiles = {
       },
     })
     ctx.ai.registerResources(ctx, {
+      async storeImage(image, context) {
+        if (!ctx.ai.running.get(context.runId)?.ownsToolContext(context))
+          throw new AiError('forbidden', '图片写入需要有效工具上下文', 403)
+        const file = await withAccess(context, (access) =>
+          ctx.workspaceFile.writeAttachment(
+            access,
+            image,
+            image.signal ? AbortSignal.any([context.signal, image.signal]) : context.signal,
+          ),
+        )
+        return {
+          type: 'image',
+          resourceId: file.id,
+          mimeType: file.mimeType,
+          filename: file.filename,
+          size: file.size,
+          width: image.width,
+          height: image.height,
+        }
+      },
       async validate(resource, context) {
         try {
           const file = await withAccess(context, (access) =>
@@ -77,6 +97,24 @@ export const agentFiles = {
       for (const message of draft.messages) {
         for (let i = 0; i < message.content.length; i++) {
           const block = message.content[i]!
+          if (block.type === 'tool-result' && block.images) {
+            const images = []
+            const unavailable: string[] = []
+            for (const image of block.images) {
+              try {
+                await withAccess(context, (access) =>
+                  ctx.workspaceFile.resource(access, image.resourceId),
+                )
+                images.push(image)
+              } catch (error) {
+                if (!(error instanceof AuthError) || ![404, 410].includes(error.status)) throw error
+                unavailable.push(`图片附件：${image.filename}（文件已过期或删除）`)
+              }
+            }
+            block.images = images
+            if (unavailable.length)
+              block.content = { result: block.content, unavailableImages: unavailable }
+          }
           if ((block.type !== 'image' && block.type !== 'file') || current.has(block.resourceId))
             continue
           try {

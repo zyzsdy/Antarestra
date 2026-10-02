@@ -57,6 +57,7 @@ async function setup(
     config?: Partial<Config>
     driver?: ModelDriver
     agent?: AgentPreset
+    imageInput?: boolean
   } = {},
 ) {
   const ctx = new Context()
@@ -88,7 +89,7 @@ async function setup(
         contextWindow: 10000,
         maxOutputTokens: 1000,
         thinkingLevels: ['low', 'high'],
-        input: ['text', 'image', 'file'],
+        input: options.imageInput === false ? ['text'] : ['text', 'image', 'file'],
         output: ['text'],
         tools: true,
       },
@@ -133,6 +134,112 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it.each([true, false])(
+    '工具图像通过资源解析器传给模型且历史只保存引用（视觉=%s）',
+    async (imageInput) => {
+      let calls = 0
+      const stored = {
+        type: 'image' as const,
+        resourceId: 'generated',
+        mimeType: 'image/png',
+        filename: '截图.png',
+        size: 3,
+        width: 1,
+        height: 1,
+      }
+      const app = await setup({
+        imageInput,
+        agent: agent({
+          toolIds: ['plain', 'image'],
+          contextPolicy: {
+            compaction: {
+              enabled: false,
+              reserve: 1000,
+              keepRecent: 1000,
+              model: null,
+              thinking: null,
+            },
+            trimming: { enabled: false, mode: 'rounds', rounds: 3, keepFirst: true },
+          },
+        }),
+        driver: {
+          id: 'driver',
+          async generate(request, connection) {
+            if (calls++ === 0)
+              return {
+                content: [
+                  { type: 'tool-call', id: 'plain', name: 'plain', arguments: {} },
+                  { type: 'tool-call', id: 'image', name: 'image', arguments: {} },
+                ],
+              }
+            expect(connection.resources?.get('generated')?.data).toBe(
+              imageInput ? 'YWJj' : undefined,
+            )
+            const results = request.messages
+              .flatMap((message) => message.content)
+              .filter((block) => block.type === 'tool-result')
+            expect(results.find((block) => block.id === 'plain')?.content).toEqual({
+              content: '普通 JSON',
+              images: [],
+            })
+            expect(results.find((block) => block.id === 'image')).toMatchObject({
+              content: { ok: true },
+              images: [stored],
+            })
+            return { content: [{ type: 'text', text: '已查看' }] }
+          },
+        },
+      })
+      const resolver = vi.fn(async () => ({
+        data: 'YWJj',
+        mimeType: 'image/png',
+        filename: '截图.png',
+      }))
+      app.ctx.ai.registerResources(app.ctx, {
+        validate: async () => {},
+        resolve: resolver,
+        storeImage: async () => stored,
+      })
+      app.ctx.ai.registerTool(app.ctx, {
+        id: 'plain',
+        description: '',
+        parameters: { type: 'object' },
+        execute: async () => ({ content: '普通 JSON', images: [] }),
+      })
+      app.ctx.ai.registerTool(app.ctx, {
+        id: 'image',
+        description: '',
+        resultMode: 'structured',
+        parameters: { type: 'object' },
+        execute: async (_args, context) => {
+          await expect(
+            app.ctx.ai.storeToolImage(
+              { ...context },
+              {
+                data: Buffer.from('abc'),
+                mimeType: 'image/png',
+                filename: '截图.png',
+                width: 1,
+                height: 1,
+              },
+            ),
+          ).rejects.toMatchObject({ code: 'forbidden' })
+          const image = await app.ctx.ai.storeToolImage(context, {
+            data: Buffer.from('abc'),
+            mimeType: 'image/png',
+            filename: '截图.png',
+            width: 1,
+            height: 1,
+          })
+          return { content: { ok: true }, images: [image] }
+        },
+      })
+      const run = await send(app)
+      expect(run.status).toBe('completed')
+      expect(JSON.stringify(run)).not.toContain('YWJj')
+      expect(resolver.mock.calls.length > 0).toBe(imageInput)
+    },
+  )
   it('主模型失败后的重新生成复用已提交摘要，重复幂等键不重复压缩', async () => {
     let compressed = 0
     let failReply = false

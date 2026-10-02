@@ -23,6 +23,12 @@ import type {
 import { abortable, AiError, canonical, check, compile, freeze, json, template } from './utils.js'
 import { budget, estimateRequest, summarizationPrompt, usageTokens } from './context.js'
 import { prepareContext } from './context-manager.js'
+import {
+  messageResources,
+  structuredResult,
+  toolResultContent,
+  validateToolImages,
+} from './tool-results.js'
 export class Running {
   readonly controller = new AbortController()
   readonly context: RunContext
@@ -161,6 +167,17 @@ export class Running {
         },
         request: () => this.request(),
         executeTools: (calls) => this.executeTools(calls),
+        toolContent: async (block) => {
+          const resources = new Map<string, ResolvedResource>()
+          const { model } = this.validateSelection(this.record.model, this.requestThinking)
+          if (model.input.includes('image'))
+            for (const image of block.images ?? []) {
+              const resolver = this.bound.resources?.value
+              if (resolver?.resolve)
+                resources.set(image.resourceId, await resolver.resolve(image, this.context))
+            }
+          return toolResultContent(block, resources)
+        },
       }
       await abortable(this.bound.backend.value.run(runtime), this.context.signal)
       this.active()
@@ -213,6 +230,10 @@ export class Running {
   private async validateResources(content: ContentBlock[]) {
     for (const block of content) {
       check(block && typeof block === 'object', '消息内容无效')
+      if (block.type === 'tool-result' && block.images) {
+        validateToolImages(block.images)
+        await this.validateResources(block.images)
+      }
       if (block.type === 'image' || block.type === 'file') {
         check(
           typeof block.resourceId === 'string' && typeof block.mimeType === 'string',
@@ -362,11 +383,12 @@ export class Running {
       const resources = new Map<string, ResolvedResource>()
       let attachmentBytes = 0
       for (const message of request.messages)
-        for (const block of message.content)
+        for (const block of message.content.flatMap(messageResources))
           if (
             (block.type === 'image' || block.type === 'file') &&
             !resources.has(block.resourceId)
           ) {
+            if (block.type === 'image' && !model.input.includes('image')) continue
             const resolver = this.bound.resources?.value
             if (!resolver?.resolve)
               throw new AiError('capability_unavailable', '附件内容解析器不可用', 503)
@@ -706,12 +728,18 @@ export class Running {
                 )
               try {
                 this.toolContexts.add(context)
-                draft.result = json(
+                const returned = json(
                   await abortable(
                     Promise.resolve().then(() => tool.execute(json(draft.call.arguments), context)),
                     signal,
                   ),
                 )
+                if (tool.resultMode === 'structured') {
+                  const result = structuredResult(returned)
+                  draft.result = json(result.content)
+                  draft.isError = result.isError ?? false
+                  if (result.images) draft.images = json(result.images)
+                } else draft.result = returned
               } catch {
                 this.active()
                 batch.signal.throwIfAborted()
@@ -726,6 +754,10 @@ export class Running {
             )
             this.active()
             batch.signal.throwIfAborted()
+            if (draft.images) {
+              validateToolImages(draft.images)
+              await this.validateResources(draft.images)
+            }
             const result: ChatMessage = {
               id: randomUUID(),
               role: 'tool',
@@ -735,6 +767,7 @@ export class Running {
                   id: call.id,
                   content: json(draft.result),
                   isError: draft.isError,
+                  ...(draft.images ? { images: json(draft.images) } : {}),
                 },
               ],
             }

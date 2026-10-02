@@ -146,6 +146,16 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
               <p class="chat-tool-label">调用参数</p>
               <pre>{{ JSON.stringify(detail.tool.arguments, null, 2) }}</pre>
               <p class="chat-tool-label">返回结果</p>
+              <div
+                v-if="detail.tool.images?.length"
+                class="chat-attachments chat-message-attachments"
+              >
+                <AttachmentTile
+                  v-for="image in detail.tool.images"
+                  :key="image.resourceId"
+                  :attachment="image"
+                />
+              </div>
               <img
                 v-if="detail.tool.image"
                 :src="detail.tool.image"

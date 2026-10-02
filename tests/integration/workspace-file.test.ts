@@ -21,6 +21,11 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
 })
 class MemoryStorage implements StorageBackend {
+  async write(upload: BlobUpload, data: Uint8Array, signal: AbortSignal) {
+    signal.throwIfAborted()
+    this.blobs.set(upload.stagingKey, data)
+    return []
+  }
   blobs = new Map<string, Uint8Array>()
   removed: string[] = []
   async begin(upload: BlobUpload) {
@@ -130,6 +135,38 @@ async function setup() {
     },
   }
 }
+it('服务端附件写入保留配额、隔离与失败清理', async () => {
+  const app = await setup()
+  const signal = new AbortController().signal
+  const file = await app.ctx.workspaceFile.writeAttachment(
+    app.a,
+    { filename: '截图.png', mimeType: 'image/png', data: Buffer.from('image') },
+    signal,
+  )
+  expect((await app.ctx.workspaceFile.readResource(app.a, file.id)).bytes).toEqual(
+    Buffer.from('image'),
+  )
+  await expect(app.ctx.workspaceFile.resource(app.b, file.id)).rejects.toMatchObject({
+    status: 410,
+  })
+  expect([...app.backend.blobs.keys()].some((key) => key.startsWith('uploads/'))).toBe(false)
+  await expect(
+    app.ctx.workspaceFile.writeAttachment(
+      app.a,
+      { filename: '大图.png', mimeType: 'image/png', data: Buffer.alloc(20) },
+      signal,
+    ),
+  ).rejects.toMatchObject({ status: 413 })
+  vi.spyOn(app.backend, 'write').mockRejectedValueOnce(new Error('模拟上传失败'))
+  await expect(
+    app.ctx.workspaceFile.writeAttachment(
+      app.a,
+      { filename: '失败.png', mimeType: 'image/png', data: Buffer.from('small') },
+      signal,
+    ),
+  ).rejects.toThrow('模拟上传失败')
+  expect([...app.backend.blobs.values()]).toHaveLength(1)
+})
 it('拒绝路径穿越，并且随机对象键不包含用户名称或目录', async () => {
   for (const path of ['../secret', '/a/../secret', '/a/./b', '/a\\b', '/a\0b'])
     expect(() => filePath(path)).toThrow()

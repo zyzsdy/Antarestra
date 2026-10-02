@@ -115,6 +115,42 @@ export class S3Backend implements StorageBackend {
         : { 'If-None-Match': '*', 'Content-Type': fileResponse(upload.contentType).contentType },
     }
   }
+  async write(upload: BlobUpload, data: Uint8Array, signal: AbortSignal): Promise<UploadedPart[]> {
+    if (data.byteLength !== upload.size) throw new Error('上传对象大小不匹配')
+    const parts: UploadedPart[] = []
+    for (
+      let offset = 0;
+      offset < data.byteLength;
+      offset += upload.multipartId ? this.partSize : data.byteLength
+    ) {
+      signal.throwIfAborted()
+      const number = parts.length + 1
+      const bytes = data.subarray(
+        offset,
+        upload.multipartId ? offset + this.partSize : data.byteLength,
+      )
+      const command = upload.multipartId
+        ? new UploadPartCommand({
+            ...this.object(upload.stagingKey),
+            UploadId: upload.multipartId,
+            PartNumber: number,
+            Body: bytes,
+          })
+        : new PutObjectCommand({
+            ...this.object(upload.stagingKey),
+            Body: bytes,
+            ContentType: fileResponse(upload.contentType).contentType,
+            IfNoneMatch: '*',
+          })
+      const result =
+        command instanceof UploadPartCommand
+          ? await this.client.send(command, { abortSignal: signal })
+          : await this.client.send(command, { abortSignal: signal })
+      if (!result.ETag) throw new Error('存储未返回对象校验标识')
+      parts.push({ number, etag: result.ETag })
+    }
+    return parts
+  }
   private async head(key: string) {
     try {
       return await this.client.send(new HeadObjectCommand(this.object(key)))

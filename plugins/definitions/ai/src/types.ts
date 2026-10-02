@@ -9,6 +9,7 @@ import type {
   ModelDefinition,
   RequestSnapshot,
   RunRecord,
+  ToolImage,
 } from '@antarestra/contracts'
 export type {
   AgentPreset,
@@ -20,6 +21,7 @@ export type {
   ModelDefinition,
   RequestSnapshot,
   RunRecord,
+  ToolImage,
 } from '@antarestra/contracts'
 export interface Config {
   maxModelCalls: number
@@ -39,7 +41,21 @@ export interface Tool {
   description: string
   parameters: JsonObject
   timeoutMs?: number | null
-  execute(arguments_: JsonObject, context: RunContext): Promise<Json>
+  resultMode?: 'json' | 'structured'
+  execute(arguments_: JsonObject, context: RunContext): Promise<Json | StructuredToolResult>
+}
+export type StructuredToolResult = {
+  content: Json
+  images?: ToolImage[]
+  isError?: boolean
+}
+export interface GeneratedImage {
+  data: Uint8Array
+  mimeType: string
+  filename: string
+  width: number
+  height: number
+  signal?: AbortSignal
 }
 export interface Provider {
   id: string
@@ -88,6 +104,9 @@ export interface ExecutionRuntime {
   readonly messages: readonly ChatMessage[]
   request(): Promise<ModelOutput>
   executeTools(calls: Extract<ContentBlock, { type: 'tool-call' }>[]): Promise<ChatMessage[]>
+  toolContent?(
+    block: Extract<ContentBlock, { type: 'tool-result' }>,
+  ): Promise<import('./tool-results.js').ToolModelContent[]>
 }
 export interface ExecutionBackend {
   id: string
@@ -108,6 +127,7 @@ export interface Extension {
   prepare?(context: RunContext, config: JsonObject): Promise<void>
 }
 export interface ResourceResolver {
+  storeImage?(image: GeneratedImage, context: RunContext): Promise<ToolImage>
   resolve?(
     resource: Extract<ContentBlock, { resourceId: string }>,
     context: RunContext,
@@ -132,6 +152,7 @@ export interface ToolDraft {
   blocked: string | null
   result: Json
   isError: boolean
+  images?: ToolImage[]
 }
 declare module '@antarestra/plugin-sdk' {
   interface Events {

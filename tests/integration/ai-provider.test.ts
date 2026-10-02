@@ -62,6 +62,123 @@ const model = {
   tools: true,
   thinkingLevels: ['low', 'high'],
 }
+it.each(['openai-completions', 'openai-responses', 'anthropic-messages'])(
+  '工具图片通过 %s 的真实 HTTP 请求发送 Base64 图像',
+  async (api) => {
+    let payload: Record<string, unknown> = {}
+    const baseUrl = await remote(async (req, res) => {
+      let body = ''
+      for await (const chunk of req) body += chunk.toString()
+      payload = JSON.parse(body)
+      res
+        .writeHead(401, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ error: { message: '测试请求已捕获', type: 'authentication_error' } }))
+    })
+    const record = validateProvider({ ...input, api, baseUrl })
+    record.models = [{ ...model, input: ['text', 'image'], output: ['text'] }]
+    const ref = { providerId: record.id, modelId: model.id }
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII='
+    const context = {
+      runId: 'run',
+      conversationId: 'conversation',
+      actorId: 'actor',
+      workspaceId: 'space',
+      signal: new AbortController().signal,
+      agent: {
+        id: 'agent',
+        version: '1',
+        title: '测试',
+        backendId: 'test',
+        systemTemplate: '',
+        userTemplate: '',
+        models: [ref],
+        defaultModel: ref,
+        toolIds: ['web_search'],
+        skillIds: [],
+        extensions: {},
+      },
+    }
+    await expect(
+      driver(record).generate(
+        {
+          model: ref,
+          thinking: null,
+          parameters: {},
+          systemPrompt: '',
+          tools: [
+            {
+              id: 'web_search',
+              description: '本地搜索服务',
+              parameters: { type: 'object', properties: {} },
+            },
+            ...(api === 'openai-responses'
+              ? [
+                  {
+                    id: 'hosted',
+                    description: '',
+                    parameters: {},
+                    providerTool: { name: 'web_search', type: 'web_search', options: {} },
+                  },
+                ]
+              : []),
+          ],
+          messages: [
+            { role: 'user', content: [{ type: 'text', text: '查看工具截图' }] },
+            {
+              role: 'assistant',
+              content: [{ type: 'tool-call', id: 'call_image', name: 'web_search', arguments: {} }],
+            },
+            {
+              role: 'tool',
+              content: [
+                {
+                  type: 'tool-result',
+                  id: 'call_image',
+                  isError: false,
+                  content: '截图完成',
+                  images: [
+                    {
+                      type: 'image',
+                      resourceId: 'image',
+                      mimeType: 'image/png',
+                      filename: '截图.png',
+                      width: 1,
+                      height: 1,
+                      size: 68,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          baseUrl,
+          credential: 'fixture-key',
+          resources: new Map([
+            ['image', { data: png, mimeType: 'image/png', filename: '截图.png' }],
+          ]),
+        },
+        context,
+        async () => {},
+      ),
+    ).rejects.toBeDefined()
+    const serialized = JSON.stringify(payload)
+    expect(serialized).toContain(png)
+    expect(serialized).toContain(
+      api === 'anthropic-messages' ? '"type":"base64"' : 'data:image/png;base64,',
+    )
+    expect(serialized).toContain('call_image')
+    if (api === 'openai-responses')
+      expect(payload.tools).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'function', name: 'web_search' }),
+          expect.objectContaining({ type: 'web_search' }),
+        ]),
+      )
+  },
+)
 async function setup(filename = ':memory:') {
   const ctx = new Context()
   contexts.push(ctx)

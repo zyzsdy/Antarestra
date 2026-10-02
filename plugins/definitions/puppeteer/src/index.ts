@@ -14,6 +14,10 @@ import type {
 import { findExecutable } from './executable.js'
 
 export type {
+  Dialog,
+  Target,
+  ElementHandle,
+  KeyInput,
   Page,
   GoToOptions,
   ScreenshotOptions,

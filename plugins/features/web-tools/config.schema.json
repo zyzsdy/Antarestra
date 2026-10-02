@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "apiKey": { "type": "string", "title": "Serper 密钥", "format": "password" },
+    "searchProxy": {
+      "type": "string",
+      "title": "搜索 API 代理",
+      "description": "仅搜索 API 使用，留空直连；支持 HTTP、HTTPS 和 SOCKS5。"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 180000,
+      "default": 60000,
+      "title": "操作超时（毫秒）"
+    },
+    "idleMinutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1440,
+      "default": 30,
+      "title": "会话空闲保留分钟数"
+    },
+    "maxSessions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64,
+      "default": 16,
+      "title": "最多浏览器会话"
+    },
+    "maxPages": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32,
+      "default": 8,
+      "title": "每会话最多页面"
+    },
+    "maxCharacters": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 100000,
+      "default": 24000,
+      "title": "单次页面字符预算"
+    }
+  }
+}

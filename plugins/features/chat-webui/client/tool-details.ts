@@ -1,4 +1,4 @@
-import type { ContentBlock, Json, RunRecord } from '@antarestra/contracts'
+import type { ContentBlock, Json, RunRecord, ToolImage } from '@antarestra/contracts'
 
 export interface ToolDetail {
   id: string
@@ -7,6 +7,7 @@ export interface ToolDetail {
   status: string
   result?: Json
   image?: string
+  images?: ToolImage[]
   isError: boolean
 }
 
@@ -66,6 +67,7 @@ export function mergeToolBlocks(tools: ToolDetail[], blocks: ContentBlock[], exe
       const tool = tools.find((item) => item.id === block.id)
       if (tool) {
         tool.result = block.content
+        if (block.images) tool.images = block.images
         tool.isError = block.isError
         tool.status = block.isError ? '执行失败' : '执行完成'
       }

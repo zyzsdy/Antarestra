@@ -1,5 +1,15 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 export type JsonObject = { [key: string]: Json }
+/** 工具生成图片的持久化引用；二进制仅在模型请求期间解析。 */
+export type ToolImage = {
+  type: 'image'
+  resourceId: string
+  mimeType: string
+  filename: string
+  size: number
+  width: number
+  height: number
+}
 export type ContentBlock =
   | {
       type: 'text' | 'thinking'
@@ -16,7 +26,7 @@ export type ContentBlock =
       size?: number
     }
   | { type: 'tool-call'; id: string; name: string; arguments: JsonObject }
-  | { type: 'tool-result'; id: string; content: Json; isError: boolean }
+  | { type: 'tool-result'; id: string; content: Json; isError: boolean; images?: ToolImage[] }
   | { type: 'provider-tool'; id: string; name: string; status: string; result: JsonObject }
 export interface ChatMessage {
   /** 服务端分配；旧记录通过运行 ID 与消息位置生成兼容标识。 */

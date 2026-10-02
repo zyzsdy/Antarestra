@@ -22,6 +22,28 @@ const event = (sequence: number, type: AiEvent['type'], data: unknown): AiEvent 
 })
 
 describe('聊天工具详情', () => {
+  it('工具图片实时与历史共用资源引用，不包含 Base64', () => {
+    const image = {
+      type: 'image' as const,
+      resourceId: 'image',
+      mimeType: 'image/png',
+      filename: '截图.png',
+      width: 800,
+      height: 600,
+      size: 100,
+    }
+    const messages: ChatMessage[] = [
+      { role: 'assistant', content: [call] },
+      { role: 'tool', content: [{ ...result, isError: false, content: '截图', images: [image] }] },
+    ]
+    const state = emptyReply()
+    applyEvent(state, event(1, 'message', messages[0]))
+    applyEvent(state, event(2, 'tool-end', messages[1]))
+    expect(state.tools[0]?.images).toEqual([image])
+    expect(historyToolDetails({ messages, status: 'completed', error: null })[0]?.images).toEqual([
+      image,
+    ])
+  })
   it('按调用 ID 配对嵌套的返回事件，实时与历史结果相同且重放不重复', () => {
     const state = emptyReply()
     const messages: ChatMessage[] = [

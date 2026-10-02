@@ -1,0 +1,16 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../../packages/plugin-sdk" },
+    { "path": "../../definitions/ai" },
+    { "path": "../../definitions/http" },
+    { "path": "../../definitions/puppeteer" }
+  ]
+}

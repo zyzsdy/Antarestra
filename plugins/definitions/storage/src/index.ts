@@ -16,6 +16,8 @@ export interface BlobUpload {
   contentType?: string
 }
 export interface StorageBackend {
+  /** 服务端写入暂存对象，返回可交给 complete 的分片列表。 */
+  write?(upload: BlobUpload, data: Uint8Array, signal: AbortSignal): Promise<UploadedPart[]>
   begin(upload: BlobUpload): Promise<BlobUpload>
   plan(upload: BlobUpload): Promise<UploadPlan>
   /** 必须核验长度并封存对象，旧上传凭证不能修改已提交文件。可重复调用。 */
@@ -48,6 +50,12 @@ export class StorageService extends Service {
       return action()
     }
     const guarded: StorageBackend = {
+      ...(backend.write
+        ? {
+            write: (upload: BlobUpload, data: Uint8Array, signal: AbortSignal) =>
+              invoke(() => backend.write!(upload, data, signal)),
+          }
+        : {}),
       begin: (upload) => invoke(() => backend.begin(upload)),
       plan: (upload) => invoke(() => backend.plan(upload)),
       complete: (upload, parts) => invoke(() => backend.complete(upload, parts)),

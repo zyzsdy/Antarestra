@@ -27,6 +27,7 @@ import type {
   RunContext,
   SkillService,
   Tool,
+  GeneratedImage,
 } from './types.js'
 import { Registry } from './registry.js'
 import {
@@ -47,6 +48,8 @@ import { defaultContextPolicy } from '@antarestra/contracts'
 export * from './types.js'
 export { AiError } from './utils.js'
 export { validateAgent } from './validation.js'
+export { toolResultContent } from './tool-results.js'
+import { validateToolImages } from './tool-results.js'
 export type * from '@antarestra/contracts'
 
 export interface Access {
@@ -230,6 +233,12 @@ export class AiService extends Service<Config> {
     identifier(value.id)
     compile(value.parameters)
     check(
+      value.resultMode === undefined ||
+        value.resultMode === 'json' ||
+        value.resultMode === 'structured',
+      '工具结果模式无效',
+    )
+    check(
       value.timeoutMs === undefined ||
         value.timeoutMs === null ||
         (Number.isSafeInteger(value.timeoutMs) && value.timeoutMs > 0),
@@ -243,6 +252,28 @@ export class AiService extends Service<Config> {
   registerResources(owner: Context, value: ResourceResolver) {
     this.active()
     return this.resources.register(owner, 'resources', value)
+  }
+  async storeToolImage(context: RunContext, image: GeneratedImage) {
+    this.active()
+    const run = this.running.get(context.runId)
+    if (!run?.ownsToolContext(context))
+      throw new AiError('forbidden', '图片写入需要有效工具执行上下文', 403)
+    const store = run.bound.resources?.value.storeImage
+    if (!store) throw new AiError('capability_unavailable', '图片附件存储不可用', 503)
+    check(
+      image.data instanceof Uint8Array &&
+        image.data.byteLength > 0 &&
+        image.data.byteLength <= 8 * 1024 ** 2,
+      '图片超过 8 MiB 或为空',
+    )
+    validateToolImages([
+      { ...image, type: 'image', resourceId: 'pending', size: image.data.byteLength },
+    ])
+    const result = await store(image, context)
+    context.signal.throwIfAborted()
+    image.signal?.throwIfAborted()
+    validateToolImages([result])
+    return result
   }
   registerExtension(owner: Context, value: Extension) {
     this.active()

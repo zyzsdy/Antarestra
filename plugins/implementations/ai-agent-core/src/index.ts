@@ -98,7 +98,9 @@ export const backend: ExecutionBackend = {
                   if (!result || result.type !== 'tool-result')
                     throw new Error('AI 核心未返回完整工具结果')
                   return {
-                    content: [{ type: 'text', text: JSON.stringify(result.content) }],
+                    content: runtime.toolContent
+                      ? await runtime.toolContent(result)
+                      : [{ type: 'text' as const, text: JSON.stringify(result.content) }],
                     details: result.isError,
                   }
                 } catch (error) {
