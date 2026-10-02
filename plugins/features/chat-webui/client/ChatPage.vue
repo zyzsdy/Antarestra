@@ -42,6 +42,7 @@ import AttachmentTile from './AttachmentTile.vue'
 import ChatHistory from './ChatHistory.vue'
 import ChatMessage from './ChatMessage.vue'
 import ChatNotice from './ChatNotice.vue'
+import ContextMeter from './ContextMeter.vue'
 import TodoPanel from './TodoPanel.vue'
 import { useChat } from './useChat.js'
 
@@ -188,6 +189,7 @@ onUnmounted(() => {
   for (const upload of uploads.values()) upload.controller.abort()
 })
 const {
+  contextBudget,
   catalog,
   conversations,
   archived,
@@ -674,6 +676,7 @@ onUnmounted(() => {
                 ></DropdownMenuRoot
               >
               <div class="chat-model-controls">
+                <ContextMeter :budget="contextBudget" :model="selectedModel" />
                 <SelectField
                   v-model="selectedModel"
                   :options="modelOptions"

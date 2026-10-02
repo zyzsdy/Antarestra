@@ -413,6 +413,9 @@ importers:
       '@antarestra/ai':
         specifier: workspace:*
         version: link:../../definitions/ai
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@antarestra/database':
         specifier: workspace:*
         version: link:../../definitions/database

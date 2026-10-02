@@ -13,6 +13,7 @@ import type {
   RunCommand,
   RunRecord,
   UserInput,
+  ContextSummary,
 } from '@antarestra/contracts'
 import type {
   Config,
@@ -42,6 +43,7 @@ import { AiError, canonical, check, compile, freeze, identifier, json, payload }
 import { Running } from './runtime.js'
 import { routes } from './http.js'
 import { validateAgent, validateCommand } from './validation.js'
+import { defaultContextPolicy } from '@antarestra/contracts'
 export * from './types.js'
 export { AiError } from './utils.js'
 export { validateAgent } from './validation.js'
@@ -395,6 +397,7 @@ export class AiService extends Service<Config> {
         for (const run of runs) await db.deleteFrom('events').where('run_id', '=', run.id).execute()
         await db.deleteFrom('runs').where('conversation_id', '=', id).execute()
         await db.deleteFrom('nodes').where('conversation_id', '=', id).execute()
+        await db.deleteFrom('summaries').where('conversation_id', '=', id).execute()
         await db.deleteFrom('conversations').where('id', '=', id).execute()
       })
       conversation.revision++
@@ -603,7 +606,10 @@ export class AiService extends Service<Config> {
       extensions: [],
       tokens: new Set(),
     }
-    for (const ref of agent.value.models) {
+    const compressionModel = agent.value.contextPolicy?.compaction.enabled
+      ? agent.value.contextPolicy.compaction.model
+      : null
+    for (const ref of [...agent.value.models, ...(compressionModel ? [compressionModel] : [])]) {
       const provider = this.providers.get(ref.providerId)
       check(
         provider.value.models.some((m) => m.id === ref.modelId),
@@ -707,6 +713,7 @@ export class AiService extends Service<Config> {
         cursor = node.parentId
       }
       const agent = json(bound.agent.value)
+      agent.contextPolicy ??= defaultContextPolicy()
       const model = command.model ?? agent.defaultModel
       check(
         agent.models.some((m) => canonical(m) === canonical(model)),
@@ -765,8 +772,17 @@ export class AiService extends Service<Config> {
         this,
         run,
         bound,
-        history.flatMap((item) => item.messages),
+        history,
         access,
+        (
+          await this.db()
+            .selectFrom('summaries')
+            .selectAll()
+            .where('workspace_id', '=', access.workspaceId)
+            .where('conversation_id', '=', id)
+            .execute()
+        ).map(decode<ContextSummary>),
+        parentId,
       )
       live.validateSelection(model, run.thinking)
       conversation.lastActivityAt = run.createdAt
@@ -798,7 +814,7 @@ export class AiService extends Service<Config> {
       return json(run)
     })
   }
-  async persist(live: Running, type: AiEvent['type'], data: unknown) {
+  async persist(live: Running, type: AiEvent['type'], data: unknown, summary?: ContextSummary) {
     return this.locked(async () => {
       const event: AiEvent = {
         runId: live.record.id,
@@ -811,6 +827,16 @@ export class AiService extends Service<Config> {
       }
       let changedConversation: Conversation | undefined
       await this.db().transaction(async (db) => {
+        if (summary)
+          await db
+            .insertInto('summaries')
+            .values({
+              id: summary.id,
+              workspace_id: summary.workspaceId,
+              conversation_id: summary.conversationId,
+              payload: JSON.stringify(summary),
+            })
+            .execute()
         await saveRun(db, live.record)
         const existing = await db
           .selectFrom('nodes')
@@ -860,6 +886,12 @@ export class AiService extends Service<Config> {
         .execute()) {
         const run = decode<RunRecord>(existing)
         run.status = 'interrupted'
+        for (const operation of run.contextOperations ?? []) {
+          if (operation.status === 'running') {
+            operation.status = 'interrupted'
+            operation.endedAt = Date.now()
+          }
+        }
         run.endedAt = Date.now()
         run.error = { code: 'interrupted', message: '服务重启，运行已中断' }
         await saveRun(db, run)

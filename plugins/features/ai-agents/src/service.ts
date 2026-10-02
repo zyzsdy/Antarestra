@@ -2,6 +2,7 @@ import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { AiError, validateAgent } from '@antarestra/ai'
 import type { AgentPreset } from '@antarestra/ai'
+import { defaultContextPolicy } from '@antarestra/contracts'
 import { AuthError } from '@antarestra/rbac'
 import '@antarestra/database'
 import { defaultAgentId, newAgent } from './types.js'
@@ -46,10 +47,11 @@ export function validateRecord(body: Record<string, unknown>): AgentRecord {
     })
   } catch (error) {
     if (error instanceof AiError)
-      throw new AuthError(400, 'Agent 配置格式无效，请检查模型、工具、Skill 和扩展配置')
+      throw new AuthError(400, 'Agent 配置格式无效，请检查上下文预算、模型、工具、Skill 和扩展配置')
     throw error
   }
   const value = JSON.parse(JSON.stringify(body)) as AgentRecord
+  value.contextPolicy ??= defaultContextPolicy()
   check(!value.toolIds?.includes('use_skill'), 'use_skill 由 Skill 服务提供，请通过 Skill 范围配置')
   check(
     value.defaultModel === null ||

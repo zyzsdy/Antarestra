@@ -1,4 +1,6 @@
-import { compile } from './utils.js'
+import { check, compile } from './utils.js'
+import { validTokenAmount } from '@antarestra/contracts'
+import type { AgentPreset } from '@antarestra/contracts'
 import type { JsonObject } from '@antarestra/contracts'
 const id: JsonObject = {
   type: 'string',
@@ -63,7 +65,7 @@ export const validateCommand = compile({
     },
   ],
 })
-export const validateAgent = compile({
+const validateAgentSchema = compile({
   type: 'object',
   additionalProperties: false,
   required: [
@@ -92,5 +94,49 @@ export const validateAgent = compile({
     toolIds: { type: 'array', uniqueItems: true, items: id },
     skillIds: { anyOf: [{ type: 'null' }, { type: 'array', uniqueItems: true, items: id }] },
     extensions: { type: 'object', additionalProperties: { type: 'object' } },
+    contextPolicy: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['compaction', 'trimming'],
+      properties: {
+        compaction: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['enabled', 'reserve', 'keepRecent', 'model', 'thinking'],
+          properties: {
+            enabled: { type: 'boolean' },
+            reserve: {},
+            keepRecent: {},
+            model: { anyOf: [ref, { type: 'null' }] },
+            thinking: { anyOf: [id, { type: 'null' }] },
+          },
+        },
+        trimming: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['enabled', 'mode', 'rounds', 'keepFirst'],
+          properties: {
+            enabled: { type: 'boolean' },
+            mode: { enum: ['auto', 'rounds'] },
+            rounds: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+            keepFirst: { type: 'boolean' },
+          },
+        },
+      },
+    },
   },
 })
+export function validateAgent(value: unknown) {
+  validateAgentSchema(value)
+  const policy = (value as AgentPreset).contextPolicy
+  if (policy) {
+    check(
+      validTokenAmount(policy.compaction.reserve),
+      '输出预留需为正整数或 0% 到 100% 之间的百分比',
+    )
+    check(
+      validTokenAmount(policy.compaction.keepRecent),
+      '近期保留窗口需为正整数或 0% 到 100% 之间的百分比',
+    )
+  }
+}

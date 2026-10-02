@@ -94,6 +94,10 @@ export function useChat(identity: () => Session | undefined) {
     const node = detail.value?.path.at(-1)
     return node ? runs.get(node.runId) : undefined
   })
+  const contextBudget = computed(() => {
+    const run = lastRun.value
+    return run ? (replies.get(run.id)?.budget ?? run.contextBudgets?.at(-1)) : undefined
+  })
   const interrupted = computed(
     () => lastRun.value && ['failed', 'cancelled', 'interrupted'].includes(lastRun.value.status),
   )
@@ -374,6 +378,10 @@ export function useChat(identity: () => Session | undefined) {
                   error: result.error ?? null,
                   endedAt: event.createdAt,
                   messages,
+                  contextOperations: reply.value.contextOperations,
+                  contextBudgets: reply.value.budget
+                    ? [reply.value.budget]
+                    : (run.contextBudgets ?? []),
                 })
                 const content = [...reply.value.completed, ...reply.value.pending]
                 const finish = (node: MessageNode) =>
@@ -799,6 +807,7 @@ export function useChat(identity: () => Session | undefined) {
     conversationRevisions.clear()
   })
   return {
+    contextBudget,
     catalog,
     conversations,
     archived,

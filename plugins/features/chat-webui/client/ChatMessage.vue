@@ -19,6 +19,7 @@ import {
 } from '@antarestra/webui/icons'
 import MessageAction from './MessageAction.vue'
 import AttachmentTile from './AttachmentTile.vue'
+import ContextDivider from './ContextDivider.vue'
 import { formatMessageTime } from './message-time.js'
 import { formatProcessingTime } from './processing-time.js'
 import type { ReplyState } from './stream.js'
@@ -60,7 +61,13 @@ const body = computed(() =>
     ? (props.node.input?.text ?? text(content.value, 'text'))
     : presentation.value.body,
 )
-const presentation = computed(() => replyContent(content.value, tools.value))
+const presentation = computed(() =>
+  replyContent(
+    content.value,
+    tools.value,
+    props.live?.contextOperations ?? props.run?.contextOperations ?? [],
+  ),
+)
 const running = computed(() => (props.live ? !props.live.ended : props.run?.status === 'running'))
 const processingNow = ref(Date.now())
 const processingTime = computed(() => {
@@ -108,8 +115,9 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
       </CollapsibleTrigger>
       <CollapsibleContent>
         <template v-for="detail in presentation.details" :key="detail.id">
+          <ContextDivider v-if="detail.type === 'context'" :operation="detail.operation" />
           <MarkdownView
-            v-if="detail.type === 'text'"
+            v-else-if="detail.type === 'text'"
             class="chat-detail-text"
             :source="detail.text"
             :streaming="!!live && !live.ended"

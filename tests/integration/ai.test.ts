@@ -39,6 +39,10 @@ const agent = (changes: Partial<AgentPreset> = {}): AgentPreset => ({
   toolIds: [],
   skillIds: [],
   extensions: {},
+  contextPolicy: {
+    compaction: { enabled: true, reserve: 1000, keepRecent: 1000, model: null, thinking: null },
+    trimming: { enabled: false, mode: 'rounds', rounds: 3, keepFirst: true },
+  },
   ...changes,
 })
 const plain: ModelDriver = {
@@ -129,6 +133,237 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('主模型失败后的重新生成复用已提交摘要，重复幂等键不重复压缩', async () => {
+    let compressed = 0
+    let failReply = false
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          if (request.purpose === 'compaction') {
+            compressed++
+            return { content: [{ type: 'text', text: '可复用摘要' }], stopReason: 'stop' }
+          }
+          if (failReply) throw new AiError('provider_request_failed', '模拟主模型失败')
+          return { content: [{ type: 'text', text: '回答' }] }
+        },
+      },
+    })
+    for (let i = 0; i < 3; i++) await send(app, { input: { text: '甲'.repeat(1800) } })
+    failReply = true
+    const failed = await send(app, { input: { text: '甲'.repeat(1800) } })
+    expect(failed.status).toBe('failed')
+    expect(compressed).toBe(1)
+    failReply = false
+    const retry = await command(app.ctx, app.access, app.conversation.id, {
+      operation: 'regenerate',
+      targetNodeId: failed.replyNodeId,
+    })
+    const first = await app.ctx.ai.start(app.access, app.conversation.id, retry)
+    const repeated = await app.ctx.ai.start(app.access, app.conversation.id, retry)
+    expect(repeated.id).toBe(first.id)
+    const completed = await finish(app.ctx, app.access, first.id)
+    expect(completed.status).toBe('completed')
+    expect(compressed).toBe(1)
+    expect(completed.requests[0]?.purpose).toBe('reply')
+  })
+  it('长工具轮次在安全边界压缩，工具返回后预算仍会重新检查', async () => {
+    let calls = 0
+    const preset = agent({ toolIds: ['large'] })
+    const app = await setup({
+      agent: preset,
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          if (request.purpose === 'compaction')
+            return {
+              content: [{ type: 'text', text: '先前工具已经成功返回。' }],
+              stopReason: 'stop',
+            }
+          if (++calls <= 4)
+            return {
+              content: [{ type: 'tool-call', id: `large-${calls}`, name: 'large', arguments: {} }],
+            }
+          return { content: [{ type: 'text', text: '完成工具任务' }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'large',
+      description: '大结果',
+      parameters: { type: 'object' },
+      execute: async () => '甲'.repeat(1800),
+    })
+    const result = await send(app)
+    expect(result.status).toBe('completed')
+    expect(
+      result.contextOperations?.some((op) => op.kind === 'compact' && op.status === 'completed'),
+    ).toBe(true)
+    expect(result.messages.filter((message) => message.role === 'tool')).toHaveLength(4)
+    expect(
+      result.requests
+        .at(-1)
+        ?.messages.some((message) => message.id === `user:${result.userNodeId}`),
+    ).toBe(true)
+    expect(result.contextBudgets?.filter((entry) => entry.phase === 'after')).toHaveLength(5)
+  })
+  it('摘要事务持久化，重启续聊复用且不改聊天原文，跨空间不能访问', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'antarestra-context-'))
+    directories.push(directory)
+    const filename = join(directory, 'context.sqlite')
+    const summarize = vi.fn()
+    const driver: ModelDriver = {
+      id: 'driver',
+      async generate(request) {
+        if (request.purpose === 'compaction') {
+          summarize(request)
+          return {
+            content: [{ type: 'text', text: '已确认目标：保留上下文功能。' }],
+            stopReason: 'stop',
+            usage: { input: 100, output: 20, cacheRead: 30 },
+          }
+        }
+        return { content: [{ type: 'text', text: '回答' }] }
+      },
+    }
+    const app = await setup({ filename, driver })
+    for (let i = 0; i < 4; i++)
+      expect((await send(app, { input: { text: `${i}：${'甲'.repeat(1800)}` } })).status).toBe(
+        'completed',
+      )
+    expect(summarize).toHaveBeenCalledOnce()
+    const last = (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation
+      .selectedNodeId
+    const db = app.ctx.database.scope<Tables>(app.ctx, '@antarestra/ai')
+    const saved = await db.selectFrom('summaries').selectAll().execute()
+    expect(saved).toHaveLength(1)
+    expect(JSON.parse(saved[0]!.payload)).toMatchObject({
+      workspaceId: 'space',
+      text: '已确认目标：保留上下文功能。',
+    })
+    const history = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+    expect(history.path.filter((node) => node.role === 'user')).toHaveLength(4)
+    expect(history.path[0]?.content[0]).toMatchObject({ text: `0：${'甲'.repeat(1800)}` })
+    await app.ctx.fiber.dispose()
+    contexts.splice(contexts.indexOf(app.ctx), 1)
+    const next = await setup({ filename, driver })
+    const resumed = { ...next, conversation: app.conversation }
+    const run = await send(resumed, { input: { text: '继续' } })
+    expect(run.status).toBe('completed')
+    expect(summarize).toHaveBeenCalledOnce()
+    expect(JSON.stringify(run.requests[0]?.messages)).toContain('已确认目标')
+    expect(JSON.stringify(run.requests[0]?.messages)).not.toContain(`0：${'甲'.repeat(1800)}`)
+    await expect(next.ctx.ai.getRun(next.other, run.id)).rejects.toMatchObject({ status: 404 })
+    // 回到摘要覆盖范围之前进行编辑，新分支不能使用未来摘要。
+    const edited = await send(resumed, {
+      operation: 'edit',
+      targetNodeId: history.path[0]!.id,
+      input: { text: '新的任务' },
+    })
+    expect(edited.status).toBe('completed')
+    expect(JSON.stringify(edited.requests[0]?.messages)).not.toContain('已确认目标')
+    expect(last).not.toBeNull()
+    await next.ctx.ai.updateConversation(next.access, app.conversation.id, { archived: true })
+    await next.ctx.ai.deleteConversation(next.access, app.conversation.id)
+    expect(
+      await next.ctx.database
+        .scope<Tables>(next.ctx, '@antarestra/ai')
+        .selectFrom('summaries')
+        .selectAll()
+        .execute(),
+    ).toEqual([])
+  })
+  it('压缩可使用聊天列表外的独立模型，窗口不足分批且主请求输出不受预留限制', async () => {
+    const preset = agent()
+    preset.contextPolicy!.compaction.model = { providerId: 'summary', modelId: 'small' }
+    const app = await setup({ agent: preset })
+    const compressed = vi.fn(async () => ({
+      content: [{ type: 'text' as const, text: '分批历史摘要' }],
+      stopReason: 'stop' as const,
+    }))
+    app.ctx.ai.registerProvider(app.ctx, {
+      id: 'summary',
+      title: '压缩专用',
+      baseUrl: 'https://example.invalid',
+      driverId: 'summary-driver',
+      models: [
+        {
+          id: 'small',
+          title: '小窗口',
+          contextWindow: 2000,
+          maxOutputTokens: 400,
+          thinkingLevels: [],
+          input: ['text'],
+          output: ['text'],
+          tools: false,
+        },
+      ],
+    })
+    app.ctx.ai.registerDriver(app.ctx, { id: 'summary-driver', generate: compressed })
+    for (let i = 0; i < 4; i++) {
+      const run = await send(app, { input: { text: '甲'.repeat(1800) } })
+      expect(run.status).toBe('completed')
+      expect(run.requests.at(-1)?.model).toEqual(model)
+      expect(run.requests.at(-1)?.maxOutputTokens).toBeUndefined()
+    }
+    expect(compressed.mock.calls.length).toBeGreaterThan(1)
+    expect(
+      (await app.ctx.ai.catalog(app.access)).agents.find((item) => item.id === 'assistant')?.models,
+    ).not.toContainEqual({ providerId: 'summary', modelId: 'small' })
+  })
+  it.each(['length', 'empty', 'cancel'] as const)(
+    '压缩异常 %s 保留历史且不提交摘要',
+    async (failure) => {
+      let began!: () => void
+      const started = new Promise<void>((resolve) => {
+        began = resolve
+      })
+      const app = await setup({
+        driver: {
+          id: 'driver',
+          async generate(request, _connection, context) {
+            if (request.purpose !== 'compaction')
+              return { content: [{ type: 'text', text: '回答' }] }
+            began()
+            if (failure === 'cancel')
+              await new Promise<void>((resolve) =>
+                context.signal.addEventListener('abort', () => resolve(), { once: true }),
+              )
+            return {
+              content: [{ type: 'text', text: failure === 'empty' ? '' : '未完整摘要' }],
+              stopReason: failure === 'length' ? 'length' : 'stop',
+            }
+          },
+        },
+      })
+      for (let i = 0; i < 3; i++)
+        expect((await send(app, { input: { text: '甲'.repeat(1800) } })).status).toBe('completed')
+      const promise = send(app, { input: { text: '甲'.repeat(1800) } })
+      await started
+      if (failure === 'cancel') {
+        const id = (await app.ctx.ai.getConversation(app.access, app.conversation.id)).conversation
+          .activeRunId!
+        await app.ctx.ai.cancel(app.access, id)
+      }
+      const run = await promise
+      expect(run.status).toBe(failure === 'cancel' ? 'cancelled' : 'failed')
+      expect(run.contextOperations?.at(-1)?.status).toBe(
+        failure === 'cancel' ? 'cancelled' : 'failed',
+      )
+      expect(
+        await app.ctx.database
+          .scope<Tables>(app.ctx, '@antarestra/ai')
+          .selectFrom('summaries')
+          .selectAll()
+          .execute(),
+      ).toEqual([])
+      expect(
+        (await app.ctx.ai.getConversation(app.access, app.conversation.id)).path.filter(
+          (node) => node.role === 'user',
+        ),
+      ).toHaveLength(4)
+    },
+  )
   it('仅允许删除本空间已归档对话，并永久清除消息、运行与事件', async () => {
     const app = await setup()
     const { ctx, access, other, conversation } = app
@@ -758,7 +993,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     await app.ctx.ai.cancel(app.access, run.id)
     const saved = await app.ctx.ai.getRun(app.access, run.id)
     expect(saved.status).toBe('cancelled')
-    expect(saved.messages.filter((message) => message.role === 'tool')).toEqual([
+    expect(saved.messages.filter((message) => message.role === 'tool')).toMatchObject([
       {
         role: 'tool',
         content: [{ type: 'tool-result', id: 'fast', content: { saved: true }, isError: false }],

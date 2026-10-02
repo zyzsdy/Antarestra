@@ -807,6 +807,10 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       id,
       version: '1',
       title: '测试',
+      contextPolicy: {
+        compaction: { enabled: true, reserve: 1000, keepRecent: 1000, model: null, thinking: null },
+        trimming: { enabled: false, mode: 'rounds', rounds: 3, keepFirst: true },
+      },
       backendId: 'ai-agent-core',
       systemTemplate: '',
       userTemplate: '{{input}}',

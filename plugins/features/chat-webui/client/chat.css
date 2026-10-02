@@ -1048,3 +1048,74 @@
   max-height: 640px;
   object-fit: contain;
 }
+.chat-context-meter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  padding: 3px;
+  border: 0;
+  border-radius: 50%;
+  color: #597b68;
+  background: transparent;
+  cursor: pointer;
+}
+.chat-context-meter:hover,
+.chat-context-label:hover {
+  background: #edf2ee;
+}
+.chat-context-meter svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.chat-context-meter .chat-context-track {
+  opacity: 0.2;
+}
+.chat-context-meter.is-full {
+  color: #a45332;
+}
+.chat-context-tooltip {
+  z-index: 510;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #26312d;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.chat-context-tooltip p {
+  margin: 0;
+}
+.chat-context-tooltip small {
+  color: #d0d8d3;
+}
+.chat-context-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  color: #69766e;
+}
+.chat-context-divider::before,
+.chat-context-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #dbe1dd;
+}
+.chat-context-label {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: normal;
+}

@@ -1,4 +1,5 @@
 import type { AgentPreset, AiService, ModelRef } from '@antarestra/ai'
+import { defaultContextPolicy } from '@antarestra/contracts'
 
 export interface AgentRecord extends Omit<
   AgentPreset,
@@ -42,5 +43,6 @@ export function newAgent(id = '', title = ''): AgentRecord {
     toolIds: null,
     skillIds: null,
     extensions: {},
+    contextPolicy: defaultContextPolicy(),
   }
 }

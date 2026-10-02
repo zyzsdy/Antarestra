@@ -1,4 +1,6 @@
 import type { Access, AiService, Bound } from './index.js'
+import { randomUUID } from 'node:crypto'
+import { defaultContextPolicy, resolveTokenAmount } from '@antarestra/contracts'
 import type {
   ChatMessage,
   ContentBlock,
@@ -6,6 +8,9 @@ import type {
   ModelRef,
   RequestSnapshot,
   RunRecord,
+  ContextSummary,
+  ContextBudget,
+  ContextOperation,
 } from '@antarestra/contracts'
 import type {
   ExecutionRuntime,
@@ -16,6 +21,8 @@ import type {
   ToolDraft,
 } from './types.js'
 import { abortable, AiError, canonical, check, compile, freeze, json, template } from './utils.js'
+import { budget, estimateRequest, summarizationPrompt, usageTokens } from './context.js'
+import { prepareContext } from './context-manager.js'
 export class Running {
   readonly controller = new AbortController()
   readonly context: RunContext
@@ -24,6 +31,7 @@ export class Running {
   private tools = new Map<string, Tool>()
   private toolContexts = new WeakSet<RunContext>()
   private systemPrompt = ''
+  private requestThinking: string | null = null
   private transcript: ChatMessage[]
   private pending: Extract<ContentBlock, { type: 'tool-call' }>[] = []
   private callIds = new Set<string>()
@@ -35,10 +43,16 @@ export class Running {
     readonly service: AiService,
     readonly record: RunRecord,
     readonly bound: Bound,
-    history: ChatMessage[],
+    readonly history: RunRecord[],
     readonly access: Access,
+    readonly summaries: ContextSummary[],
+    readonly parentNodeId: string | null,
   ) {
-    this.transcript = json(history)
+    for (const run of history)
+      run.messages.forEach((message, index) => {
+        message.id ??= `legacy:${run.id}:${index}`
+      })
+    this.transcript = json(history.flatMap((run) => run.messages))
     this.context = Object.freeze({
       runId: record.id,
       conversationId: record.conversationId,
@@ -128,6 +142,7 @@ export class Running {
       )
       this.systemPrompt = draft.systemPrompt
       const message: ChatMessage = {
+        id: `user:${this.record.userNodeId}`,
         role: 'user',
         content: [
           { type: 'text', text: draft.userPrompt },
@@ -234,6 +249,7 @@ export class Running {
     const signal = AbortSignal.any([local.signal, this.context.signal])
     try {
       const draft: RequestSnapshot = {
+        purpose: 'reply',
         model: json(this.record.model),
         thinking: this.record.thinking,
         parameters: {},
@@ -288,6 +304,14 @@ export class Running {
         '工具声明不能增加未授权工具或修改参数 Schema',
       )
       check(model.tools || !draft.tools.length, '模型不支持工具')
+      this.requestThinking = draft.thinking
+      for (const message of draft.messages) message.id ??= `hook:${randomUUID()}`
+      check(
+        new Set(draft.messages.map((message) => message.id)).size === draft.messages.length,
+        '上下文消息标识重复',
+      )
+      const reserve = await prepareContext(this, draft, model.contextWindow)
+      this.active()
       for (const message of draft.messages) {
         check(
           ['user', 'assistant', 'tool'].includes(message.role) && Array.isArray(message.content),
@@ -316,11 +340,8 @@ export class Running {
       check(!pending.size, '上下文工具结果不完整')
       if (driver.parameters) compile(driver.parameters)(draft.parameters)
       else check(Object.keys(draft.parameters).length === 0, '驱动未声明扩展参数')
-      if (driver.estimateTokens) {
-        const tokens = await abortable(Promise.resolve(driver.estimateTokens(draft)), signal)
-        if (tokens > model.contextWindow)
-          throw new AiError('context_overflow', '上下文超过模型限制')
-      }
+      if (this.record.requests.length >= this.service.config.maxModelCalls)
+        throw new AiError('model_call_limit', '模型调用次数达到上限')
       const request = freeze(json(draft))
       this.record.requests.push(json(request))
       await this.service.persist(this, 'request', {
@@ -402,7 +423,11 @@ export class Running {
       check(Array.isArray(output.content), '模型响应无效')
       await this.validateResources(output.content)
       // 先保存模型给出的调用，再校验是否允许执行，拒绝的调用也能在历史中查看。
-      const message: ChatMessage = { role: 'assistant', content: json(output.content) }
+      const message: ChatMessage = {
+        id: randomUUID(),
+        role: 'assistant',
+        content: json(output.content),
+      }
       const hostedIds = new Set(
         output.content.flatMap((block) => (block.type === 'provider-tool' ? [block.id] : [])),
       )
@@ -452,12 +477,190 @@ export class Running {
       }
       this.transcript.push(json(message))
       this.pending = calls
+      const actual = usageTokens(output.usage)
+      await this.emitBudget(
+        budget(
+          draft,
+          model.contextWindow,
+          reserve,
+          actual ?? (await this.estimate({ ...draft, messages: [...draft.messages, message] })),
+          'after',
+          actual === undefined ? 'estimate' : 'usage',
+        ),
+      )
       return json(output)
     } finally {
       if (timer) clearTimeout(timer)
       local.abort()
       this.requesting = false
     }
+  }
+  position() {
+    return this.reply.length
+  }
+  async estimate(request: RequestSnapshot) {
+    const { driver } = this.validateSelection(request.model, request.thinking)
+    const tokens = await abortable(
+      Promise.resolve(driver.estimateTokens?.(request) ?? estimateRequest(request)),
+      this.context.signal,
+    )
+    check(Number.isFinite(tokens) && tokens >= 0, '模型 token 估算无效')
+    return Math.ceil(tokens)
+  }
+  async emitBudget(value: ContextBudget) {
+    this.active()
+    ;(this.record.contextBudgets ??= []).push(value)
+    await this.service.persist(this, 'context-budget', value)
+  }
+  async emitOperation(value: ContextOperation, summary?: ContextSummary) {
+    if (summary) this.active()
+    const operations = (this.record.contextOperations ??= [])
+    const index = operations.findIndex((entry) => entry.id === value.id)
+    if (index < 0) operations.push(json(value))
+    else operations[index] = json(value)
+    try {
+      await this.service.persist(this, 'context-operation', value, summary)
+    } catch (error) {
+      if (summary)
+        operations[index < 0 ? operations.length - 1 : index] = {
+          ...value,
+          status: 'failed',
+          error: '摘要保存失败',
+        }
+      throw error
+    }
+  }
+  async summarize(text: string, maxSummaryTokens: number) {
+    const policy = this.record.agent.contextPolicy ?? defaultContextPolicy()
+    // 使用实际主请求选择，包含请求钩子对模型/思考强度的合法修改。
+    const latest = this.record.contextBudgets?.at(-1)
+    const ref = policy.compaction.model ?? latest?.model ?? this.record.model
+    const thinking =
+      policy.compaction.thinking === 'off'
+        ? null
+        : (policy.compaction.thinking ?? this.requestThinking)
+    const provider = this.bound.providers.get(ref.providerId)?.value
+    const model = provider?.models.find((entry) => entry.id === ref.modelId)
+    check(provider && model, '压缩模型不可用')
+    check(
+      thinking === null || model.thinkingLevels.includes(thinking),
+      '压缩模型不支持当前思考强度，请在助理配置中指定',
+    )
+    const driver = this.bound.drivers.get(provider.driverId)!.value
+    const maxOutputTokens = Math.min(
+      maxSummaryTokens,
+      model.maxOutputTokens,
+      Math.max(1, Math.floor(model.contextWindow / 4)),
+      resolveTokenAmount(policy.compaction.reserve, latest?.window ?? model.contextWindow),
+    )
+    const usage: ContextSummary['usage'] = []
+    let summary = ''
+    let offset = 0
+    const characters = Array.from(text)
+    const requestFor = (part: string): RequestSnapshot => ({
+      purpose: 'compaction',
+      model: json(ref),
+      thinking,
+      parameters: {},
+      maxOutputTokens,
+      systemPrompt: summarizationPrompt,
+      tools: [],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `${summary ? `先前摘要：\n${summary}\n\n` : ''}待合并历史资料：\n${part}`,
+            },
+          ],
+        },
+      ],
+    })
+    const estimate = async (request: RequestSnapshot) => {
+      const tokens = await abortable(
+        Promise.resolve(driver.estimateTokens?.(request) ?? estimateRequest(request)),
+        this.context.signal,
+      )
+      check(Number.isFinite(tokens) && tokens >= 0, '压缩模型 token 估算无效')
+      return Math.ceil(tokens)
+    }
+    while (offset < characters.length) {
+      this.active()
+      // 二分选择适合压缩模型窗口的连续资料块，不截掉任何文字。
+      let low = 0
+      let high = characters.length - offset
+      while (low < high) {
+        const count = Math.ceil((low + high) / 2)
+        if (
+          (await estimate(requestFor(characters.slice(offset, offset + count).join('')))) +
+            maxOutputTokens <=
+          model.contextWindow
+        )
+          low = count
+        else high = count - 1
+      }
+      if (!low)
+        throw new AiError(
+          'compaction_overflow',
+          '压缩模型窗口无法容纳摘要与后续资料，请选择更大窗口的压缩模型',
+        )
+      if (this.record.requests.length >= this.service.config.maxModelCalls)
+        throw new AiError('model_call_limit', '压缩所需模型调用次数达到上限')
+      const request = freeze(json(requestFor(characters.slice(offset, offset + low).join(''))))
+      this.record.requests.push(json(request))
+      await this.service.persist(this, 'request', {
+        index: this.record.requests.length,
+        model: ref,
+        purpose: 'compaction',
+      })
+      const local = new AbortController()
+      const signal = AbortSignal.any([this.context.signal, local.signal])
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const touch = () => {
+        if (timer) clearTimeout(timer)
+        timer = setTimeout(
+          () => local.abort(new AiError('model_idle_timeout', '压缩模型无活动超时')),
+          provider.idleTimeoutMs ?? this.service.config.modelIdleTimeoutMs,
+        )
+      }
+      try {
+        touch()
+        const credential = provider.resolveCredential
+          ? await abortable(provider.resolveCredential({ ...this.context, signal }), signal)
+          : undefined
+        const result = await abortable(
+          driver.generate(
+            request,
+            { baseUrl: provider.baseUrl, credential },
+            { ...this.context, signal },
+            async () => {
+              this.active()
+              signal.throwIfAborted()
+              touch()
+            },
+          ),
+          signal,
+        )
+        this.active()
+        signal.throwIfAborted()
+        if (result.stopReason && result.stopReason !== 'stop')
+          throw new AiError('compaction_failed', '压缩摘要未完整生成，请调整输出预留或压缩模型')
+        if (result.content.some((block) => !['text', 'thinking'].includes(block.type)))
+          throw new AiError('compaction_failed', '压缩模型返回了非摘要内容')
+        summary = result.content
+          .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+          .join('')
+          .trim()
+        if (!summary) throw new AiError('compaction_failed', '压缩模型返回空摘要')
+        if (result.usage) usage.push(json(result.usage))
+        offset += low
+      } finally {
+        if (timer) clearTimeout(timer)
+        local.abort()
+      }
+    }
+    return { text: summary, model: json(ref), thinking, usage }
   }
   private async executeTools(calls: typeof this.pending): Promise<ChatMessage[]> {
     this.active()
@@ -524,6 +727,7 @@ export class Running {
             this.active()
             batch.signal.throwIfAborted()
             const result: ChatMessage = {
+              id: randomUUID(),
               role: 'tool',
               content: [
                 {

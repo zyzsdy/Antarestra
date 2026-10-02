@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckboxField } from '@antarestra/webui/components'
-import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, reactive, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import {
   SelectField,
   CollapsibleRoot,
@@ -10,6 +10,8 @@ import {
 import { ChevronRightIcon } from '@antarestra/webui/icons'
 import type { ModelRef, JsonObject } from '@antarestra/ai'
 import { newAgent, defaultAgentId } from '../src/types.js'
+import { defaultContextPolicy, validTokenAmount } from '@antarestra/contracts'
+import ContextSettings from './ContextSettings.vue'
 import type { AgentRecord, Capabilities } from '../src/types.js'
 const props = defineProps<{
   value: AgentRecord | undefined
@@ -22,6 +24,7 @@ const draft = reactive<AgentRecord>(
   props.value ? (JSON.parse(JSON.stringify(props.value)) as AgentRecord) : newAgent(),
 )
 const extensionText = ref(JSON.stringify(draft.extensions, null, 2))
+draft.contextPolicy ??= defaultContextPolicy()
 const skillText = ref(draft.skillIds?.join('\n') ?? '')
 const initial = JSON.stringify({ draft, extensions: extensionText.value, skills: skillText.value })
 watch(
@@ -72,6 +75,7 @@ onMounted(() => {
 })
 onUnmounted(() => resizeObserver?.disconnect())
 const invalid = ref('')
+const advanced = ref(false)
 const validation = ref('')
 const modelKey = (m: ModelRef) => JSON.stringify([m.providerId, m.modelId])
 const modelOptions = computed(() => {
@@ -139,6 +143,20 @@ function save(event: Event) {
     validation.value = '请选择允许列表内的默认模型，或改为自动选择。'
   }
   let extensions: Record<string, JsonObject> = {}
+  const policy = draft.contextPolicy!
+  if (!invalid.value && !validTokenAmount(policy.compaction.reserve)) {
+    invalid.value = 'agent-context-reserve'
+    validation.value = '输出预留需为正整数或大于 0%、小于 100% 的百分比。'
+  } else if (!invalid.value && !validTokenAmount(policy.compaction.keepRecent)) {
+    invalid.value = 'agent-context-recent'
+    validation.value = '近期保留窗口需为正整数或大于 0%、小于 100% 的百分比。'
+  } else if (
+    !invalid.value &&
+    (!Number.isSafeInteger(policy.trimming.rounds) || policy.trimming.rounds < 1)
+  ) {
+    invalid.value = 'agent-trim-rounds'
+    validation.value = '保留轮数需为正整数。'
+  }
   try {
     const value: unknown = JSON.parse(extensionText.value)
     if (
@@ -154,7 +172,10 @@ function save(event: Event) {
     validation.value = '扩展配置需为 JSON 对象，每个扩展的值也需为对象。'
   }
   if (invalid.value) {
-    ;(event.target as HTMLFormElement).querySelector<HTMLElement>(`#${invalid.value}`)?.focus()
+    if (invalid.value.startsWith('agent-context-') || invalid.value.startsWith('agent-trim-'))
+      advanced.value = true
+    const form = event.target as HTMLFormElement
+    void nextTick(() => form.querySelector<HTMLElement>(`#${invalid.value}`)?.focus())
     return
   }
   const value = JSON.parse(JSON.stringify(draft)) as AgentRecord
@@ -288,11 +309,17 @@ function save(event: Event) {
           当前未接入 Skill 服务。“全部”范围会在服务接入后自动生效。
         </p>
       </section>
-      <CollapsibleRoot class="agents-advanced">
+      <CollapsibleRoot v-model:open="advanced" class="agents-advanced">
         <CollapsibleTrigger class="agents-advanced-trigger" type="button"
           ><ChevronRightIcon class="ui-icon" aria-hidden="true" />高级配置</CollapsibleTrigger
         >
         <CollapsibleContent>
+          <ContextSettings
+            v-if="draft.contextPolicy"
+            v-model="draft.contextPolicy"
+            :capabilities="capabilities"
+            :invalid="invalid"
+          />
           <label for="agent-backend">执行后端</label
           ><SelectField
             id="agent-backend"

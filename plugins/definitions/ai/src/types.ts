@@ -61,6 +61,7 @@ export interface Provider {
 export interface ModelOutput {
   content: ContentBlock[]
   usage?: JsonObject
+  stopReason?: 'stop' | 'length' | 'toolUse' | 'error' | 'aborted' | 'pending' | 'deferred'
 }
 export type ModelUpdate =
   | { type: 'activity' }

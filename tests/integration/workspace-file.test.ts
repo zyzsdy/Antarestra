@@ -333,7 +333,7 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
       {
         id: 'test',
         title: '测试模型',
-        contextWindow: 10000,
+        contextWindow: 100000,
         maxOutputTokens: 1000,
         input: ['text', 'image'],
         output: ['text'],

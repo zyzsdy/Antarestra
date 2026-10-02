@@ -18,3 +18,4 @@ export interface SessionSnapshot {
 }
 
 export * from './ai.js'
+export * from './context-policy.js'

@@ -319,7 +319,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
                 await update({ type: 'provider-tool', content: block })
               }
             },
-            maxTokens: definition.maxOutputTokens,
+            maxTokens: request.maxOutputTokens ?? definition.maxOutputTokens,
             ...(request.thinking ? { reasoning: request.thinking as ThinkingLevel } : {}),
           },
         )
@@ -382,9 +382,12 @@ export function driver(provider: ProviderRecord): ModelDriver {
             ],
             outputOrder,
           ),
+          stopReason: result.stopReason,
           usage: {
             input: result.usage.input,
             output: result.usage.output,
+            cacheRead: result.usage.cacheRead,
+            cacheWrite: result.usage.cacheWrite,
             totalTokens: result.usage.totalTokens,
           },
         }

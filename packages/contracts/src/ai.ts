@@ -19,6 +19,8 @@ export type ContentBlock =
   | { type: 'tool-result'; id: string; content: Json; isError: boolean }
   | { type: 'provider-tool'; id: string; name: string; status: string; result: JsonObject }
 export interface ChatMessage {
+  /** 服务端分配；旧记录通过运行 ID 与消息位置生成兼容标识。 */
+  id?: string
   role: 'user' | 'assistant' | 'tool'
   content: ContentBlock[]
 }
@@ -37,6 +39,7 @@ export interface ModelDefinition {
   tools: boolean
 }
 export interface AgentPreset {
+  contextPolicy?: ContextPolicy
   id: string
   version: string
   title: string
@@ -94,6 +97,8 @@ export interface MessageNode {
 }
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
 export interface RequestSnapshot {
+  purpose?: 'reply' | 'compaction'
+  maxOutputTokens?: number
   model: ModelRef
   thinking: string | null
   parameters: JsonObject
@@ -107,6 +112,8 @@ export interface RequestSnapshot {
   }[]
 }
 export interface RunRecord {
+  contextBudgets?: ContextBudget[]
+  contextOperations?: ContextOperation[]
   id: string
   conversationId: string
   workspaceId: string
@@ -149,6 +156,59 @@ export interface AiEvent {
     | 'tool-start'
     | 'tool-end'
     | 'run-end'
+    | 'context-budget'
+    | 'context-operation'
   data: Json
+  createdAt: number
+}
+
+export type TokenAmount = number | string
+export interface ContextPolicy {
+  compaction: {
+    enabled: boolean
+    reserve: TokenAmount
+    keepRecent: TokenAmount
+    model: ModelRef | null
+    thinking: string | null
+  }
+  trimming: { enabled: boolean; mode: 'auto' | 'rounds'; rounds: number; keepFirst: boolean }
+}
+export interface ContextBudget {
+  model: ModelRef
+  window: number
+  used: number
+  remaining: number
+  reserve: number
+  available: number
+  phase: 'before' | 'prepared' | 'after'
+  source: 'estimate' | 'usage'
+  createdAt: number
+}
+export interface ContextOperation {
+  id: string
+  kind: 'trim' | 'compact'
+  status: 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
+  /** 插入到本次运行的第几个助理内容块之前。 */
+  position: number
+  before: number
+  after?: number
+  createdAt: number
+  endedAt: number | null
+  error?: string
+}
+export interface ContextSummary {
+  id: string
+  workspaceId: string
+  conversationId: string
+  runId: string
+  parentNodeId: string | null
+  /** 覆盖的原始消息 ID 及内容指纹，顺序也参与有效性检查。 */
+  sources: { id: string; hash: string }[]
+  firstKeptId: string | null
+  previousSummaryIds: string[]
+  text: string
+  model: ModelRef
+  thinking: string | null
+  usage: JsonObject[]
   createdAt: number
 }

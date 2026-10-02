@@ -19,6 +19,7 @@ interface EventRow {
   payload: string
 }
 export interface Tables {
+  summaries: RecordRow
   conversations: RecordRow & { last_activity_at: number | null; archived_at: number | null }
   nodes: RecordRow
   runs: RunRow
@@ -94,6 +95,27 @@ export const migrations = [
         table: 'conversations',
         name: 'workspace_history',
         columns: ['workspace_id', 'archived_at', 'last_activity_at', 'id'],
+      },
+    ],
+  }),
+  defineMigration({
+    id: '003_context_summaries',
+    steps: [
+      {
+        kind: 'createTable',
+        table: 'summaries',
+        columns: [
+          { name: 'id', type: 'string', length: 200, primaryKey: true },
+          { name: 'workspace_id', type: 'string', length: 200, notNull: true },
+          { name: 'conversation_id', type: 'string', length: 200, notNull: true },
+          { name: 'payload', type: 'text', notNull: true },
+        ],
+      },
+      {
+        kind: 'createIndex',
+        table: 'summaries',
+        name: 'conversation_summaries',
+        columns: ['workspace_id', 'conversation_id'],
       },
     ],
   }),

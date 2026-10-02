@@ -1,4 +1,11 @@
-import type { AiEvent, ChatMessage, ContentBlock, RunRecord } from '@antarestra/contracts'
+import type {
+  AiEvent,
+  ChatMessage,
+  ContentBlock,
+  RunRecord,
+  ContextBudget,
+  ContextOperation,
+} from '@antarestra/contracts'
 import { finishToolDetails, mergeToolBlocks, type ToolDetail } from './tool-details.js'
 
 /** 网络块不等于 SSE 帧；只在完整空行边界交付事件。 */
@@ -28,6 +35,8 @@ export class EventDecoder<T extends { sequence: number } = AiEvent> {
 }
 
 export interface ReplyState {
+  budget?: ContextBudget
+  contextOperations: ContextOperation[]
   sequence: number
   completed: ContentBlock[]
   pending: ContentBlock[]
@@ -36,6 +45,7 @@ export interface ReplyState {
   ended: boolean
 }
 export const emptyReply = (): ReplyState => ({
+  contextOperations: [],
   sequence: 0,
   completed: [],
   pending: [],
@@ -49,6 +59,18 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
   if (event.sequence !== state.sequence + 1) throw new Error('回复事件缺失，请重新连接')
   const data = event.data as Record<string, unknown>
   switch (event.type) {
+    case 'context-budget':
+      state.budget = event.data as unknown as ContextBudget
+      break
+    case 'context-operation': {
+      const operation = event.data as unknown as ContextOperation
+      const index = state.contextOperations.findIndex((entry) => entry.id === operation.id)
+      if (index < 0) state.contextOperations.push(operation)
+      else state.contextOperations[index] = operation
+      if (operation.status === 'running')
+        state.status = operation.kind === 'trim' ? '正在裁剪上下文' : '正在压缩上下文'
+      break
+    }
     case 'provider-tool': {
       const block = event.data as unknown as Extract<ContentBlock, { type: 'provider-tool' }>
       const existing = [...state.completed, ...state.pending].find(
@@ -61,6 +83,10 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
       break
     }
     case 'request':
+      if (data.purpose === 'compaction') {
+        state.status = '正在压缩上下文'
+        break
+      }
       state.pending = []
       state.status = '正在思考'
       break
@@ -93,6 +119,17 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
       break
     }
     case 'run-end':
+      for (const operation of state.contextOperations) {
+        if (operation.status === 'running') {
+          operation.status =
+            data.status === 'cancelled'
+              ? 'cancelled'
+              : data.status === 'interrupted'
+                ? 'interrupted'
+                : 'failed'
+          operation.endedAt = event.createdAt
+        }
+      }
       finishToolDetails(
         state.tools,
         data.status as RunRecord['status'],
