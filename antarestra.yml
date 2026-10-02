@@ -3,9 +3,17 @@
 plugins:
   logger: {}
   http: {}
-  puppeteer: {}
+  puppeteer:
+    args: [ "--proxy-server=socks5://127.0.0.1:7890" ]
+    acceptInsecureCerts: true
+    defaultViewport:
+      width: 1920
+      height: 1000
+      deviceScaleFactor: 2
+      isMobile: false
+      hasTouch: false
   hmr:
-    include: [plugins]
+    include: [ plugins ]
     exclude: []
   database: {}
   database-kysely:
@@ -41,3 +49,4 @@ plugins:
   config-panel: {}
   markdown-render: {}
   chat-webui: {}
+
