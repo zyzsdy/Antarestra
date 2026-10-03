@@ -572,10 +572,51 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(next.ctx.ai.capabilities().tools).toEqual([])
     const restored = await next.ctx.plugin(basicTools)
     expect(next.ctx.ai.capabilities().tools.map((tool) => tool.id)).toEqual([
+      'get_datetime',
       'rename_conversation',
       'todo',
     ])
     await restored.dispose()
+  })
+  it('日期时间工具通过核心执行并返回查询结果或参数错误', async () => {
+    let called = false
+    const app = await setup({
+      agent: agent({ toolIds: ['get_datetime'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (called) return { content: [{ type: 'text', text: '查询完成' }] }
+          called = true
+          return {
+            content: [
+              {
+                type: 'tool-call',
+                id: 'valid',
+                name: 'get_datetime',
+                arguments: { datetime: '2026-10-03T12:30:00+08:00', timeZone: 'UTC' },
+              },
+              {
+                type: 'tool-call',
+                id: 'invalid',
+                name: 'get_datetime',
+                arguments: { datetime: '2026-02-30' },
+              },
+            ],
+          }
+        },
+      },
+    })
+    await app.ctx.plugin(basicTools)
+    const run = await send(app)
+    expect(run.status).toBe('completed')
+    const results = run.messages
+      .flatMap((message) => message.content)
+      .filter((block) => block.type === 'tool-result')
+    expect(results.find((block) => block.id === 'valid')).toMatchObject({
+      isError: false,
+      content: { utcDateTime: '2026-10-03T04:30:00.000Z', utcOffset: '+00:00' },
+    })
+    expect(results.find((block) => block.id === 'invalid')).toMatchObject({ isError: true })
   })
   it('基本工具原子更新标题和待办，支持跨轮次、并发单项更新与全部完成', async () => {
     let calls: Extract<import('@antarestra/ai').ContentBlock, { type: 'tool-call' }>[] = []

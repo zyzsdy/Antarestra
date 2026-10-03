@@ -1,6 +1,6 @@
 {
   "name": "@antarestra/plugin-basic-tools",
-  "description": "为 AI 提供当前会话标题修改与待办列表管理工具。",
+  "description": "为 AI 提供日期时间查询、当前会话标题修改与待办列表管理工具。",
   "version": "0.1.0",
   "private": true,
   "type": "module",

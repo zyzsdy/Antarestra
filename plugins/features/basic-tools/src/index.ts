@@ -2,11 +2,13 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { AiError } from '@antarestra/ai'
 import type { ConversationTodo } from '@antarestra/ai'
+import { datetimeTool } from './datetime.js'
 
 const statusSchema = { type: 'string', enum: ['pending', 'in_progress', 'completed'] }
 export const inject = ['ai']
 export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   schemaConfig(new URL('../config.schema.json', import.meta.url), config)
+  ctx.ai.registerTool(ctx, datetimeTool)
   ctx.ai.registerTool(ctx, {
     id: 'rename_conversation',
     description: '修改当前会话标题。使用简洁、准确的标题概括当前话题，一般不要超过20字。',
