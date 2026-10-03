@@ -660,7 +660,28 @@ describe('认证边界与生命周期', () => {
     await defaultClosed.dispose()
   })
 
-  it('数据库依赖卸载后认证路由与服务撤销', async () => {
+  it('RBAC 连续卸载重建会回收守卫，认证依赖恢复后可以重新登录', async () => {
+    const app = await setup()
+    const port = app.ctx.server.address!.port
+    let definition = app.definition
+    for (let round = 0; round < 3; round++) {
+      const cookie = await app.login()
+      const service = app.ctx.rbac
+      await definition.dispose()
+      expect(app.ctx.rbac).toBeUndefined()
+      expect((await app.request('/health')).status).toBe(200)
+      expect((await app.request('/auth/me', undefined, cookie)).status).toBe(503)
+      expect((await app.request(`${app.base}/login`, {})).status).toBe(503)
+      await expect(service.authenticate(cookie.split('=')[1])).rejects.toThrow()
+      definition = await app.ctx.plugin(rbac)
+      await app.implementation.await()
+      expect(app.ctx.server.address!.port).toBe(port)
+      expect((await app.request('/auth/me')).status).toBe(401)
+      expect((await app.request('/auth/me', undefined, await app.login())).status).toBe(200)
+    }
+  })
+
+  it('数据库依赖卸载后认证路由与服务撤销，恢复依赖后可重新登录', async () => {
     const app = await setup()
     const cookie = await app.login()
     const service = app.ctx.rbac
@@ -668,6 +689,11 @@ describe('认证边界与生命周期', () => {
     expect((await app.request('/auth/me', undefined, cookie)).status).toBe(503)
     await expect(service.authenticate(cookie.split('=')[1])).rejects.toThrow()
     expect(await (await fetch(`${app.url}/webui/entries.json`)).json()).toEqual([])
+    await app.ctx.plugin(database, { filename: ':memory:' })
+    await app.definition.await()
+    await app.implementation.await()
+    expect((await app.request('/auth/me')).status).toBe(401)
+    expect((await app.request('/auth/me', undefined, await app.login())).status).toBe(200)
   })
 })
 
