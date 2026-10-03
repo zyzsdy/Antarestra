@@ -414,7 +414,9 @@ export class ImAiService extends Service<Config> {
             ? finalText(current)
             : current.status === 'cancelled'
               ? null
-              : 'AI 运行失败，请使用 /reset 开始新的对话后重试。'
+              : current.error?.code === 'model_output_truncated'
+                ? '模型达到输出上限，回复未完整生成。请使用 /reset 开始新的对话后重试。'
+                : 'AI 运行失败，请使用 /reset 开始新的对话后重试。'
         await this.db
           .updateTable('jobs')
           .set({

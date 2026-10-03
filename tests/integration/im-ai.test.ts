@@ -34,6 +34,27 @@ it('闲聊、命令、不相关 @、禁用聊天不调用模型，只发送最�
   expect((await app.jobs())[0]?.input).toContain('群里闲聊')
 })
 
+it('截断回复标记失败并发送未完整生成提示，不投递残缺正文', async () => {
+  const app = await setup({
+    ai: true,
+    driver: {
+      id: 'driver',
+      async generate() {
+        return { content: [{ type: 'text', text: '残缺正文' }], stopReason: 'length' }
+      },
+    },
+  })
+  await app.connection.receive('/ai 问题')
+  await poll(() => app.sent.length).toBe(1)
+  expect((await app.jobs())[0]?.status).toBe('failed')
+  expect(app.sent[0]?.segments).toEqual([
+    {
+      type: 'text',
+      text: '模型达到输出上限，回复未完整生成。请使用 /reset 开始新的对话后重试。',
+    },
+  ])
+})
+
 it('同群不同发言者共用会话并保持各自授权，双账号同群隔离且重复消息只运行一次', async () => {
   const app = await setup({ ai: true })
   await app.connection.receive('/ai 第一条', { id: 'stable-message' })

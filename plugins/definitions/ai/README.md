@@ -176,6 +176,8 @@ SSE 的 `id` 为 Run 内递增序号，`event` 为事件类型，`data` 为完�
 
 运行新增 `contextBudgets`、`contextOperations`；SSE 新增 `context-budget`、`context-operation`。预算携带模型、窗口、已用、剩余、输出预留、可输入额度与估算来源；操作按 ID 更新并携带助理内容中的插入位置。`RequestSnapshot.purpose` 区分 `reply` / `compaction` / `memory`；核心为辅助生成设置 `maxOutputTokens`，上下文输出预留不改变主回复配置的最大输出 Token。驱动应返回 `stopReason`，摘要只接受完整结束的结果。
 
+主回复的实际结束原因保存在助理 `ChatMessage.stopReason`，随历史和 `message` 事件返回。`length` 表示达到输出上限：核心保留已生成内容，将运行结束为 `failed`，错误码为 `model_output_truncated`，不执行该响应中的工具调用，也不自动续写。其他非完整结束原因（`error`、`aborted`、`pending`、`deferred`）以 `model_output_incomplete` 失败；用户取消仍遵循原有取消流程。旧驱动未返回 `stopReason` 时保持兼容，只有 `stop` 和 `toolUse` 正常进入后续执行流程。
+
 浏览器界面始终显示原始内容。模型按钮左侧的环形提示仅在发送前后更新，Tooltip 显示预算来源；切换模型后旧快照标记“上次请求”，未发送草稿不计入。裁剪和压缩分割线位于“已处理”内，数字为完整有效上下文的估算值，不含输出预留；摘要内容不进入聊天正文和复制结果。
 
 验证组件可运行 `pnpm exec vite --config tests/fixtures/markdown-preview.config.ts --host 127.0.0.1 --port 0`，打开输出端口的 `/tests/fixtures/context-preview.html`。该页面仅使用模拟数据，不调用真实模型。

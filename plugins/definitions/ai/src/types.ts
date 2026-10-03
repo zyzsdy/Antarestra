@@ -7,6 +7,7 @@ import type {
   Json,
   JsonObject,
   ModelDefinition,
+  ModelStopReason,
   RequestSnapshot,
   RunRecord,
   ToolImage,
@@ -77,7 +78,7 @@ export interface Provider {
 export interface ModelOutput {
   content: ContentBlock[]
   usage?: JsonObject
-  stopReason?: 'stop' | 'length' | 'toolUse' | 'error' | 'aborted' | 'pending' | 'deferred'
+  stopReason?: ModelStopReason
 }
 export type ModelUpdate =
   | { type: 'activity' }

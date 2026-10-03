@@ -99,6 +99,7 @@ async function setup(
   let captured: RunContext | undefined
   let block = false
   let fail = false
+  let truncate = false
   const inputs: string[] = []
   ctx.ai.registerTool(ctx, {
     id: 'capture',
@@ -123,6 +124,7 @@ async function setup(
       if (text?.type === 'text' && text.text !== '设置任务') {
         inputs.push(text.text)
         if (fail) throw new Error('测试模型失败')
+        if (truncate) return { content: [{ type: 'text', text: '残缺回答' }], stopReason: 'length' }
         if (block) await delay(60000, undefined, { signal: context.signal })
       }
       return { content: [{ type: 'text', text: '完成' }] }
@@ -192,6 +194,9 @@ async function setup(
     },
     fail() {
       fail = true
+    },
+    truncate() {
+      truncate = true
     },
     captured: () => captured,
   }
@@ -468,6 +473,19 @@ it('模型失败记录失败状态，不重复执行一次性任务', async () =
   await app.due(task.id)
   await poll(async () => (await app.row(task.id)).status).toBe('failed')
   expect((await app.row(task.id)).last_error).toContain('失败')
+  await app.ctx.wakeTasks.tick()
+  expect(app.inputs).toHaveLength(1)
+})
+
+it('截断回复记录明确失败原因，一次性任务不自动续写或重试', async () => {
+  const app = await setup()
+  app.truncate()
+  const task = await app.create()
+  await app.due(task.id)
+  await poll(async () => (await app.row(task.id)).status).toBe('failed')
+  expect((await app.row(task.id)).last_error).toBe(
+    '模型达到输出上限，回复未完整生成，请查看执行会话',
+  )
   await app.ctx.wakeTasks.tick()
   expect(app.inputs).toHaveLength(1)
 })

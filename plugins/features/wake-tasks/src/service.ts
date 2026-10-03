@@ -278,7 +278,9 @@ export class WakeTasksService extends Service<Config> {
           const error =
             current.status === 'completed'
               ? null
-              : `AI 运行${current.status === 'cancelled' ? '已取消' : '失败'}，请查看执行会话`
+              : current.error?.code === 'model_output_truncated'
+                ? '模型达到输出上限，回复未完整生成，请查看执行会话'
+                : `AI 运行${current.status === 'cancelled' ? '已取消' : '失败'}，请查看执行会话`
           const next =
             row.interval_ms === null
               ? null

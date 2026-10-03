@@ -28,11 +28,15 @@ export type ContentBlock =
   | { type: 'tool-call'; id: string; name: string; arguments: JsonObject }
   | { type: 'tool-result'; id: string; content: Json; isError: boolean; images?: ToolImage[] }
   | { type: 'provider-tool'; id: string; name: string; status: string; result: JsonObject }
+export type ModelStopReason =
+  'stop' | 'length' | 'toolUse' | 'error' | 'aborted' | 'pending' | 'deferred'
 export interface ChatMessage {
   /** 服务端分配；旧记录通过运行 ID 与消息位置生成兼容标识。 */
   id?: string
   role: 'user' | 'assistant' | 'tool'
   content: ContentBlock[]
+  /** 模型实际结束原因；旧记录或未提供此信息的驱动可省略。 */
+  stopReason?: ModelStopReason
 }
 export interface ModelRef {
   providerId: string

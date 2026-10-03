@@ -23,6 +23,34 @@ it.each([
   expect(formatProcessingTime(duration)).toBe(expected)
 })
 
+it('截断回复保留正文并显示未完整生成的错误提示', () => {
+  const run = {
+    createdAt: 0,
+    endedAt: 1000,
+    status: 'failed',
+    error: { code: 'model_output_truncated', message: '模型达到输出上限，回复未完整生成，请重试' },
+  } as RunRecord
+  const node: MessageNode = {
+    id: 'reply',
+    conversationId: 'conversation',
+    parentId: null,
+    runId: 'run',
+    role: 'assistant',
+    createdAt: 0,
+    version: 1,
+    versionCount: 1,
+    content: [{ type: 'text', text: '未完成的正文' }],
+  }
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({ render: () => h(ChatMessage, { node, run }) })
+  app.mount(host)
+  cleanups.push(() => app.unmount())
+  expect(host.textContent).toContain('未完成的正文')
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('回复未完整生成')
+  expect(host.querySelector('.chat-error-code')?.textContent).toContain('model_output_truncated')
+})
+
 it('运行计时、独立思考折叠、终态固定时长和卸载清理', async () => {
   vi.useFakeTimers()
   vi.setSystemTime(132000)

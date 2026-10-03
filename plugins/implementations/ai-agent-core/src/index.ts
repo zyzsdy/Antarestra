@@ -76,6 +76,7 @@ export const backend: ExecutionBackend = {
           signal.throwIfAborted()
           const output = await runtime.request()
           signal.throwIfAborted()
+          if (output.stopReason === 'pending') throw new Error('模型响应尚未完成')
           const calls = output.content.filter((block) => block.type === 'tool-call')
           let batch: ReturnType<typeof runtime.executeTools> | undefined
           tools.length = 0
@@ -122,8 +123,10 @@ export const backend: ExecutionBackend = {
                 arguments: block.arguments,
               })
           }
-          reply.stopReason = calls.length ? 'toolUse' : 'stop'
-          stream.push({ type: 'done', reason: reply.stopReason, message: reply })
+          reply.stopReason = output.stopReason ?? (calls.length ? 'toolUse' : 'stop')
+          if (reply.stopReason === 'error' || reply.stopReason === 'aborted')
+            stream.push({ type: 'error', reason: reply.stopReason, error: reply })
+          else stream.push({ type: 'done', reason: reply.stopReason, message: reply })
         } catch (error) {
           failure ??= { error }
           reply.stopReason = signal.aborted ? 'aborted' : 'error'

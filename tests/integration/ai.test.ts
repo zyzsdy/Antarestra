@@ -134,6 +134,105 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it.each([false, true])(
+    '截断保留内容和结束原因，不执行工具或自动续写（工具=%s）',
+    async (withTool) => {
+      const directory = await mkdtemp(join(tmpdir(), 'antarestra-truncated-'))
+      directories.push(directory)
+      const filename = join(directory, 'history.sqlite')
+      const execute = vi.fn(async () => null)
+      const app = await setup({
+        filename,
+        agent: agent({ toolIds: ['tool'] }),
+        driver: {
+          id: 'driver',
+          async generate(_request, _connection, _context, update) {
+            await update({ type: 'delta', kind: 'text', text: '未完成的回答' })
+            return {
+              stopReason: 'length',
+              content: [
+                { type: 'text', text: '未完成的回答' },
+                ...(withTool
+                  ? [{ type: 'tool-call' as const, id: 'partial', name: 'tool', arguments: {} }]
+                  : []),
+              ],
+            }
+          },
+        },
+      })
+      app.ctx.ai.registerTool(app.ctx, {
+        id: 'tool',
+        description: '',
+        parameters: {},
+        execute,
+      })
+      const run = await send(app)
+      expect(run.status).toBe('failed')
+      expect(run.error).toEqual({
+        code: 'model_output_truncated',
+        message: '模型达到输出上限，回复未完整生成，请重试',
+      })
+      expect(run.messages.at(-1)).toMatchObject({
+        role: 'assistant',
+        stopReason: 'length',
+        content: expect.arrayContaining([{ type: 'text', text: '未完成的回答' }]),
+      })
+      expect(run.requests).toHaveLength(1)
+      expect(execute).not.toHaveBeenCalled()
+      const events = await app.ctx.ai.events(app.access, run.id)
+      expect(events.at(-1)).toMatchObject({
+        type: 'run-end',
+        data: { status: 'failed', error: run.error },
+      })
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'message',
+          data: expect.objectContaining({ stopReason: 'length' }),
+        }),
+      )
+      await app.ctx.fiber.dispose()
+      contexts.splice(contexts.indexOf(app.ctx), 1)
+      const reopened = await setup({ filename })
+      expect(await reopened.ctx.ai.getRun(reopened.access, run.id)).toEqual(run)
+      expect(await reopened.ctx.ai.events(reopened.access, run.id)).toEqual(events)
+      const history = await reopened.ctx.ai.getConversation(reopened.access, run.conversationId)
+      expect(history.path.at(-1)?.content).toContainEqual({ type: 'text', text: '未完成的回答' })
+    },
+  )
+  it.each(['error', 'aborted', 'pending', 'deferred'] as const)(
+    '模型返回非完整结束原因 %s 时不报告成功',
+    async (stopReason) => {
+      const app = await setup({
+        driver: {
+          id: 'driver',
+          async generate() {
+            return { content: [], stopReason }
+          },
+        },
+      })
+      const run = await send(app)
+      expect(run.status).toBe('failed')
+      expect(run.error?.code).toBe('model_output_incomplete')
+      expect(run.messages.at(-1)?.stopReason).toBe(stopReason)
+    },
+  )
+  it.each(['stop', undefined] as const)('完整回复兼容结束原因 %s', async (stopReason) => {
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        async generate() {
+          return {
+            content: [{ type: 'text', text: '完整回答' }],
+            ...(stopReason ? { stopReason } : {}),
+          }
+        },
+      },
+    })
+    const run = await send(app)
+    expect(run.status).toBe('completed')
+    expect(run.error).toBeNull()
+    expect(run.messages.at(-1)?.stopReason).toBe(stopReason)
+  })
   it.each([true, false])(
     '工具图像通过资源解析器传给模型且历史只保存引用（视觉=%s）',
     async (imageInput) => {
@@ -167,6 +266,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
           async generate(request, connection) {
             if (calls++ === 0)
               return {
+                stopReason: 'toolUse',
                 content: [
                   { type: 'tool-call', id: 'plain', name: 'plain', arguments: {} },
                   { type: 'tool-call', id: 'image', name: 'image', arguments: {} },

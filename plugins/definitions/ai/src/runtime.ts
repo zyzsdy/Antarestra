@@ -479,6 +479,7 @@ export class Running {
         id: randomUUID(),
         role: 'assistant',
         content: json(output.content),
+        ...(output.stopReason === undefined ? {} : { stopReason: output.stopReason }),
       }
       const hostedIds = new Set(
         output.content.flatMap((block) => (block.type === 'provider-tool' ? [block.id] : [])),
@@ -496,6 +497,11 @@ export class Running {
         .filter((m) => m.role === 'assistant')
         .flatMap((m) => m.content)
       await this.service.persist(this, 'message', { ...message, usage: output.usage ?? null })
+      // 未完整生成的响应仅保留作历史展示，不执行其中的工具，也不自动续写。
+      if (output.stopReason === 'length')
+        throw new AiError('model_output_truncated', '模型达到输出上限，回复未完整生成，请重试')
+      if (output.stopReason && !['stop', 'toolUse'].includes(output.stopReason))
+        throw new AiError('model_output_incomplete', '模型未完整结束生成，请重试')
       const calls: typeof this.pending = []
       for (const block of output.content) {
         if (block.type === 'provider-tool') {
