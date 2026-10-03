@@ -22,6 +22,9 @@
 .ai-providers .page-heading {
   margin-bottom: 28px;
 }
+.ai-providers .builtin-tools-heading {
+  margin-top: 24px;
+}
 .ai-providers .muted,
 .ai-providers .hint {
   color: #647087;

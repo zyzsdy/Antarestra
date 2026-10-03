@@ -452,7 +452,7 @@ onUnmounted(() => {
         class="pagination"
         label="模型分页"
       />
-      <div class="model-heading">
+      <div class="model-heading builtin-tools-heading">
         <h2>
           提供商内置工具 <span class="count">{{ current.builtinTools?.length ?? 0 }}</span>
         </h2>
