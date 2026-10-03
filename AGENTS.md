@@ -20,15 +20,19 @@ Antarestra/
 ├─ packages/
 │  ├─ contracts/                   # 最小跨边界 DTO，不引用 pi 或 Vue
 │  ├─ config-loader/               # 核心配置加载与自动包名解析
-│  └─ plugin-sdk/                  # Cordis 统一导出与注册表辅助类
+│  ├─ plugin-sdk/                  # Cordis 统一导出与注册表辅助类
+│  └─ markdown/                    # Markdown 解析、清洗与客户端渲染
 ├─ plugins/
 │  ├─ definitions/
+│  │  ├─ ai/                       # AI 注册、运行协调、历史与 HTTP/SSE
 │  │  ├─ database/                 # 数据库服务与插件迁移契约
-│  │  └─ webui/                    # WebUI 服务、Vue 页面壳与客户端页面契约
+│  │  ├─ rbac/                     # 主体、认证、角色与请求通道
+│  │  └─ …                         # WebUI、IM、存储、HTTP 与浏览器服务
 │  ├─ implementations/
-│  │  └─ database-kysely/          # 数据库实现
+│  │  └─ …                         # 数据库、认证、存储、身份、Agent 循环、日志
+│  ├─ features/                    # 聊天、提供商、助理、文件、记忆、工具与控制台
 │  └─ adapters/
-│     └─ server/                   # HTTP/HTTPS、API 路由、中间件与静态文件
+│     └─ …                         # HTTP Server、OneBot 与飞书入口
 ├─ tests/integration/             # Cordis 插件与资源生命周期测试
 ├─ .github/workflows/             # Windows / Linux 检查流程
 ├─ pnpm-workspace.yaml            # 工作区范围与明确允许的构建脚本
@@ -39,15 +43,15 @@ Antarestra/
 └─ vitest.config.ts               # 测试入口，使用源码 development 导出
 ```
 
-`plugins/` 仅放通过主配置发现和加载的外部插件。核心直接依赖的基础设施（如 `config-loader`）放在 `packages/`。工作区预留 `plugins/features/*`，不要为了填目录而批量创建空包。
+`plugins/` 仅放通过主配置发现和加载的插件。核心直接依赖的基础设施（如 `config-loader`）放在 `packages/`；业务功能放在 `plugins/features/*`。不要为了填目录而批量创建空包。
 
-后续按实际任务增加：
+当前能力与扩展边界：
 
-- AI 能力统一在定义插件 `ai`，通过 `ctx.ai` 提供 Agent、模型、工具、Skill 接口、运行与历史；其他定义按实际需要增加 `identity`、`workspace`、`storage`、`mcp`。
-- 实现插件：`agent-pi`、`llm-pi`、身份映射、数据库等；pi-agent 与 pi-ai 必须是独立插件。
-- 业务插件：`plugins/features/chat` 与 `agent-presets` 等。
-- 入口插件：网页 API、嵌入入口与具体 IM 平台适配器。
-- 主配置使用根目录 `antarestra.yml`，加载器校验平铺 `plugins` 映射；后续按需要扩展配置管理能力。
+- AI 能力统一在定义插件 `ai`，通过 `ctx.ai` 提供 Agent、模型、工具、Skill 接口、运行与历史；Skill 加载实现和 MCP 仍待接入。
+- 执行后端 `ai-agent-core` 与模型驱动 `ai-provider` 独立，前者通过核心受控请求接口使用后者。
+- `chat-webui` 提供网页聊天，`ai-agents` 持久化助理配置；文件、记忆、定时唤醒、配置管理和 IM 已有独立插件。
+- OneBot 与飞书入口复用 IM 服务及身份映射；网站嵌入授权尚未实现。
+- 主配置默认位于根目录 `antarestra.yml`，支持平铺 `plugins`、`loader`、`pluginPanel`；配置面板提供在线管理，HMR 提供源码热更新。
 
 ## 开发命令
 
@@ -56,10 +60,9 @@ Antarestra/
 | 命令                             | 用途                                      |
 | -------------------------------- | ----------------------------------------- |
 | `pnpm install --frozen-lockfile` | 按锁文件恢复依赖                          |
-| `pnpm dev`                       | 构建后运行前端构建监听与服务端 watch      |
-| `pnpm dev:web`                   | 仅启动前端静态资源构建监听                |
+| `pnpm dev`                       | 启动服务端 watch；首次须先构建            |
+| `pnpm --filter <网页插件包> dev` | 单独启动对应前端构建监听                  |
 | `pnpm startdevdb`                | 独立启动 Docker PostgreSQL 开发库         |
-| `pnpm dev:server`                | 仅启动服务端 watch                        |
 | `pnpm build`                     | 按依赖顺序构建各包与网页                  |
 | `pnpm start`                     | 执行编译后的服务并持续监听 HTTP，需先构建 |
 | `pnpm typecheck`                 | 检查服务端项目引用、Vue 与测试类型        |
@@ -94,15 +97,15 @@ Antarestra/
 - 每次能力注册明确传入所属插件上下文，通过 `ctx.effect()` 绑定回收。网络、事件、定时器与子进程也必须回收，异步清理必须可等待。
 - 注册标识重复时明确拒绝；AI 工具例外：同名工具后注册覆盖，卸载后恢复上一有效实现，Run 固定其启动时的实现。`use_skill` 仅由唯一 Skill 服务提供。回收必须幂等，旧实例的回收函数不能删除后来注册的新实例。
 - 多实例的配置、凭据、连接与运行状态各自独立。模块顶层不能存放跨用户共享的可变 Agent 或账号状态。
-- 基础生命周期机制不等于热重载平台或安全沙箱；文档与界面不能把规划能力描述为已实现。
+- 基础生命周期机制不等于安全沙箱；当前热重载由 HMR 插件提供，在线配置由 config-panel 提供。文档与界面不能把规划能力描述为已实现。
 
 ## 多用户与真实 AI 接入约定
 
 - Actor、Workspace 与 Conversation 分开建模。空间必须由服务端解析与校验，所有数据和能力访问携带空间范围。
-- 入口不直接调用 pi。聊天业务、Agent 执行后端和模型驱动统一依赖 `@antarestra/ai`；`agent-pi` 与 `llm-pi` 独立，前者通过核心受控请求接口使用后者，不互相导入实现包。
-- 预设包含系统提示词、工具、Skill、MCP Server 和模型连接选择，运行时应固定版本快照。
+- 入口不直接调用 pi。聊天业务、Agent 执行后端和模型驱动统一依赖 `@antarestra/ai`；`ai-agent-core` 与 `ai-provider` 独立，前者通过核心受控请求接口使用后者，不互相导入实现包。
+- 助理配置包含提示词模板、工具、Skill、扩展、模型选择和上下文策略，运行时固定版本快照；MCP Server 尚未形成可用实现。
 - 有状态 Agent 按会话或运行创建；同会话默认串行，不同会话允许并发。IM 回调要处理重复投递。
-- 密钥、令牌和真实账号配置不写进仓库、日志或网页；未来通过服务端凭据引用读取。
+- 密钥、令牌和真实账号配置不写进仓库、日志或公开网页。配置文件使用环境引用；当前提供商插件在数据库明文保存密钥，仅向授权管理接口返回遮罩，完整凭据由服务端解析并传给驱动。
 - AI 首版注册能力向拥有 `ai.chat.use` 的用户开放，会话按空间隔离；Agent 列表约束当次工具和模型，Skill 服务负责 Skill 范围校验。附件解析器校验资源范围；未来 MCP 实现需要独立鉴权。Cordis 上下文不提供不可信插件的进程安全隔离。
 
 ## 验证与提交
@@ -111,7 +114,7 @@ Antarestra/
 
 默认启用 `plugin-server`，健康接口为 `/api/health`，默认监听 `0.0.0.0:14451`。CI 使用 `node scripts/smoke-server.mjs` 验证编译产物并回收子进程，避免持续监听阻塞流水线。Server 消费插件使用 `inject: ['server']`，通过带所属上下文的 `use`、`route`、`static` 注册能力；API 路径由 server 统一添加 `/api`。
 
-用户权限基础位于 `plugins/definitions/rbac`，本地认证位于 `plugins/implementations/auth-local`。需要授权的业务插件同时注入 `rbac` 和 `server`，声明权限后通过 `ctx.rbac.require()` 检查；空间范围必须由服务端解析，`system` 不覆盖工作空间。local 页面通过 WebUI 客户端扩展注册，默认位于 `/auth/user/`，管理员仅通过环境变量显式初始化。多个插件联合写入使用 `ctx.database.transaction()`，每个插件在事务中通过自己的服务操作自己的命名空间。数据库切换和本地开发库说明见根 README。
+用户权限基础位于 `plugins/definitions/rbac`，本地认证位于 `plugins/implementations/auth-local`。需要授权的 HTTP 业务插件同时注入 `rbac` 和 `server`，声明权限后通过 `ctx.rbac.require()` 检查；空间范围必须由服务端解析，`system` 不覆盖工作空间。local 页面通过 WebUI 客户端扩展注册，默认位于 `/auth/user/`，初始管理员通过 bootstrap 配置显式创建，密码应使用环境引用。多个插件联合写入使用 `ctx.database.transaction()`，每个插件在事务中通过自己的服务操作自己的命名空间。数据库切换和本地开发库说明见 [启动与开发指南](docs/development.md)。
 
 网页布局修改需在浏览器检查实际页面，至少关注常规窗口和窄屏布局。不要把演示后端测试称为真实模型集成测试，也不要把内存验证称为数据库验证。
 

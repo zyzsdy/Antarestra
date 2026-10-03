@@ -44,7 +44,7 @@ pluginPanel:
 
 ## 插件元数据与配置 Schema
 
-插件清单必须包含 `keywords: ["antarestra-plugin"]`。可添加的包必须位于服务端可解析的依赖范围内，不会递归扫描 pnpm 存储中的任意传递依赖。
+插件清单必须包含 `keywords: ["antarestra-plugin"]`。最终可添加列表只保留服务端可解析且声明为插件的包。当前候选目录来自 CommonJS 搜索路径，pnpm 启动时可能额外扫描工具的传递依赖，造成明显延迟；这一范围不一致问题见[整体评审](../../../docs/reviews/2026-10-03.md)。
 
 ```json
 {

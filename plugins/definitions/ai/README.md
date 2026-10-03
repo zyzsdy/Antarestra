@@ -15,9 +15,9 @@
 | `registerTool(ctx, tool)`           | 参数 Schema、描述、执行函数和超时                 |
 | `registerSkills(ctx, service)`      | 唯一 Skill 服务，按当次选择构造 `use_skill`       |
 | `registerExtension(ctx, extension)` | 扩展配置 Schema 和准备逻辑                        |
-| `registerResources(ctx, resolver)`  | 验证图片及文件引用的空间访问权限                  |
+| `registerResources(ctx, resolver)`  | 验证空间资源、读取模型附件及保存工具图片          |
 
-Agent 的 `models` 是 `{ providerId, modelId }` 列表，`defaultModel` 必须在其中。Provider 的 ID 是连接实例 ID，不是厂商名称；同厂商不同账号应分别注册。凭据通过 `resolveCredential(context)` 获取，仅传给驱动，不持久化、不通过 HTTP 输出。
+Agent 的 `models` 是 `{ providerId, modelId }` 列表，`defaultModel` 必须在其中。Provider 的 ID 是连接实例 ID，不是厂商名称；同厂商不同账号应分别注册。核心通过 `resolveCredential(context)` 获取凭据并传给驱动，不将返回凭据写入 Run 或通过 AI HTTP 接口输出。提供商插件拥有自己的凭据存储策略，当前 ai-provider 明文持久化并向管理接口返回遮罩，详见[提供商说明](../../features/ai-provider/README.md)。
 
 工具同名注册按栈覆盖，卸载栈顶后恢复上一有效实现；卸载非栈顶不会影响当前实现。Run 固定开始时的实现，覆盖不会改变正在运行的工具；卸载其绑定实现将取消 Run。其他能力拒绝重复 ID。`use_skill` 只能由唯一 Skill 服务提供。
 
@@ -89,9 +89,9 @@ ctx.on('ai/event', async (event, agent) => {
 
 ## 会话和授权
 
-先调用 `await ctx.ai.authorize(source, request)`，通过 RBAC 认证来源得到不可伪造的进程内访问句柄；其他方法传入该句柄。每次操作重新校验认证与空间。句柄不能从浏览器 JSON 重建。
+先调用 `await ctx.ai.authorize(source, request)`，通过 RBAC 认证来源得到不可伪造的进程内访问句柄；其他方法传入该句柄。面向调用方的访问方法重新校验认证与空间，句柄不能从浏览器 JSON 重建。活动 Run 内目前没有在每次模型请求和工具批次统一重新授权；资源工具可调用 `authorizeRunContext()` 复核。身份撤销后的继续执行属于待修复缺口，见[整体评审](../../../docs/reviews/2026-10-03.md)。
 
-`ai.chat.use` 默认授予 user/admin；注册能力对拥有权限的用户开放，历史按空间隔离。当前身份实现只提供个人空间，共享空间成员管理不在本插件实现范围。
+`ai.chat.use` 默认授予 user/admin；注册能力对拥有权限的用户开放，历史按空间隔离。`auth-local` 提供个人空间，`identity-im` 提供 IM 群聊和私聊空间；通用共享空间成员管理不在本插件实现范围。
 
 `createConversation(access, agentId, title?)` 创建会话；`getConversation()` 返回会话、全部节点和选中路径；`listConversations()` 支持 offset/limit。`start(access, conversationId, command)` 接收：
 
@@ -121,6 +121,9 @@ ctx.on('ai/event', async (event, agent) => {
 | `POST /conversations`                  | 创建会话，返回 201                            |
 | `GET /conversations?offset=0&limit=50` | 会话列表，limit 最大 100                      |
 | `GET /conversations/:id`               | 会话和分支                                    |
+| `PATCH /conversations/:id`             | 重命名、归档和恢复                            |
+| `DELETE /conversations/:id`            | 永久删除已归档且无运行的会话                  |
+| `GET /conversations/events`            | 工作空间会话列表状态流                        |
 | `PATCH /conversations/:id/selection`   | 提交 expectedRevision、expectedNodeId、nodeId |
 | `POST /conversations/:id/runs`         | 提交运行命令，返回 202                        |
 | `GET /runs/:id`                        | Run 状态、历史及请求快照                      |
@@ -135,7 +138,7 @@ SSE 的 `id` 为 Run 内递增序号，`event` 为事件类型，`data` 为完�
 
 默认 `maxModelCalls: 64`、`modelIdleTimeoutMs: 600000`、`toolTimeoutMs: 600000`。不设 Run 总时限；模型活动重置无活动计时，Provider 可用 `idleTimeoutMs` 覆盖。工具 `timeoutMs` 可覆盖为更长时间，`null` 表示不超时。
 
-默认不裁剪或摘要上下文。驱动可提供 token 估算，不支持估算时由真实提供商反馈超限；上下文事件可实现其他策略。图片/文件仅定义引用契约，需资源解析器和对应模型能力。
+默认关闭裁剪、开启按需自动压缩；驱动可提供 token 估算，否则使用本地保守估算，详见下文上下文策略。图片和文件通过资源解析器授权并读取内容，仍要求对应的模型及协议支持；当前 `workspace-file` 和 `ai-provider` 已接通该链路。
 
 单进程运行；重启将遗留运行标记为 interrupted，不重放工具。取消、失败保留已落库的增量和工具事件。数据库故障导致终态无法提交时保留忙碌状态，重启恢复，不假装提交成功。
 
@@ -148,6 +151,8 @@ SSE 的 `id` 为 Run 内递增序号，`event` 为事件类型，`data` 为完�
 `GET /conversations?archived=false&offset=0&limit=50` 默认只返回未归档记录；`archived=true` 返回归档列表，仍是数组响应。数据库按活动时间、ID 倒序排列后分页。运行开始和结束更新活动时间，查看、重命名与归档不改变排序。
 
 `PATCH /conversations/:id` 接收 `{ title?: string, archived?: boolean }`，至少提供一项，返回更新后的会话。标题去除首尾空白后须为 1–200 字符。运行中可改名，不能归档；归档后须恢复才能启动新运行。所有操作复用空间授权与串行写入队列，元数据修改不改变消息修订号。
+
+`DELETE /conversations/:id` 只接受已归档且无活动运行的会话，在事务中删除会话、节点、运行、事件及上下文摘要，并向空间状态流发送删除通知。其他插件持有的文件和记忆有各自保留规则，不随会话删除一并清空。网页的归档列表提供确认后永久删除入口。
 
 `RunCommand.thinking` 支持显式 `null`，表示本轮不使用推理强度；省略仍继承 Agent 默认值，防止切换到无推理档位的模型时意外携带旧默认值。
 
@@ -169,7 +174,7 @@ SSE 的 `id` 为 Run 内递增序号，`event` 为事件类型，`data` 为完�
 
 数据库迁移 `003_context_summaries` 增加 AI 命名空间的摘要表。摘要带空间、会话、分支来源、覆盖消息标识及内容指纹、保留边界、模型与用量；与操作完成事件事务提交。恢复对话直接复用适用摘要；编辑、重新生成和裁剪造成来源范围不一致时不误用旧摘要。主模型后续失败不撤销已提交摘要，相同来源重试可以复用；删除会话同时删除摘要。旧消息采用运行 ID 和消息位置生成确定性兼容标识。
 
-运行新增 `contextBudgets`、`contextOperations`；SSE 新增 `context-budget`、`context-operation`。预算携带模型、窗口、已用、剩余、输出预留、可输入额度与估算来源；操作按 ID 更新并携带助理内容中的插入位置。`RequestSnapshot.purpose` 区分 `reply` / `compaction`；`maxOutputTokens` 仅用于独立摘要请求。驱动应返回 `stopReason`，摘要只接受完整结束的结果。
+运行新增 `contextBudgets`、`contextOperations`；SSE 新增 `context-budget`、`context-operation`。预算携带模型、窗口、已用、剩余、输出预留、可输入额度与估算来源；操作按 ID 更新并携带助理内容中的插入位置。`RequestSnapshot.purpose` 区分 `reply` / `compaction` / `memory`；核心为辅助生成设置 `maxOutputTokens`，上下文输出预留不改变主回复配置的最大输出 Token。驱动应返回 `stopReason`，摘要只接受完整结束的结果。
 
 浏览器界面始终显示原始内容。模型按钮左侧的环形提示仅在发送前后更新，Tooltip 显示预算来源；切换模型后旧快照标记“上次请求”，未发送草稿不计入。裁剪和压缩分割线位于“已处理”内，数字为完整有效上下文的估算值，不含输出预留；摘要内容不进入聊天正文和复制结果。
 

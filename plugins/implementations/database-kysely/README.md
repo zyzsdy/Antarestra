@@ -4,7 +4,7 @@
 
 ## 配置
 
-默认主配置已启用：
+使用实现默认值的最小装配如下；仓库主配置当前选择 PostgreSQL：
 
 ```yaml
 plugins:
@@ -12,7 +12,7 @@ plugins:
   plugin-database-kysely: {}
 ```
 
-默认数据库为进程工作目录下的 `data/antarestra.sqlite`，缺少的父目录自动创建。`pnpm start` 的工作目录是 `apps/server`，因此默认文件位于该目录下；直接运行根目录启动脚本时路径随工作目录变化。生产部署建议使用绝对路径。
+实现省略 `type` 时使用 SQLite，默认文件为进程工作目录下的 `data/antarestra.sqlite`，缺少的父目录自动创建。`pnpm start` 的工作目录是 `apps/server`，因此默认文件位于该目录下；直接运行 Node 时路径随工作目录变化。生产部署建议使用绝对路径。
 
 ```yaml
 plugins:

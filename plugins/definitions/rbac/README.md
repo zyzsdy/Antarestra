@@ -1,6 +1,6 @@
 # 主体、会话与 RBAC
 
-`@antarestra/rbac` 是不依赖具体认证方式的定义插件。它依赖 `database`、`server`，提供 `ctx.rbac`：统一主体、认证实例、身份映射、会话与授权检查。`@antarestra/plugin-auth-local` 只拥有邮箱和密码凭据，所有数据库操作都经过现有 database 插件。
+`@antarestra/rbac` 提供认证与授权服务契约，依赖 `database`、`server`，通过 `ctx.rbac` 统一主体、认证实例、身份映射、会话与授权检查。`@antarestra/plugin-auth-local` 管理登录名和密码凭据，所有数据库操作都经过 database 插件；当前个人空间枚举还包含对该实现的显式识别，第三方身份源需扩展这一边界。
 
 ## 装配与请求规则
 
@@ -26,15 +26,21 @@ import '@antarestra/rbac'
 
 export const inject = ['rbac', 'server']
 export function apply(ctx: Context) {
-  ctx.rbac.registerPermission(ctx, 'report.read', '查看报告')
-  ctx.server.route(ctx, 'GET', '/reports', ctx.rbac.require('report.read'), async (http) => {
-    const auth = ctx.rbac.auth(http)
-    http.body = { principalId: auth.principalId }
-  })
+  ctx.rbac.registerPermission(ctx, 'report.document.read', '查看报告')
+  ctx.server.route(
+    ctx,
+    'GET',
+    '/reports',
+    ctx.rbac.require('report.document.read'),
+    async (http) => {
+      const auth = ctx.rbac.auth(http)
+      http.body = { principalId: auth.principalId }
+    },
+  )
 }
 ```
 
-空间业务通过 `require(permission, resolveScope)` 或 `can(auth, permission, scope)` 指定空间。必须从服务端资源记录解析空间并检查归属，不能相信客户端提交的 owner。默认范围是 `system`，不会自动覆盖工作空间。范围用 SHA-256 精确匹配，避免数据库排序规则混淆大小写。工作空间创建、成员资格与资源归属仍由未来业务插件实现。
+空间业务通过 `require(permission, resolveScope)` 或 `can(auth, permission, scope)` 指定空间。必须从服务端资源记录解析空间并检查归属，不能相信客户端提交的 owner。默认范围是 `system`，不会自动覆盖工作空间。范围用 SHA-256 精确匹配，避免数据库排序规则混淆大小写。当前个人空间由 auth-local 映射，IM 空间和成员由 identity-im 管理；AI 会话与 workspace-file 分别检查自己的资源归属。
 
 ## 数据与权限
 
@@ -45,7 +51,7 @@ export function apply(ctx: Context) {
 - `grantRole(transaction, input)` 是可信插件的内部装配能力，创建绑定前验证主体和角色存在。业务应先完成空间鉴权，不应直接将此接口暴露给客户端。
 - database 当前迁移协议不提供外键，本版通过服务接口、唯一索引与跨插件事务维护关联，消费插件不得直接写 RBAC 私有表。
 
-内置 `admin` 角色默认包含 `identity.local.manage`、`authz.role.manage`、`authz.binding.manage`，无隐式超级权限。管理接口不能授予操作者自己没有的权限，也不能取消默认权限、禁用自己或通过本地管理禁用内置管理员。手动撤销只影响 `manual` 来源，不覆盖初始化或其他插件的绑定。
+内置 `admin` 角色默认包含 `identity.local.manage`、`authz.role.manage`、`authz.binding.manage`，无隐式超级权限。RBAC 的角色编辑及绑定接口限制授予操作者自己拥有的权限；默认权限不能取消，本地禁用账号接口保护自身和内置管理员。auth-local 创建账号和重置密码尚有未应用同等限制的提权缺口，见[安全评审](../../../docs/reviews/2026-10-03.md)。手动撤销只影响 `manual` 来源，不覆盖初始化或其他插件的绑定。
 
 ## 接入认证实现
 
@@ -76,7 +82,7 @@ export function apply(ctx: Context) {
 
 消费方使用 `resolveRequest(source, request)` 解析身份，或 `authorizeRequest(source, request, permission)` 同时鉴权。后者在提供者已验证的空间内应用默认角色，并支持 Web 会话在该空间的显式角色授权。不得把客户端传来的角色和空间直接作为解析结果。无身份时默认角色为 `guest`，无通道时返回 503。
 
-`web` 由 auth-local 提供：Actor 对应现有 principal ID；个人空间稳定映射为 `personal:<actorId>`。其他通道的空间模型由各自可信插件实现。当前没有共享空间切换或成员管理，也没有聊天数据存储。`can` / `require` 在 `system` 范围支持已登录默认角色；空间默认权限应通过 `authorizeRequest` 在经过提供者验证的空间内判定，系统授权不覆盖任意空间。
+`web` 由 auth-local 提供：Actor 对应现有 principal ID；个人空间稳定映射为 `personal:<actorId>`。IM 通道由 identity-im 映射空间并校验成员，聊天数据由 AI 核心持久化。当前网页登录仍没有通用共享空间切换和成员管理。`can` / `require` 在 `system` 范围支持已登录默认角色；空间默认权限应通过 `authorizeRequest` 在经过提供者验证的空间内判定，系统授权不覆盖任意空间。
 
 内置角色统一为 `admin`、`user`、`guest`。启动时事务迁移旧 `administrator` 的绑定及额外授权，默认权限不写入数据库。内置角色可以编辑名称和额外权限，默认权限不能取消。三个管理权限的默认角色均为 admin，其描述分别明确用户查询及启停、角色权限配置、用户角色绑定用途。
 
