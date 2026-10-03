@@ -702,11 +702,15 @@ export class AiService extends Service<Config> {
   }
   async getRun(access: Access, id: string) {
     await this.verify(access)
+    return this.inspectRun(access.workspaceId, id)
+  }
+  /** 可信服务端的只读历史接口；调用方负责管理授权，不接受客户端自报空间。 */
+  async inspectRun(workspaceId: string, id: string) {
     const result = await this.db()
       .selectFrom('runs')
       .selectAll()
       .where('id', '=', id)
-      .where('workspace_id', '=', access.workspaceId)
+      .where('workspace_id', '=', workspaceId)
       .executeTakeFirst()
     if (!result) throw new AiError('not_found', '运行不存在', 404)
     return decode<RunRecord>(result)

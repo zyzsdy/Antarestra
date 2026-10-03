@@ -29,6 +29,7 @@
     "antarestra-plugin"
   ],
   "dependencies": {
+    "@antarestra/contracts": "workspace:*",
     "@antarestra/database": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*"
   }

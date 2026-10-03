@@ -176,3 +176,7 @@ Markdown 代码块操作由 packages/markdown 统一维护：默认显示无边�
 ## 上下文预算与处理记录
 
 聊天的预算提示由 `ContextMeter.vue` 维护：仅在有上下文预算数据时显示，固定 30px 操作区域内放置 22px 环形 SVG，描边宽度为 2.6（24px viewBox 单位），使用现有聊天绿色辅助色与低对比背景轨道，不挤动模型选择器。Tooltip 沿用聊天深色圆角提示语言，在窄屏自然换行并避让视口。`ContextDivider.vue` 用细线与居中文字标记裁剪／压缩状态，保留中文状态说明而不单靠颜色；详情继续归现有“已处理”折叠层管理。运行样式统一在 `chat.css` 中维护。
+
+## 群消息与 AI 会话
+
+沿用 IM 接入页面的蓝白表格、系统字体与自然滚动。群列表进入详情，消息历史与 AI 会话复用 Reka UI Tabs；详情复用 EditorDialog，长输入、请求快照和返回文本自然换行并局部滚动，思考及工具明细复用 Collapsible。列表分页复用 PaginationField，刷新沿用带中文标签的图标按钮。样式由 im-console/client/style.css 维护，不新增全局令牌。

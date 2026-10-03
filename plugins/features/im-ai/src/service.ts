@@ -14,6 +14,7 @@ import {
   type InputSnapshot,
 } from './history.js'
 import { registerHistoryTools } from './tools.js'
+import { registerInspection } from './inspection.js'
 import { dynamicReplyDefaults } from '@antarestra/im/activation'
 import { dynamicReplyProbability, recordDynamicActivation } from './dynamic-reply.js'
 import type { DynamicReplyState } from './dynamic-reply.js'
@@ -50,6 +51,7 @@ export class ImAiService extends Service<Config> {
   ) {
     super(ctx, 'imAi')
     this.ai = ctx.ai
+    registerInspection(ctx)
     registerHistoryTools(ctx, async (context) => {
       const run = this.ai.running.get(context.runId)
       const jobId = run?.record.input.variables?.imJobId

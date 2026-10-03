@@ -1,4 +1,38 @@
 import type { Context } from '@antarestra/plugin-sdk'
+import type { RunRecord } from '@antarestra/contracts'
+
+export interface GroupSummary {
+  workspaceId: string
+  connectionId: string
+  platform: string
+  chatId: string
+  name: string
+  lastMessageAt: number | null
+}
+export interface AiHistoryEntry {
+  id: string
+  conversationId: string | null
+  runId: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  delivery: 'pending' | 'sent' | 'failed' | 'unknown'
+  createdAt: number
+  inputPreview: string
+  hasAnswer: boolean
+}
+export interface AiHistoryDetail extends AiHistoryEntry {
+  input: string
+  answer: string | null
+  run: Pick<RunRecord, 'status' | 'model' | 'messages' | 'requests' | 'error' | 'endedAt'> | null
+}
+/** 可信服务端只读扩展；HTTP 消费方必须先校验管理权限与群空间。 */
+export interface AiHistoryReader {
+  list(
+    workspaceId: string,
+    offset: number,
+    limit: number,
+  ): Promise<{ entries: AiHistoryEntry[]; total: number; currentConversationId: string | null }>
+  detail(workspaceId: string, id: string): Promise<AiHistoryDetail | undefined>
+}
 
 export type ChatType = 'private' | 'group'
 export interface ChatTarget {

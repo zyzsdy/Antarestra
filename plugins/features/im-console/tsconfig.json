@@ -3,6 +3,7 @@
   "compilerOptions": { "composite": true, "rootDir": "src", "outDir": "dist" },
   "include": ["src/**/*.ts"],
   "references": [
+    { "path": "../../../packages/contracts" },
     { "path": "../../definitions/im" },
     { "path": "../../definitions/rbac" },
     { "path": "../admin-console" },

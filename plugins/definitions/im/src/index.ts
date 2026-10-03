@@ -22,6 +22,8 @@ import type {
   HistoryQuery,
   MediaArchive,
   MediaSegment,
+  AiHistoryReader,
+  GroupSummary,
 } from './types.js'
 export * from './types.js'
 export { downloadHttpMedia } from './media.js'
@@ -102,6 +104,7 @@ export class ImService extends Service<ServiceOptions> {
   private readonly saved = new Map<string, ConnectionPolicy>()
   private readonly revisions = new Map<string, number>()
   private mediaArchive: MediaArchive | undefined
+  private aiHistoryReader: AiHistoryReader | undefined
   private maintenance: Promise<void> | undefined
   private readonly abort = new AbortController()
   constructor(ctx: Context, options: ServiceOptions) {
@@ -217,6 +220,66 @@ export class ImService extends Service<ServiceOptions> {
   }
   listConnections(): ConnectionSnapshot[] {
     return [...this.connections.values()].map((entry) => structuredClone(entry.snapshot))
+  }
+  registerAiHistory(owner: Context, reader: AiHistoryReader) {
+    this.ctx.fiber.assertActive()
+    if (this.aiHistoryReader) throw new Error('IM AI 历史读取器重复注册')
+    return owner.effect(() => {
+      this.aiHistoryReader = reader
+      return () => {
+        if (this.aiHistoryReader === reader) this.aiHistoryReader = undefined
+      }
+    })
+  }
+  get aiHistory() {
+    this.ctx.fiber.assertActive()
+    return this.aiHistoryReader
+  }
+  /** 仅供已授权的管理入口读取；群空间由持久化路由解析。 */
+  async listGroups(offset = 0, limit = 20) {
+    const query = this.db().selectFrom('route').where('chat_type', '=', 'group')
+    const count = await query
+      .select((eb) => eb.fn.countAll<number>().as('total'))
+      .executeTakeFirstOrThrow()
+    const routes = await query
+      .selectAll()
+      .orderBy('workspace_id')
+      .offset(offset)
+      .limit(limit)
+      .execute()
+    const groups: GroupSummary[] = await Promise.all(
+      routes.map(async (route) => {
+        const latest = await this.db()
+          .selectFrom('history')
+          .selectAll()
+          .where('workspace_id', '=', route.workspace_id)
+          .orderBy('sequence', 'desc')
+          .limit(1)
+          .executeTakeFirst()
+        const archived = latest ? (JSON.parse(latest.payload) as ArchivedMessage) : undefined
+        const entry = [...this.connections.values()].find(
+          (item) => connectionKey(item.descriptor) === route.connection_key,
+        )
+        return {
+          workspaceId: route.workspace_id,
+          connectionId: entry?.snapshot.id ?? archived?.connectionId ?? '',
+          platform: entry?.snapshot.platform ?? archived?.platform ?? '',
+          chatId: route.chat_id,
+          name: route.chat_name || archived?.message.chatName || route.chat_id,
+          lastMessageAt: latest?.timestamp ?? null,
+        }
+      }),
+    )
+    return { groups, total: Number(count.total) }
+  }
+  async requireGroup(workspaceId: string) {
+    const route = await this.db()
+      .selectFrom('route')
+      .selectAll()
+      .where('workspace_id', '=', workspaceId)
+      .where('chat_type', '=', 'group')
+      .executeTakeFirst()
+    if (!route) throw new ImError(404, 'not_found', '群聊记录不存在')
   }
   getPolicy(connectionId: string): ConnectionPolicy {
     return structuredClone(this.entry(connectionId).policy)
@@ -382,6 +445,7 @@ export class ImService extends Service<ServiceOptions> {
           connection_key: connectionKey(entry.descriptor),
           chat_type: message.chat.type,
           chat_id: message.chat.id,
+          chat_name: message.chatName || null,
         }
         if (!route) await this.db().insertInto('route').values(values).execute()
         else if (
@@ -390,6 +454,12 @@ export class ImService extends Service<ServiceOptions> {
           route.chat_id !== values.chat_id
         )
           throw new Error('IM 空间路由冲突')
+        if (route && message.chatName && route.chat_name !== message.chatName)
+          await this.db()
+            .updateTable('route')
+            .set({ chat_name: message.chatName })
+            .where('workspace_id', '=', identity.workspaceId)
+            .execute()
       })
       return this.exclusive(`dispatch:${identity.workspaceId}`, async () => {
         const request = Object.freeze({})

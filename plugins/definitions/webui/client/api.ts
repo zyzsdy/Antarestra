@@ -24,6 +24,9 @@ export function useApi() {
       ...(body
         ? { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
         : {}),
+    }).catch((error: unknown) => {
+      if (error instanceof TypeError) throw new ApiError('网络连接失败，请检查网络后重试。', 0)
+      throw error
     })
     const data = response.headers.get('content-type')?.includes('application/json')
       ? await response.json()

@@ -4,10 +4,12 @@ import type { ConnectionPolicy } from '@antarestra/im'
 import '@antarestra/im'
 import '@antarestra/webui'
 import { fileURLToPath } from 'node:url'
+import { historyRoutes } from './history.js'
 
 export const name = 'im-console'
 export const inject = ['webui', 'im', 'rbac', 'server']
 export function apply(ctx: Context) {
+  historyRoutes(ctx)
   ctx.rbac.registerPermission(ctx, 'admin.im.manage', '管理 IM 接入与聊天规则', ['admin'])
   ctx.webui.addEntry(ctx, {
     id: 'im-console',

@@ -15,7 +15,13 @@ export interface Tables {
   }
   inbox: { id: string; status: string; created_at: number }
   policy: { id: string; value: string; revision: number }
-  route: { workspace_id: string; connection_key: string; chat_type: string; chat_id: string }
+  route: {
+    workspace_id: string
+    connection_key: string
+    chat_type: string
+    chat_id: string
+    chat_name: string | null
+  }
   outbox: { id: string; status: string; result: string }
   message_reference: { id: string; workspace_id: string; message_id: string }
 }
@@ -117,5 +123,9 @@ export const migrations = [
         columns: ['workspace_id', 'sender_id', 'timestamp'],
       },
     ],
+  }),
+  defineMigration({
+    id: '004_chat_name',
+    steps: [{ kind: 'addColumn', table: 'route', column: { name: 'chat_name', type: 'text' } }],
   }),
 ]

@@ -160,6 +160,95 @@
 .im-error button {
   margin-left: 12px;
 }
+.im-history h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.im-history-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0;
+  border-bottom: 1px solid #e0e5ed;
+}
+.im-history-tabs button {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+}
+.im-history-tabs button[data-state='active'] {
+  border-bottom-color: #315ed1;
+  color: #315ed1;
+}
+.im-message-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.im-message-item {
+  padding: 18px 0;
+  border-bottom: 1px solid #e0e5ed;
+  overflow-wrap: anywhere;
+}
+.im-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  color: #657087;
+  font-size: 13px;
+}
+.im-message-meta strong {
+  color: #263047;
+  font-size: 14px;
+}
+.im-message-meta time {
+  margin-left: auto;
+}
+.im-history-text,
+.im-history-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.im-history-id,
+.im-history-detail {
+  overflow-wrap: anywhere;
+}
+.im-history-dialog {
+  width: min(960px, calc(100vw - 32px));
+}
+.im-history-detail pre {
+  background: #f4f6fa;
+  border-radius: 7px;
+  padding: 12px;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 13px;
+}
+.im-history-disclosure {
+  margin: 12px 0;
+}
+.im-history-disclosure > button {
+  text-align: left;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.im-ai-message {
+  border-left: 2px solid #e0e5ed;
+  padding-left: 14px;
+  margin: 16px 0;
+}
+.im-table td.im-input-preview {
+  min-width: 180px;
+  max-width: 420px;
+  white-space: pre-wrap;
+}
+.im-history .im-table button {
+  white-space: nowrap;
+}
 @media (max-width: 760px) {
   .im-grid {
     grid-template-columns: minmax(0, 1fr);

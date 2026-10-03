@@ -9,3 +9,15 @@
 “自定义 AI 激活条件”中的“动态回复（仅群聊）”支持基础概率、热点初始概率、热点持续时间和必定激活阈值。概率用百分数、时间用秒输入，存储时转换为 0–1 概率及毫秒。默认 0.2%、20%、120 秒、150 条；动态条件与普通条件的结果独立采用“或”关系，冷却与限流仍然有效。空值或越界参数阻止保存并聚焦错误字段。详细算法见 [IM AI 接入说明](../im-ai/README.md#群聊动态回复)。
 
 HTTP 接口：`GET /api/im/connections`、`GET /api/im/connections/:id/policy`、`PUT /api/im/connections/:id/policy`。写入格式为 `{ policy, revision }`，返回保存后的策略与修订号。服务端每次检查管理权限，写入沿用 RBAC 的同源 JSON 校验。
+
+## 群消息与 AI 会话
+
+“机器人 → 群消息与 AI 会话”是只读管理入口，要求 `admin.console.view` 和 `admin.im.history.view`，默认授予 admin。该权限允许查看全部已记录群的内容，独立于 `admin.im.manage`；服务端每次校验，不借用管理员个人聊天空间或伪造群成员身份。
+
+群列表每页 20 项，来源为持久化群路由，适配器离线或卸载后记录仍保留。消息按新到旧显示，每次读取 50 条，支持关键词查询与加载更早消息；不返回平台原始 raw 数据，不自动访问消息中的媒体 URL。媒体显示名称和归档状态。私聊不在本页展示。
+
+AI 处理记录按群空间分页，每页 20 项，显示当前会话及重置前的历史会话、处理状态与投递状态。详情包括送入 AI 的输入、群回复、实际模型请求快照（系统提示词、上下文与工具定义），以及 AI 返回、思考、工具调用和错误。请求快照是项目规范化记录，不是供应商 HTTP 原始报文。运行详情已删除时仍显示保留的任务输入与回复；IM AI 插件未启用时明确提示，群消息仍可查看。
+
+接口：`GET /api/im/groups?offset=0`、`GET /api/im/groups/:workspaceId/messages?before=序号&keyword=关键词`、`GET /api/im/groups/:workspaceId/ai?offset=0`、`GET /api/im/groups/:workspaceId/ai/:id`。消息响应的 `nextBefore` 为下一批上界（包含该序号），为 null 表示已到头；服务端先解析已保存的群路由，再按该空间读取，AI 任务 ID 也必须属于此群。全部响应禁止缓存。
+
+AI 历史通过 IM 定义层的只读扩展注册，控制台不导入 IM AI 实现或读取其数据库表。AI 核心 `inspectRun` 与 IM 历史服务是可信服务端接口，HTTP 调用方负责管理授权；普通聊天继续使用带 Access 校验的 `getRun`。扩展与路由随所属插件卸载回收。

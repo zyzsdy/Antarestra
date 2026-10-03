@@ -448,6 +448,9 @@ importers:
 
   plugins/definitions/im:
     dependencies:
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@antarestra/database':
         specifier: workspace:*
         version: link:../database
@@ -785,6 +788,9 @@ importers:
 
   plugins/features/im-console:
     dependencies:
+      '@antarestra/contracts':
+        specifier: workspace:*
+        version: link:../../../packages/contracts
       '@antarestra/im':
         specifier: workspace:*
         version: link:../../definitions/im
