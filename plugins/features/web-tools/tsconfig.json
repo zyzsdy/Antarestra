@@ -11,6 +11,6 @@
     { "path": "../../../packages/plugin-sdk" },
     { "path": "../../definitions/ai" },
     { "path": "../../definitions/http" },
-    { "path": "../../definitions/puppeteer" }
+    { "path": "../../definitions/playwright" }
   ]
 }

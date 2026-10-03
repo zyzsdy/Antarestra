@@ -9,6 +9,7 @@
   "references": [
     { "path": "../../plugins/features/web-tools" },
     { "path": "../../plugins/definitions/http" },
+    { "path": "../../plugins/definitions/playwright" },
     { "path": "../../plugins/definitions/puppeteer" },
     { "path": "../../plugins/features/basic-tools" },
     {

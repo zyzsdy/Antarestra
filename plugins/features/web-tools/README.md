@@ -1,9 +1,10 @@
 # 网页工具
 
-为 AI 提供本地搜索、网页阅读、全文查找、交互和截图。依赖 `ai`、`http`、`puppeteer`；保存截图另需工作空间文件服务和支持服务端写入的存储后端。
+为 AI 提供本地搜索、网页阅读、全文查找、交互和截图。依赖 `ai`、`http`、`playwright`；保存截图另需工作空间文件服务和支持服务端写入的存储后端。
 
 ```yaml
 plugins:
+  playwright: {}
   web-tools:
     apiKey: $SERPER_API_KEY
     # 仅搜索 API 使用；省略或留空直连，此地址不是插件默认值。
@@ -15,7 +16,9 @@ plugins:
     maxCharacters: 24000
 ```
 
-搜索通过 `ctx.http` 请求 Serper；浏览器网络由 `puppeteer.args` 配置，PDF 独立 HTTP 获取不使用搜索代理。不修改全局代理或读取环境代理。Key 仅传给搜索 API，不进入工具参数、结果或日志。主配置中的环境变量引用由加载器解析，缺少变量会被加载器拒绝；插件本身允许不设置 `apiKey`，此时仅搜索返回配置错误。
+搜索通过 `ctx.http` 请求 Serper；浏览器网络由 `playwright.proxy` 或 `playwright.args` 配置，PDF 独立 HTTP 获取不使用搜索代理。不修改全局代理或读取环境代理。Key 仅传给搜索 API，不进入工具参数、结果或日志。主配置中的环境变量引用由加载器解析，缺少变量会被加载器拒绝；插件本身允许不设置 `apiKey`，此时仅搜索返回配置错误。
+
+从旧版迁移时启用 `playwright` 服务，将浏览器代理和视口配置移入该服务；`puppeteer.defaultViewport` 对应 `playwright.context.viewport`，缩放和移动设备选项直接放在 `context` 下，`acceptInsecureCerts` 对应 `context.ignoreHTTPSErrors`。已有 Puppeteer 消费插件可以继续使用原服务，网页工具不再依赖它。
 
 ## 工具
 
@@ -30,7 +33,9 @@ plugins:
 
 打开和交互已返回页面内容，通常不必紧跟快照工具。分页游标绑定保存内容，导航和交互后使用新快照。来源标识、最终 URL、标题与获取时间保留在结果中；搜索摘要不代表实际读取的正文。
 
-快照通过语义 DOM 和浏览器可访问名称保留正文、层级、控件名称与状态，精简输出和完整文本索引分开。查找覆盖已加载页面、可读取 iframe、开放 Shadow DOM，以及视口外内容；隐藏文本可显式加入。不包含尚未加载的无限滚动内容、其他分页、封闭 Shadow DOM 或图片文字。PDF 最多 32 MiB、500 页，支持文本层读取及逐页截图，扫描文档不进行 OCR。
+默认快照使用 Playwright 公开的 `page.ariaSnapshot({ mode: 'ai' })`，输出 YAML 风格的角色、名称、状态、正文和 `[ref=…]` 引用，包含 iframe。引用添加文档命名空间，防止导航后误操作新页面；将 `ref=` 后的值原样传给工具即可。`main` 筛选正文区域（没有正文区域时返回全页），`interactive` 筛选控件；`full` 和全文查找使用独立 DOM 索引，保留已加载的隐藏内容及节点引用。密码输入值在原生快照和 DOM 输出中均脱敏。
+
+查找覆盖已加载页面、可读取 iframe、开放 Shadow DOM，以及视口外内容；隐藏文本可显式加入。不包含尚未加载的无限滚动内容、其他分页、封闭 Shadow DOM 或图片文字。PDF 最多 32 MiB、500 页，支持文本层读取及逐页截图，扫描文档不进行 OCR。
 
 主页面正文采集失败会返回 `page_read_failed` 及具体原因，不作为成功的空正文返回；子框架读取失败时保留其他区域的内容，并在 `warnings` 中报告原因。浏览器内执行的函数必须能独立序列化；局部辅助函数使用对象方法，避免 `tsx` 注入仅存在于宿主环境的 `__name` 辅助函数。
 
@@ -46,6 +51,8 @@ plugins:
 - 对话框阻塞期间返回上一次快照并标记 `snapshotStale`，处理后返回新快照。
 
 不同页面通过显式 `pageId` 操作。不提供任意脚本执行、通用文件上传或下载管理。页面可标出可能的登录、验证码与 HTTP 错误，不自动绕过验证。网页内容是外部资料，不可覆盖用户指令。
+
+Cloudflare `cf-mitigated: challenge` 响应、常见验证页标题和提示会生成 `verification_required`，与登录提示分开。主文档导航更新 HTTP 状态及验证标记，子资源和 iframe 的响应不会覆盖它。换用 Playwright 不保证网站放行新建的无头浏览器上下文。
 
 ## 会话和图片
 

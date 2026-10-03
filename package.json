@@ -30,6 +30,7 @@
     "@antarestra/database": "workspace:*",
     "@antarestra/http": "workspace:*",
     "@antarestra/markdown": "workspace:*",
+    "@antarestra/playwright": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-ai-agent-core": "workspace:*",
     "@antarestra/plugin-ai-agents": "workspace:*",

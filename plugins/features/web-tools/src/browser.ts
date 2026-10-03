@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@antarestra/plugin-sdk'
 import type { JsonObject, RunContext, StructuredToolResult } from '@antarestra/ai'
-import { readDom, render, target } from './dom.js'
+import { readDom, render, target, domRef } from './dom.js'
 import { Sessions } from './sessions.js'
 import type { BrowserPage, Session } from './sessions.js'
 import { perform } from './actions.js'
@@ -121,7 +121,9 @@ export class BrowserTools {
       } else {
         record.snapshot = await readDom(record.page, record.key)
         snapshotId = record.snapshot.id
-        content = render(record.snapshot, view, typeof args.ref === 'string' ? args.ref : undefined)
+        let ref = typeof args.ref === 'string' ? args.ref : undefined
+        if (ref && view === 'full') ref = await domRef(record.snapshot, ref, record.key)
+        content = render(record.snapshot, view, ref)
       }
       record.slices.clear()
       record.slices.set(snapshotId, { content, snapshotId })
@@ -135,9 +137,24 @@ export class BrowserTools {
       ? new URL(record.pdfUrl!).pathname.split('/').at(-1) || 'PDF 文档'
       : await record.page.title()
     const notices = []
-    if (/captcha|verify you are human|人机验证|验证码/i.test(content.slice(0, 6000)))
-      notices.push({ code: 'verification_required', message: '页面包含验证提示，可能需要人工处理' })
-    if (content.includes('value=[密码已隐藏]'))
+    if (
+      !record.pdf &&
+      (record.challenge ||
+        /^(?:just a moment|请稍候|请稍等)[\s.!…。]*$/i.test(record.title.trim()) ||
+        /captcha|verify you are human|checking your browser|人机验证|验证码|正在进行安全验证|验证您是真人/i.test(
+          content.slice(0, 6000),
+        ))
+    )
+      notices.push({
+        code: 'verification_required',
+        message:
+          '页面包含浏览器安全验证，可能尚未读取到目标正文；这不代表需要登录。可稍后读取同一 pageId，持续出现时可能需要人工处理。',
+      })
+    if (
+      record.snapshot?.entries.some(
+        (entry) => !entry.hidden && entry.state.includes('value=[密码已隐藏]'),
+      )
+    )
       notices.push({ code: 'login_required', message: '页面包含密码输入框，所需内容可能要求登录' })
     if (record.status && record.status >= 400)
       notices.push({ code: 'http_error', message: `页面返回 HTTP ${record.status}` })
@@ -235,8 +252,10 @@ export class BrowserTools {
               timeout: this.config.timeoutMs ?? 60000,
             }),
           )
-          if (response) record.status = response.status()
-          if (response?.headers()['content-type']?.includes('application/pdf'))
+          if (
+            response &&
+            (await response.allHeaders())['content-type']?.includes('application/pdf')
+          )
             await this.loadPdf(record, response.url(), signal)
         } catch (error) {
           signal.throwIfAborted()
@@ -428,7 +447,7 @@ export class BrowserTools {
         y = 0
       try {
         if (element) {
-          await element.scrollIntoView()
+          await element.scrollIntoViewIfNeeded()
           const box = await element.boundingBox()
           x = box?.x ?? 0
           y = box?.y ?? 0

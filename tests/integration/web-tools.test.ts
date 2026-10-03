@@ -1,8 +1,9 @@
 import { afterEach, expect, it } from 'vitest'
 import { createServer } from 'node:http'
+import { listenForTest } from '../../scripts/test-listen.js'
 import { Context, Service } from '@antarestra/plugin-sdk'
 import * as http from '@antarestra/http'
-import * as puppeteer from '@antarestra/puppeteer'
+import * as playwright from '@antarestra/playwright'
 import { BrowserTools } from '@antarestra/plugin-web-tools'
 import type { GeneratedImage, RunContext, ToolImage } from '@antarestra/ai'
 import { searchTool } from '../../plugins/features/web-tools/src/search.js'
@@ -132,7 +133,7 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
         `<!doctype html><title>浏览器测试</title><nav>导航里的线索</nav><main><h1>正文</h1><label>关键词<input id="query"></label><button onclick="document.querySelector('#result').textContent=document.querySelector('#query').value">执行搜索</button><p id="result">初始内容</p><button onclick="alert('等待确认')">显示对话框</button><button onclick="window.open('/frame')">新标签</button><a href="/frame">导航</a><p hidden>隐藏线索</p><div id="shadow"></div><iframe src="/frame"></iframe><p>${'长段落'.repeat(10000)}</p><p>末尾的证据</p></main><script>document.cookie='shared=yes';document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<button>影子按钮</button>'</script>`,
       )
     })
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    await listenForTest(server)
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('端口错误')
     const ctx = new Context()
@@ -147,14 +148,14 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
     }
     new ImageSink(ctx)
     await ctx.plugin(http)
-    await ctx.plugin(puppeteer, { defaultViewport: { width: 800, height: 600 } })
+    await ctx.plugin(playwright, { context: { viewport: { width: 800, height: 600 } } })
     const browser = new BrowserTools(ctx, { timeoutMs: 10000 })
     const run = context()
     const execute = (name: string, args: import('@antarestra/ai').JsonObject, who = run) =>
       browser.execute(name, args, who)
     try {
       const opened = await execute('web_open', { url: `http://127.0.0.1:${address.port}` })
-      expect(opened.isError).not.toBe(true)
+      expect(opened.isError, JSON.stringify(opened.content)).not.toBe(true)
       const page = opened.content as Record<string, import('@antarestra/ai').Json>
       const pageId = String(page.pageId)
       expect(page.truncated).toBe(true)
@@ -166,7 +167,7 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
         text
           .split('\n')
           .find((line) => line.includes(label))!
-          .match(/\[([^\]]+)\]/)![1]!
+          .match(/\[ref=([^\]]+)\]/)![1]!
       const result = await execute(
         'web_interact',
         {
@@ -256,7 +257,7 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
       expect(stale.isError).toBe(true)
       expect(JSON.stringify(stale)).toContain('stale_element')
       expect(JSON.stringify(stale)).toContain('框架里的证据')
-      pdfBytes = await ctx.puppeteer.withPage(ctx, async (page) => {
+      pdfBytes = await ctx.playwright.withPage(ctx, async (page) => {
         await page.setContent(
           '<h1>PDF evidence</h1><p style="break-before:page">Second page evidence</p>',
         )

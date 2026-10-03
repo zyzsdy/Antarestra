@@ -1,6 +1,6 @@
 {
-  "name": "@antarestra/plugin-web-tools",
-  "description": "为 AI 提供本地网页搜索、页面阅读、交互和截图工具。",
+  "name": "@antarestra/playwright",
+  "description": "提供 Playwright 浏览器、隔离页面上下文及自动回收。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,16 +19,12 @@
     }
   },
   "antarestra": {
-    "title": "网页工具",
+    "title": "Playwright 浏览器服务",
     "multipleInstances": false,
     "configSchema": "./config.schema.json"
   },
   "dependencies": {
-    "@antarestra/ai": "workspace:*",
-    "@antarestra/http": "workspace:*",
-    "@antarestra/playwright": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
-    "@napi-rs/canvas": "^1.0.10",
-    "pdfjs-dist": "^6.3.289"
+    "playwright-core": "^1.63.0"
   }
 }

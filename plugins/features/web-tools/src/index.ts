@@ -2,7 +2,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import '@antarestra/ai'
 import '@antarestra/http'
-import '@antarestra/puppeteer'
+import '@antarestra/playwright'
 import { BrowserTools } from './browser.js'
 import { searchTool } from './search.js'
 import { choice, integer, object, string, errorResult } from './common.js'
@@ -10,7 +10,7 @@ import type { Config } from './common.js'
 export { BrowserTools } from './browser.js'
 export type { Config } from './common.js'
 
-export const inject = ['ai', 'http', 'puppeteer']
+export const inject = ['ai', 'http', 'playwright']
 export const name = 'web-tools'
 const page = { pageId: string }
 const snapshot = {
@@ -109,7 +109,7 @@ export function apply(ctx: Context, input: Config = {}) {
     {
       id: 'web_open',
       description:
-        '打开 HTTP(S) URL 或 PDF，自动返回页面内容及元素引用，无需再调用 web_snapshot。指定 pageId 在已有页面导航；action 支持 open/back/forward/reload/list/close。新页面标识仅在当前空间会话有效。',
+        '使用 Playwright 打开 HTTP(S) URL 或 PDF，自动返回 AI 可访问性快照及 [ref=…] 元素引用，无需再调用 web_snapshot。将 ref= 后的值原样用于交互。指定 pageId 在已有页面导航；action 支持 open/back/forward/reload/list/close。新页面标识仅在当前空间会话有效。',
       parameters: object({
         ...page,
         ...snapshot,

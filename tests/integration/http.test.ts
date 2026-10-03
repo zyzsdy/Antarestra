@@ -4,6 +4,7 @@ import * as plugin from '@antarestra/http'
 import { createServer, request } from 'node:http'
 import { createServer as createTcpServer, connect } from 'node:net'
 import type { Server, Socket } from 'node:net'
+import { listenForTest } from '../../scripts/test-listen.js'
 
 const contexts: Context[] = []
 const servers: Server[] = []
@@ -14,10 +15,7 @@ async function listen(server: Server) {
     sockets.add(socket)
     socket.once('close', () => sockets.delete(socket))
   })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const address = server.address()
-  if (!address || typeof address === 'string') throw new Error('测试端口不可用')
-  return address.port
+  return listenForTest(server)
 }
 async function setup() {
   const ctx = new Context()

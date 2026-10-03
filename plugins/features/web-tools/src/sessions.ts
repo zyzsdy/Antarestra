@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@antarestra/plugin-sdk'
-import type { Page, PageHandle, Dialog, Target } from '@antarestra/puppeteer'
+import type { Page, PageHandle, Dialog } from '@antarestra/playwright'
 import type { RunContext } from '@antarestra/ai'
 import type { Snapshot } from './dom.js'
 import type { PdfDocument } from './pdf.js'
@@ -18,6 +18,7 @@ export interface BrowserPage {
   revision: number
   title?: string
   status?: number
+  challenge?: boolean
   screenshot?: {
     id: string
     revision: number
@@ -86,8 +87,17 @@ export class Sessions {
       slices: new Map(),
     }
     session.pages.set(record.id, record)
-    page.on('framenavigated', () => {
+    page.on('response', (response) => {
+      // 只跟踪主文档最终响应；子资源、iframe 和重定向中间响应不代表当前页面。
+      if (!response.request().isNavigationRequest() || response.frame() !== page.mainFrame()) return
+      const status = response.status()
+      if (status >= 300 && status < 400) return
+      record.status = status
+      record.challenge = response.headers()['cf-mitigated'] === 'challenge'
+    })
+    page.on('framenavigated', (frame) => {
       record.revision++
+      if (frame === page.mainFrame()) delete record.snapshot
       delete record.screenshot
       record.slices.clear()
     })
@@ -104,7 +114,7 @@ export class Sessions {
     if (session.pages.size >= (this.config.maxPages ?? 8))
       throw new WebError('page_limit', '页面数量达到上限，请先关闭不再使用的页面')
     const root = await session.root
-    const page = await root.page.browserContext().newPage()
+    const page = await root.page.context().newPage()
     return this.add(session, page)
   }
   private create(context: RunContext) {
@@ -123,7 +133,7 @@ export class Sessions {
       key,
       workspaceId: context.workspaceId,
       conversationId: context.conversationId,
-      root: this.ctx.puppeteer.createPage(this.ctx),
+      root: this.ctx.playwright.createPage(this.ctx),
       pages: new Map(),
       pendingPages: new Set(),
       tail: Promise.resolve(),
@@ -135,17 +145,14 @@ export class Sessions {
     this.entries.set(key, session)
     session.root = session.root.then((handle) => {
       this.add(session, handle.page)
-      const browser = handle.page.browser()
+      const browser = handle.page.context().browser()!
       const disconnected = () => {
         void this.close(session)
       }
       browser.once('disconnected', disconnected)
-      const browserContext = handle.page.browserContext()
-      const created = (target: Target) => {
+      const browserContext = handle.page.context()
+      const created = (page: Page) => {
         const pending = (async () => {
-          if (target.type() !== 'page') return
-          const page = await target.page()
-          if (!page) return
           if (session.closed || session.pages.size >= (this.config.maxPages ?? 8)) {
             await page.close()
             return
@@ -155,11 +162,11 @@ export class Sessions {
         session.pendingPages.add(pending)
         void pending.finally(() => session.pendingPages.delete(pending)).catch(() => {})
       }
-      browserContext.on('targetcreated', created)
+      browserContext.on('page', created)
       const close = handle.close
       handle.close = async () => {
         browser.off('disconnected', disconnected)
-        browserContext.off('targetcreated', created)
+        browserContext.off('page', created)
         await close()
       }
       return handle

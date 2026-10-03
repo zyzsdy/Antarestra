@@ -3,6 +3,17 @@
 plugins:
   logger: {}
   http: {}
+  playwright:
+    proxy:
+      server: socks5://127.0.0.1:7890
+    context:
+      ignoreHTTPSErrors: true
+      viewport:
+        width: 1920
+        height: 1000
+      deviceScaleFactor: 2
+      isMobile: false
+      hasTouch: false
   puppeteer:
     args: ['--proxy-server=socks5://127.0.0.1:7890']
     acceptInsecureCerts: true

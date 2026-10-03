@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "executablePath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "显式指定 Chromium 可执行文件路径；相对路径基于工作目录。"
+    },
+    "channel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Playwright 浏览器渠道，未指定路径时默认使用系统 chrome；chromium 使用已安装的 Playwright 浏览器。"
+    },
+    "headless": { "type": "boolean", "default": true },
+    "args": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30000,
+      "description": "启动超时，毫秒。"
+    },
+    "actionTimeout": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 10000,
+      "description": "页面操作默认超时，毫秒。"
+    },
+    "proxy": {
+      "type": "object",
+      "properties": {
+        "server": { "type": "string", "minLength": 1 },
+        "bypass": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string", "format": "password" }
+      },
+      "required": ["server"],
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["width", "height"],
+          "additionalProperties": false
+        },
+        "deviceScaleFactor": { "type": "number", "exclusiveMinimum": 0 },
+        "isMobile": { "type": "boolean" },
+        "hasTouch": { "type": "boolean" },
+        "ignoreHTTPSErrors": { "type": "boolean" },
+        "locale": { "type": "string" },
+        "timezoneId": { "type": "string" },
+        "userAgent": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

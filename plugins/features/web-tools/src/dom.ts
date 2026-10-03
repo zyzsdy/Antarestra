@@ -1,4 +1,4 @@
-import type { Page, ElementHandle } from '@antarestra/puppeteer'
+import type { Page, ElementHandle } from '@antarestra/playwright'
 import { randomUUID } from 'node:crypto'
 import { WebError } from './common.js'
 
@@ -29,10 +29,13 @@ export interface Snapshot {
   entries: Entry[]
   frames: Map<string, Frame>
   warnings: string[]
+  aria: string
+  page: Page
+  nativeRefs: Map<string, string>
 }
 
 /** 此函数只在受控页面环境中执行，不接受模型提供的代码。 */
-function collect(key: string, nonce: string): Entry[] {
+function collect([key, nonce]: [string, string]): Entry[] {
   const root = globalThis as unknown as Record<string, Registry>
   if (!root[key] || root[key].document !== document) {
     const registry: Registry = {
@@ -105,7 +108,7 @@ function collect(key: string, nonce: string): Entry[] {
         summary: 'button',
       }
       let role = element.getAttribute('role') || native[tag] || ''
-      if (element instanceof HTMLInputElement)
+      if (element instanceof HTMLInputElement && !element.hasAttribute('role'))
         role = ['checkbox', 'radio'].includes(element.type)
           ? element.type
           : ['button', 'submit', 'reset'].includes(element.type)
@@ -195,10 +198,18 @@ function collect(key: string, nonce: string): Entry[] {
   return entries
 }
 export async function readDom(page: Page, key: string): Promise<Snapshot> {
-  const result: Snapshot = { id: randomUUID(), entries: [], frames: new Map(), warnings: [] }
+  const result: Snapshot = {
+    id: randomUUID(),
+    entries: [],
+    frames: new Map(),
+    warnings: [],
+    aria: '',
+    page,
+    nativeRefs: new Map(),
+  }
   for (const frame of page.frames()) {
     try {
-      const entries = await frame.evaluate(collect, key, randomUUID())
+      const entries = await frame.evaluate(collect, [key, randomUUID()] as [string, string])
       for (const entry of entries) result.frames.set(entry.ref, frame)
       result.entries.push(...entries)
     } catch (error) {
@@ -208,37 +219,80 @@ export async function readDom(page: Page, key: string): Promise<Snapshot> {
       result.warnings.push(`子框架无法读取，搜索不包含该区域：${reason}`)
     }
   }
-  // DOM 已提供的大多数名称无需额外协议往返；浏览器负责补足复杂可访问名称。
-  for (const entry of result.entries.filter(
-    (entry) => entry.interactive && !entry.hidden && !entry.name,
-  )) {
-    try {
-      const element = await target(result, entry.ref, key)
-      try {
-        const accessible = await page.accessibility.snapshot({
-          root: element,
-          interestingOnly: false,
-        })
-        if (accessible) {
-          entry.name = accessible.name ?? ''
-          entry.role = accessible.role
-        }
-      } finally {
-        await element.dispose()
-      }
-    } catch {
-      result.warnings.push('部分控件的可访问名称不可读取，已保留 DOM 描述')
-    }
+  try {
+    // 使用公开的 AI 快照 API；文档命名空间防止导航后 e1 等引用误指向新页面。
+    const namespace = result.entries[0]?.ref.split(':')[0] ?? result.id
+    let aria = await page.ariaSnapshot({ mode: 'ai' })
+    // 原生 AI 快照包含 password.value；只保留控件名称与引用，不回传密码值。
+    const lines = aria.split('\n')
+    const passwords = new Set<number>()
+    const passwordRoles = new Set([
+      'textbox',
+      ...result.entries
+        .filter((entry) => entry.state.includes('value=[密码已隐藏]'))
+        .map((entry) => entry.role),
+    ])
+    await Promise.all(
+      lines.map(async (line, index) => {
+        if (!passwordRoles.has(line.match(/^\s*- (\w+)\b/)?.[1] ?? '')) return
+        const native = line.match(/\[ref=(\w+)\]/)?.[1]
+        if (
+          native &&
+          (await page
+            .locator(`aria-ref=${native}`)
+            .evaluate(
+              (element) => element instanceof HTMLInputElement && element.type === 'password',
+            ))
+        )
+          passwords.add(index)
+      }),
+    )
+    let passwordDepth = -1
+    aria = lines
+      .flatMap((line, index) => {
+        const depth = line.search(/\S/)
+        if (passwordDepth >= 0 && depth > passwordDepth) return []
+        passwordDepth = -1
+        if (!passwords.has(index)) return [line]
+        passwordDepth = depth
+        return [line.replace(/(\[ref=\w+\]).*$/, '$1: [密码已隐藏]')]
+      })
+      .join('\n')
+    result.aria = aria.replace(/\[ref=([\w]+)\]/g, (_, native: string) => {
+      const ref = `${namespace}:pw:${native}`
+      result.nativeRefs.set(ref, native)
+      return `[ref=${ref}]`
+    })
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : '未知错误'
+    throw new WebError('page_read_failed', `Playwright 快照读取失败：${reason}`)
   }
   return result
 }
 export async function target(snapshot: Snapshot | undefined, ref: string, key: string) {
+  const native = snapshot?.nativeRefs.get(ref)
+  if (native && snapshot) {
+    try {
+      const documentId = await snapshot.page.evaluate(
+        (key) => (globalThis as unknown as Record<string, Registry>)[key]?.id,
+        key,
+      )
+      if (documentId !== ref.split(':')[0])
+        throw new WebError('stale_element', '页面已经导航，请使用新快照')
+      const locator = snapshot.page.locator(`aria-ref=${native}`)
+      const handle = await locator.elementHandle({ timeout: 1000 })
+      if (handle) return handle as ElementHandle<Element>
+    } catch {
+      // Playwright 拒绝已消失的引用，统一转换为工具契约中的过期错误。
+    }
+    throw new WebError('stale_element', '元素引用已过期，请使用新快照')
+  }
   const frame = snapshot?.frames.get(ref)
   const old = snapshot?.entries.find((entry) => entry.ref === ref)
-  if (!frame || !old || frame.detached)
+  if (!frame || !old || frame.isDetached())
     throw new WebError('stale_element', '元素引用已过期，请使用新快照')
   const handle = await frame.evaluateHandle(
-    (key, ref) => {
+    ([key, ref]) => {
       const registry = (globalThis as unknown as Record<string, Registry>)[key]
       const element = registry?.nodes.get(ref)
       const signature = registry?.signatures.get(ref)
@@ -248,8 +302,7 @@ export async function target(snapshot: Snapshot | undefined, ref: string, key: s
         ? element
         : null
     },
-    key,
-    ref,
+    [key, ref] as [string, string],
   )
   const element = handle.asElement()
   if (!element) {
@@ -258,7 +311,47 @@ export async function target(snapshot: Snapshot | undefined, ref: string, key: s
   }
   return element as ElementHandle<Element>
 }
+export async function domRef(snapshot: Snapshot, ref: string, key: string) {
+  if (!snapshot.nativeRefs.has(ref)) return ref
+  const element = await target(snapshot, ref, key)
+  try {
+    const value = await element.evaluate(
+      (element, key) => (globalThis as unknown as Record<string, Registry>)[key]?.ids.get(element),
+      key,
+    )
+    if (value) return value
+    throw new WebError('stale_element', '节点已变化，请重新读取页面')
+  } finally {
+    await element.dispose()
+  }
+}
 export function render(snapshot: Snapshot, view: string, node?: string) {
+  if (snapshot.nativeRefs.has(node ?? '') || (!node && view !== 'full')) {
+    const lines = snapshot.aria.split('\n')
+    const hasMain = lines.some((line) => /^\s*- (main|article)\b/.test(line))
+    let selectedDepth = -1
+    return lines
+      .filter((line) => {
+        const depth = line.search(/\S/)
+        if (selectedDepth >= 0 && depth > selectedDepth) return true
+        selectedDepth = -1
+        if (
+          node
+            ? line.includes(`[ref=${node}]`)
+            : view === 'main' && hasMain && /^\s*- (main|article)\b/.test(line)
+        ) {
+          selectedDepth = depth
+          return true
+        }
+        if (node || (view === 'main' && hasMain)) return false
+        if (view === 'interactive')
+          return /^\s*- (button|link|textbox|searchbox|combobox|checkbox|radio|slider|tab|menuitem|switch|spinbutton|dialog)\b/.test(
+            line,
+          )
+        return true
+      })
+      .join('\n')
+  }
   const selected = new Set<string>()
   if (node && !snapshot.entries.some((entry) => entry.ref === node))
     throw new WebError('stale_element', '读取节点不存在')

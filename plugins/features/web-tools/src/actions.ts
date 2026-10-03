@@ -1,5 +1,4 @@
 import type { JsonObject } from '@antarestra/ai'
-import type { KeyInput } from '@antarestra/puppeteer'
 import { target } from './dom.js'
 import type { BrowserPage } from './sessions.js'
 import { WebError } from './common.js'
@@ -69,58 +68,30 @@ export async function perform(record: BrowserPage, action: JsonObject) {
     }
     if (type === 'click' || type === 'double_click') {
       const clickCount = type === 'double_click' ? 2 : 1
-      if (element) await element.click({ count: clickCount })
+      if (element) await element.click({ clickCount })
       else {
         const point = await coordinates()
-        await page.mouse.click(point.x, point.y, { count: clickCount })
+        await page.mouse.click(point.x, point.y, { clickCount })
       }
     } else if (type === 'fill') {
-      const field = needElement()
-      await field.focus()
-      const text = String(action.text ?? '')
-      await field.evaluate((node, value) => {
-        if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
-          if (node.disabled || node.readOnly) throw new Error('不可编辑')
-          const prototype =
-            node instanceof HTMLInputElement
-              ? HTMLInputElement.prototype
-              : HTMLTextAreaElement.prototype
-          Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(node, value)
-        } else if ((node as HTMLElement).isContentEditable) node.textContent = value
-        else throw new Error('不是输入字段')
-        node.dispatchEvent(new Event('input', { bubbles: true }))
-        node.dispatchEvent(new Event('change', { bubbles: true }))
-      }, text)
+      await needElement().fill(String(action.text ?? ''))
     } else if (type === 'type') {
       if (element) await element.focus()
       await page.keyboard.type(String(action.text ?? ''))
     } else if (type === 'select') {
-      await needElement().select(
-        ...(Array.isArray(action.values)
-          ? action.values.map(String)
-          : [String(action.value ?? '')]),
+      await needElement().selectOption(
+        Array.isArray(action.values) ? action.values.map(String) : [String(action.value ?? '')],
       )
     } else if (type === 'check') {
-      const field = needElement()
-      const checked = await field.evaluate((node) =>
-        node instanceof HTMLInputElement
-          ? node.checked
-          : node.getAttribute('aria-checked') === 'true',
-      )
-      if (checked !== (action.checked === true)) await field.click()
+      await needElement().setChecked(action.checked === true)
     } else if (type === 'hover') await needElement().hover()
     else if (type === 'scroll') {
       if (element)
-        await element.evaluate(
-          (node, x, y) => node.scrollBy(x, y),
+        await element.evaluate((node, [x, y]) => node.scrollBy(x, y), [
           Number(action.deltaX ?? 0),
           Number(action.deltaY ?? 500),
-        )
-      else
-        await page.mouse.wheel({
-          deltaX: Number(action.deltaX ?? 0),
-          deltaY: Number(action.deltaY ?? 500),
-        })
+        ] as [number, number])
+      else await page.mouse.wheel(Number(action.deltaX ?? 0), Number(action.deltaY ?? 500))
       delete record.screenshot
     } else if (type === 'move') {
       const point = await coordinates()
@@ -136,8 +107,8 @@ export async function perform(record: BrowserPage, action: JsonObject) {
       const from = needElement()
       const to = await target(record.snapshot, String(action.toRef), record.key)
       try {
-        await from.scrollIntoView()
-        await to.scrollIntoView()
+        await from.scrollIntoViewIfNeeded()
+        await to.scrollIntoViewIfNeeded()
         const a = await from.boundingBox(),
           b = await to.boundingBox()
         if (!a || !b) throw new WebError('not_interactable', '拖拽目标不可见')
@@ -153,7 +124,7 @@ export async function perform(record: BrowserPage, action: JsonObject) {
       }
     } else if (type === 'press' || type === 'key_down' || type === 'key_up') {
       if (element) await element.focus()
-      const keys = String(action.key ?? '').split('+') as KeyInput[]
+      const keys = String(action.key ?? '').split('+')
       if (type === 'key_down') await page.keyboard.down(keys[0]!)
       else if (type === 'key_up') await page.keyboard.up(keys[0]!)
       else {
@@ -169,14 +140,13 @@ export async function perform(record: BrowserPage, action: JsonObject) {
       const timeout = Math.min(Number(action.timeoutMs ?? 5000), 30000)
       if (action.text || action.url)
         await page.waitForFunction(
-          (text, url) =>
+          ([text, url]) =>
             (!text || document.body.innerText.includes(text)) &&
             (!url || location.href.includes(url)),
+          [String(action.text ?? ''), String(action.url ?? '')] as [string, string],
           { timeout },
-          String(action.text ?? ''),
-          String(action.url ?? ''),
         )
-      else if (element) await element.waitForSelector(':scope', { visible: true, timeout })
+      else if (element) await element.waitForElementState('visible', { timeout })
       else throw new WebError('invalid_wait', '等待需要 text、url 或 ref 条件')
     } else throw new WebError('invalid_action', '不支持的网页操作')
   } finally {
