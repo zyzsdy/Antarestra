@@ -20,7 +20,7 @@ export interface AuthContext {
   readonly channel: 'web' | 'api'
 }
 export interface ProviderHandle {
-  /** 枚举本认证实例的主体（含停用账号），供可信插件构建管理目录。 */
+  /** 枚举本认证实例的主体（含停用账号），供可信插件管理账号或迁移数据。 */
   principals(offset?: number, limit?: number): Promise<readonly Principal[]>
   provision(
     transaction: DatabaseTransaction,
@@ -55,8 +55,6 @@ export interface RequestSourceProvider {
   resolve(request: unknown): Promise<RequestIdentity | undefined>
   /** 后台任务恢复身份；必须重新校验账号状态及目标空间，不依赖登录令牌。 */
   resolveBackground?(actorId: string, workspaceId: string): Promise<RequestIdentity | undefined>
-  /** 管理目录，按稳定 ID 排序分页，少于 limit 项表示结束；不代表访问授权。 */
-  listWorkspaces?(offset: number, limit: number): Promise<readonly WorkspaceSummary[]>
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
@@ -120,6 +118,7 @@ export class RbacService extends Service<Config> {
 
   private db(transaction?: DatabaseTransaction): Queries<Tables> {
     this.ctx.fiber.assertActive()
+    if (!this.active) throw new AuthError(503, '身份与空间服务已卸载')
     return transaction
       ? transaction.scope<Tables>(this.ctx, pluginId)
       : this.ctx.database.scope<Tables>(this.ctx, pluginId)
@@ -336,44 +335,71 @@ export class RbacService extends Service<Config> {
       ?.loginPath
   }
 
-  /** 可信服务使用的空间目录；调用方须独立检查管理权限。 */
+  /** 可信插件建立空间的统一入口，可与业务数据一起提交；不授予访问权限。 */
+  async ensureWorkspace(
+    owner: Context,
+    input: { id: string; label?: string },
+    transaction?: DatabaseTransaction,
+  ): Promise<WorkspaceSummary> {
+    owner.fiber.assertActive()
+    const { id, label } = input
+    if (!id.trim() || id.length > 200 || (label !== undefined && !label.trim()))
+      throw new AuthError(400, '空间标识或名称无效')
+    const db = this.db(transaction)
+    const existing = await db
+      .selectFrom('workspace')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst()
+    owner.fiber.assertActive()
+    this.db(transaction)
+    if (existing && (label === undefined || existing.label === label))
+      return Object.freeze(existing)
+    const insert = db.insertInto('workspace').values({ id, label: label ?? id })
+    // 原子插入或更新，避免并发建空间导致唯一键错误及 PostgreSQL 事务失效。
+    if (this.ctx.database.type === 'mysql')
+      await insert.onDuplicateKeyUpdate(label === undefined ? { id } : { label }).execute()
+    else
+      await insert
+        .onConflict((conflict) =>
+          label === undefined
+            ? conflict.column('id').doNothing()
+            : conflict.column('id').doUpdateSet({ label }),
+        )
+        .execute()
+    const result = await db
+      .selectFrom('workspace')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow()
+    owner.fiber.assertActive()
+    this.db(transaction)
+    return Object.freeze(result)
+  }
+
+  private async rememberWorkspace<T extends RequestIdentity>(identity: T): Promise<T> {
+    if (!identity.actorId || !identity.workspaceId) return identity
+    const workspace = await this.ensureWorkspace(this.ctx, {
+      id: identity.workspaceId,
+      ...(identity.workspaceLabel === undefined ? {} : { label: identity.workspaceLabel }),
+    })
+    return { ...identity, workspaceLabel: workspace.label }
+  }
+
+  /** 只读取持久化目录，不调用身份实现；调用方须独立检查管理权限。 */
   async *workspaceDirectory(): AsyncGenerator<WorkspaceSummary> {
-    this.ctx.fiber.assertActive()
-    if (!this.active) throw new AuthError(503, '空间目录服务已卸载')
-    const entries = [...this.sources].flatMap(([source, providers]) =>
-      [...providers.values()].map((provider) => ({ source, providers, provider })),
-    )
-    const labels = new Map<string, string>()
-    const limit = 100
-    for (const { source, providers, provider } of entries) {
-      if (!provider.listWorkspaces) continue
-      const assertActive = () => {
-        this.ctx.fiber.assertActive()
-        if (!this.active) throw new AuthError(503, '空间目录服务已卸载')
-        if (this.sources.get(source) !== providers || providers.get(provider.id) !== provider)
-          throw new AuthError(503, '空间目录提供者已卸载')
+    let after: string | undefined
+    for (;;) {
+      let query = this.db().selectFrom('workspace').selectAll().orderBy('id').limit(100)
+      if (after !== undefined) query = query.where('id', '>', after)
+      const rows = await query.execute()
+      this.db()
+      for (const row of rows) {
+        this.db()
+        yield Object.freeze(row)
       }
-      const seen = new Set<string>()
-      for (let offset = 0; ; offset += limit) {
-        assertActive()
-        const rows = await provider.listWorkspaces(offset, limit)
-        assertActive()
-        if (rows.length > limit) throw new Error('空间目录超过分页上限')
-        for (const { id, label } of rows) {
-          assertActive()
-          if (!id.trim() || id.length > 200 || !label.trim()) throw new Error('空间目录条目无效')
-          if (seen.has(id)) throw new Error(`空间目录分页包含重复标识：${id}`)
-          seen.add(id)
-          const previous = labels.get(id)
-          if (previous !== undefined) {
-            if (previous !== label) throw new Error(`空间目录名称冲突：${id}`)
-            continue
-          }
-          labels.set(id, label)
-          yield Object.freeze({ id, label })
-        }
-        if (rows.length < limit) break
-      }
+      if (rows.length < 100) return
+      after = rows.at(-1)!.id
     }
   }
 
@@ -383,6 +409,7 @@ export class RbacService extends Service<Config> {
     if (!providers?.size) throw new AuthError(503, '请求通道不可用')
     let identity: RequestIdentity | undefined
     let requestProvider: string | undefined
+    let selectedProvider: RequestSourceProvider | undefined
     for (const provider of providers.values()) {
       const result = await provider.resolve(request)
       this.ctx.fiber.assertActive()
@@ -391,9 +418,18 @@ export class RbacService extends Service<Config> {
       if (identity) throw new AuthError(403, '请求身份存在歧义')
       identity = result
       requestProvider = provider.id
+      selectedProvider = provider
     }
     if (this.sources.get(source) !== providers || !providers.size)
       throw new AuthError(503, '请求通道已卸载')
+    if (identity) {
+      identity = await this.rememberWorkspace(identity)
+      if (
+        this.sources.get(source) !== providers ||
+        providers.get(requestProvider!) !== selectedProvider
+      )
+        throw new AuthError(503, '请求通道已卸载')
+    }
     return Object.freeze({
       requestSource: source,
       ...(requestProvider ? { requestProvider } : {}),
@@ -436,10 +472,18 @@ export class RbacService extends Service<Config> {
       requestProvider = provider.id
     }
     if (!identity) throw new AuthError(403, '账号或空间不可用，或入口不支持后台任务')
-    return this.authorizeIdentity(
+    const selectedProvider = providers.get(requestProvider!)
+    const access = await this.authorizeIdentity(
       { ...identity, requestSource: source, requestProvider: requestProvider! },
       permission,
     )
+    const remembered = await this.rememberWorkspace(access)
+    if (
+      this.sources.get(source) !== providers ||
+      providers.get(requestProvider!) !== selectedProvider
+    )
+      throw new AuthError(503, '后台身份通道已卸载')
+    return remembered
   }
 
   private async authorizeIdentity(

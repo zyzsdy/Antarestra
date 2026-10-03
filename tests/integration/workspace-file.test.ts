@@ -339,7 +339,7 @@ it('管理 API 显示中文空间来源、限制管理员、校验配额版本�
     (await app.request('/workspace-files/uploads', cookie, { path: '/x', size: 1 })).status,
   ).toBe(413)
 })
-it('第三方身份目录在首次文件访问前出现，刷新名称保留配额和文件，卸载后保留管理记录', async () => {
+it('第三方正常身份解析自动登记空间，刷新名称保留配额和文件，卸载后保留管理记录', async () => {
   const app = await setup()
   const owner = await app.ctx.plugin({ inject: ['rbac'], apply() {} })
   const provider = await app.ctx.rbac.registerProvider(owner.ctx, 'sso', 'test-sso')
@@ -350,11 +350,6 @@ it('第三方身份目录在首次文件访问前出现，刷新名称保留配�
   let displayName = '企业成员'
   app.ctx.rbac.registerRequestSource(owner.ctx, 'enterprise', {
     id: 'sso',
-    listWorkspaces: async (offset, limit) =>
-      [
-        { id: workspaceId, label: `SSO·${displayName}` },
-        { id: 'team:engineering', label: '团队·研发部' },
-      ].slice(offset, offset + limit),
     resolve: async (request) =>
       request === 'verified-sso'
         ? {
@@ -365,6 +360,9 @@ it('第三方身份目录在首次文件访问前出现，刷新名称保留配�
           }
         : undefined,
   })
+  // 身份解析发生在其他业务入口，没有调用文件授权或提供空间枚举回调。
+  await app.ctx.rbac.resolveRequest('enterprise', 'verified-sso')
+  await app.ctx.rbac.ensureWorkspace(owner.ctx, { id: 'team:engineering', label: '团队·研发部' })
   const initial = await app.ctx.workspaceFile.spaces(1, 'SSO·')
   expect(initial.total).toBe(1)
   expect(initial.entries[0]).toMatchObject({
@@ -378,6 +376,7 @@ it('第三方身份目录在首次文件访问前出现，刷新名称保留配�
   const access = await app.ctx.workspaceFile.authorize('enterprise', 'verified-sso')
   await app.upload(access, '/preserved.txt', 'hello')
   displayName = '更名成员'
+  await app.ctx.rbac.resolveRequest('enterprise', 'verified-sso')
   const updated = await app.ctx.workspaceFile.spaces(1, '更名成员')
   expect(updated.entries[0]).toMatchObject({
     id: workspaceId,

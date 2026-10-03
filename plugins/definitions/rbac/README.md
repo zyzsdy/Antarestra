@@ -57,7 +57,7 @@ export function apply(ctx: Context) {
 
 认证插件调用 `registerProvider(owner, providerId, pluginId)` 获得绑定该实例的句柄。通过 `handle.provision(transaction, stableSubject, displayName)` 创建主体与身份，通过 `handle.issue(stableSubject)` 为已验证的身份签发会话。插件必须先验证密码或外部凭证，不得把 issue 暴露为接受任意 subject 的公开 API。
 
-`handle.principals(offset = 0, limit = 100)` 为可信插件分页枚举该认证实例的主体，按主体 ID 排序、去重，包含停用账号。`offset` 为非负整数，`limit` 为 1–1000；句柄卸载后失效。身份插件可据此构建个人空间目录，不必跨插件读取 RBAC 私有表，也不会让 IM 主体自动产生不存在的个人空间。
+`handle.principals(offset = 0, limit = 100)` 为可信插件分页枚举该认证实例的主体，按主体 ID 排序、去重，包含停用账号。`offset` 为非负整数，`limit` 为 1–1000；句柄卸载后失效。可用于账号管理和旧数据迁移，消费插件不必跨插件读取 RBAC 私有表。主体本身不隐含个人空间，空间由可信业务建立或通过身份解析确认。
 
 会话使用 256 位随机令牌，数据库只保存 SHA-256。local 通过 HttpOnly、SameSite=Strict Cookie 传递，直接 HTTPS 时带 Secure，浏览器脚本不接触令牌，不写 localStorage。内部客户端可通过 `Authorization: Bearer` 携带已签发令牌。每次验证检查会话有效期、主体、身份、提供者状态与运行登记。
 
@@ -96,13 +96,23 @@ export function apply(ctx: Context) {
 
 ## 空间管理目录
 
-请求来源可实现 `listWorkspaces(offset, limit): Promise<readonly WorkspaceSummary[]>`，返回 `{ id, label }`。空间 ID 必须与 `resolve` / `resolveBackground` 使用的 ID 一致、全局稳定且不超过 200 字符；展示名称由身份实现决定。目录按稳定 ID 排序，少于 `limit` 项表示结束，应包含需要管理历史数据和配额的停用空间。新插件可返回个人、团队、组织、群聊等任意已建立的空间，不需要修改 RBAC 或文件插件，也不依赖空间先访问文件服务。
+Workspace 是持久化的公共资源，统一保存在 RBAC 的 `workspace` 表中，与认证提供者的运行登记、文件元数据分开。来源不必提供空间枚举接口，消费方不枚举或调用任何身份插件。
+
+任何请求来源的 `resolve` 返回经过验证的 `actorId` 和 `workspaceId` 后，`resolveRequest` 会自动登记空间；它们可以来自 OAuth、Zero Trust、IM 或其他可信入口，无需知道文件服务是否安装。后台请求在身份与权限校验通过后也会自动登记。无身份、匿名、多个提供者同时认领或解析期间已卸载的来源不会登记空间。`workspaceLabel` 有值时更新名称，省略时保留已有名称，新空间没有名称时使用 ID。
+
+在没有请求的业务流程中创建空间，通过 `ensureWorkspace(owner, { id, label? }, transaction?)` 登记。它是通用空间创建接口，支持与业务数据同事务提交或回滚，并按 ID 原子合并并发创建。空间 ID 全局稳定、最长 200 字符；同 ID 表示同一空间，明确传入名称表示更新共享名称，不按认证插件拆分同一个空间。
 
 ```ts
 ctx.rbac.registerRequestSource(ctx, 'enterprise', {
   id: 'company-sso',
+  // 返回已验证的 actorId、workspaceId，可附带 workspaceLabel。
   resolve: (request) => identityService.resolve(request),
-  listWorkspaces: (offset, limit) => identityService.listWorkspaces(offset, limit),
+})
+
+// 无请求的项目、组织等业务在创建时使用同一通用空间接口。
+await ctx.database.transaction(ctx, async (transaction) => {
+  await ctx.rbac.ensureWorkspace(ctx, { id: 'project:42', label: '项目·42' }, transaction)
+  // 本插件通过 transaction 写入自己的业务数据。
 })
 
 // 仅在管理权限检查通过后枚举。
@@ -111,6 +121,8 @@ for await (const space of ctx.rbac.workspaceDirectory()) {
 }
 ```
 
-`workspaceDirectory()` 逐来源、每批 100 项读取目录，并按空间 ID 合并。多个通道可返回同一空间及相同名称；同 ID 不同名称、同一来源分页重复 ID 或超过分页上限都会明确报错。提供者查询失败直接传播，枚举期间卸载会拒绝迟到结果，注册回收沿用请求来源的所属插件生命周期。它是可信服务接口，不是公开 HTTP 空间列表；调用方必须检查管理权限，目录收录不授予成员资格或文件访问权限。
+`workspaceDirectory()` 仅查询统一目录，每批 100 项按 ID 游标遍历。空间记录不会随来源卸载、账号停用或进程重启删除；枚举无需原插件在线，也不会访问其数据库或外部身份服务。核心或数据库卸载后旧引用失效。这是可信服务接口，未暴露公开 HTTP 空间列表；调用方必须检查管理权限，登记或展示空间不授予成员资格或文件访问权限。
 
-文件管理将目录与自身已有空间合并，刷新名称但保留配额、文件和上传状态。提供者卸载或停止列出空间不会删除已收录的管理记录；没有实现目录的旧入口仍可通过经授权的首次文件访问登记空间。当前为每次管理查询分页遍历全部来源，未提供跨来源一致性快照，枚举期间应保持排序与分页稳定；不宣称支持海量空间索引。
+本地账号和 IM 映射在正常创建流程中登记空间，加载时将升级前的既有数据补入统一目录；各插件只迁移自己的业务数据。其他来源即使只沿用已有身份解析契约，也会自动登记后续验证过的空间；从未导入、创建或验证过的外部账号、组织不会凭空出现。
+
+文件管理只消费统一目录，并与自身已有记录合并，更新名称但保留配额、文件和上传状态。即使文件插件晚于空间创建加载、晚于来源卸载加载，仍能展示空间。当前管理查询仍遍历全部空间再搜索和分页，未提供并发创建的一致性快照，不宣称支持海量空间索引。

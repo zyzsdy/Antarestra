@@ -67,15 +67,7 @@ export class WorkspaceFileService extends Service<Config> {
     if (!identity.actorId || !identity.workspaceId) throw new AuthError(401, '请先登录')
     const access = Object.freeze({ workspaceId: identity.workspaceId })
     this.accesses.set(access, { source, request })
-    const label =
-      identity.workspaceLabel ??
-      `${source}·${(await this.ctx.rbac.principal(identity.actorId))?.display_name ?? identity.actorId}`
-    const existing = await this.db()
-      .selectFrom('spaces')
-      .select('id')
-      .where('id', '=', access.workspaceId)
-      .executeTakeFirst()
-    if (!existing || identity.workspaceLabel) await this.ensure(access.workspaceId, label)
+    await this.ensure(access.workspaceId, identity.workspaceLabel ?? access.workspaceId)
     return access
   }
   private async verify(access: FileAccess) {
@@ -495,7 +487,7 @@ export class WorkspaceFileService extends Service<Config> {
     return this.ctx.storage.backend(file.backend).read(file.key)
   }
   async spaces(page: number, search: string) {
-    // 各身份来源自行声明空间；同步目录只更新名称，不授予文件访问权限。
+    // 只消费统一持久化目录，不枚举或调用任何身份插件。
     for await (const value of this.ctx.rbac.workspaceDirectory())
       await this.ensure(value.id, value.label)
     const rows = await this.db().selectFrom('spaces').selectAll().orderBy('id').execute()
@@ -530,6 +522,10 @@ export class WorkspaceFileService extends Service<Config> {
     label: string,
   ): Promise<FileAccess> {
     owner.fiber.assertActive()
+    const workspace = await this.ctx.rbac.ensureWorkspace(owner, {
+      id: workspaceId,
+      ...(label === workspaceId ? {} : { label }),
+    })
     if (
       !(await this.db()
         .selectFrom('spaces')
@@ -537,7 +533,7 @@ export class WorkspaceFileService extends Service<Config> {
         .where('id', '=', workspaceId)
         .executeTakeFirst())
     )
-      await this.ensure(workspaceId, label)
+      await this.ensure(workspaceId, workspace.label)
     const access = Object.freeze({ workspaceId })
     this.archiveAccesses.set(access, owner)
     return access

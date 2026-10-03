@@ -146,6 +146,10 @@ it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与�
   const connection = register('a', '05')
   await connection.receive(message())
   await connection.receive({ ...message('2'), chat: { type: 'private', id: 'fish' } })
+  // 模拟升级前只有 IM 私有映射，插件重载时将既有空间迁入统一目录。
+  await ctx.database.scope<RbacTables>(ctx, '@antarestra/rbac').deleteFrom('workspace').execute()
+  await identityFiber.dispose()
+  const reloaded = await ctx.plugin(identityIm)
   // 映射先建立，文件插件后加载，不依赖文件访问触发目录登记。
   await ctx.plugin(Storage)
   await ctx.plugin(files, { defaultQuota: 100 })
@@ -165,7 +169,7 @@ it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与�
   })
   const disabled = await ctx.workspaceFile.spaces(1, '群聊')
   expect(disabled.entries[0]).toMatchObject({ id: group.id, quota: 50 })
-  await identityFiber.dispose()
+  await reloaded.dispose()
   expect((await ctx.workspaceFile.spaces(1, '')).total).toBe(2)
   await ctx.plugin(identityIm)
   expect((await ctx.workspaceFile.spaces(1, '群聊')).entries).toEqual(disabled.entries)

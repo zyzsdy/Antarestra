@@ -49,7 +49,7 @@ function normalizePath(path: string): string {
 }
 
 export class HttpServer extends Service<Config> {
-  private accessGuard: Middleware | undefined
+  private accessGuard: { handle: Middleware } | undefined
   private readonly publicRoutes = new Set<string>()
   private readonly config: Readonly<Required<Config>>
   private readonly middleware = new Set<Middleware>()
@@ -146,7 +146,7 @@ export class HttpServer extends Service<Config> {
           ctx.path !== '/api/health' &&
           !this.publicRoutes.has(`${ctx.method} ${ctx.path}`)
         ) {
-          const guard = this.accessGuard
+          const guard = this.accessGuard?.handle
           if (!guard) {
             ctx.status = 503
             ctx.body = { error: '认证服务不可用，已拒绝访问' }
@@ -254,10 +254,12 @@ export class HttpServer extends Service<Config> {
 
   authentication(owner: Context, guard: Middleware): Dispose {
     if (this.accessGuard) throw new Error('认证守卫重复注册')
+    // Cordis 会包装服务的函数属性；使用稳定登记对象进行回收时的身份比较。
+    const entry = { handle: guard }
     return owner.effect(() => {
-      this.accessGuard = guard
+      this.accessGuard = entry
       return () => {
-        if (this.accessGuard === guard) this.accessGuard = undefined
+        if (this.accessGuard === entry) this.accessGuard = undefined
       }
     })
   }

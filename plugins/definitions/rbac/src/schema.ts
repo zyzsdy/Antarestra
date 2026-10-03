@@ -10,6 +10,7 @@ export interface Principal {
   created_at: number
 }
 export interface Tables {
+  workspace: { id: string; label: string }
   principal: Principal
   provider: { id: string; plugin_id: string; status: string }
   identity: {
@@ -94,5 +95,14 @@ export const migrations = [
   defineMigration({
     id: '002_builtin_roles',
     steps: [table('role_migration', [key('id')])],
+  }),
+  defineMigration({
+    id: '003_workspace_directory',
+    steps: [
+      table('workspace', [
+        { name: 'id', type: 'string', length: 200, primaryKey: true },
+        { name: 'label', type: 'text', notNull: true },
+      ]),
+    ],
   }),
 ]

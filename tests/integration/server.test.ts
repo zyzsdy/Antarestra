@@ -68,6 +68,25 @@ afterEach(async () => {
 })
 
 describe('HTTP 服务与路由', () => {
+  it('认证守卫随所属插件卸载并可重新注册，旧回收不撤销新守卫', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    await ctx.plugin(HttpServer, { host: '127.0.0.1', port: 0 })
+    const url = `http://127.0.0.1:${ctx.server.address!.port}`
+    ctx.server.route(ctx, 'GET', '/guard-lifecycle', (http) => {
+      http.body = '已授权'
+    })
+    const owner = await ctx.plugin({ inject: ['server'], apply() {} })
+    const release = owner.ctx.server.authentication(owner.ctx, async (_http, next) => next())
+    expect((await request(url, '/api/guard-lifecycle')).status).toBe(200)
+    await owner.dispose()
+    expect((await request(url, '/api/guard-lifecycle')).status).toBe(503)
+    const replacement = await ctx.plugin({ inject: ['server'], apply() {} })
+    replacement.ctx.server.authentication(replacement.ctx, async (_http, next) => next())
+    await release()
+    expect((await request(url, '/api/guard-lifecycle')).status).toBe(200)
+  })
+
   it('客户端提前断开只记录中断，回收日志事件监听', async () => {
     const { ctx, url } = await start()
     const logs: string[] = []

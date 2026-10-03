@@ -33,14 +33,6 @@ export class IdentityImService extends Service<{ provider: ProviderHandle; provi
     })
     ctx.rbac.registerRequestSource(ctx, 'im', {
       id: config.providerId,
-      listWorkspaces: (offset, limit) =>
-        this.db()
-          .selectFrom('workspace')
-          .select(['id', 'label'])
-          .orderBy('id')
-          .offset(offset)
-          .limit(limit)
-          .execute(),
       resolve: async (request) => {
         const identity = await ctx.im.authenticate(request)
         if (identity) return { ...identity, roles: ['user'] }
@@ -97,6 +89,11 @@ export class IdentityImService extends Service<{ provider: ProviderHandle; provi
           }
           await db.insertInto('workspace').values(workspace).execute()
         }
+        await this.ctx.rbac.ensureWorkspace(
+          this.ctx,
+          { id: workspaceId, label: workspace.label },
+          transaction,
+        )
         const member = await db
           .selectFrom('member')
           .selectAll()
@@ -193,6 +190,19 @@ export default defineDatabasePlugin({
     config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), config)
     const providerId = config.providerId ?? 'im'
     const provider = await ctx.rbac.registerProvider(ctx, providerId, pluginId)
+    // 仅迁移本插件已有映射；目录消费方不需要知道空间来自哪个插件。
+    const db = ctx.database.scope<Tables>(ctx, pluginId)
+    for (let offset = 0; ; offset += 100) {
+      const rows = await db
+        .selectFrom('workspace')
+        .select(['id', 'label'])
+        .orderBy('id')
+        .offset(offset)
+        .limit(100)
+        .execute()
+      for (const row of rows) await ctx.rbac.ensureWorkspace(ctx, row)
+      if (rows.length < 100) break
+    }
     await ctx.plugin(IdentityImService, { provider, providerId })
   },
 })

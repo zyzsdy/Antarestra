@@ -39,14 +39,16 @@ export default defineDatabasePlugin({
       id: `personal:${actorId}`,
       label: `本地用户·${displayName}（${providerId}）`,
     })
+    // 将升级前已经存在的账号空间补入统一目录；后续创建与账号事务同时提交。
+    for (let offset = 0; ; offset += 100) {
+      const principals = await provider.principals(offset, 100)
+      for (const principal of principals)
+        await ctx.rbac.ensureWorkspace(ctx, workspace(principal.id, principal.display_name))
+      if (principals.length < 100) break
+    }
     ctx.rbac.registerRequestSource(ctx, 'web', {
       id: providerId,
       loginPath: accountPath,
-      async listWorkspaces(offset, limit) {
-        return (await provider.principals(offset, limit)).map((principal) =>
-          workspace(principal.id, principal.display_name),
-        )
-      },
       async resolveBackground(actorId, workspaceId) {
         if (workspaceId !== `personal:${actorId}`) return
         const roles = await ctx.rbac.backgroundRoles(providerId, actorId)
@@ -90,6 +92,7 @@ export default defineDatabasePlugin({
       return ctx.database.transaction(ctx, async (transaction) => {
         const scoped = transaction.scope<Tables>(ctx, pluginId)
         const identity = await provider.provision(transaction, id, name)
+        await ctx.rbac.ensureWorkspace(ctx, workspace(identity.principalId, name), transaction)
         await scoped
           .insertInto('account')
           .values({
