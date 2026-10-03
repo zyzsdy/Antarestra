@@ -24,7 +24,8 @@ export async function metadata(resolver: PluginResolver, id: string): Promise<Pl
         unknown
       >
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('插件包描述无效')
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw new Error('插件包描述无效', { cause: error })
     }
     if (pkg && typeof pkg.name === 'string') {
       if (!Array.isArray(pkg.keywords) || !pkg.keywords.includes('antarestra-plugin'))

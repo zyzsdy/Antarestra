@@ -25,13 +25,18 @@ export function createPluginResolver(
       }
       return url
     }
-    throw new Error(`未找到插件：${pluginId}，已尝试 ${pluginCandidates(pluginId).join('、')}`)
+    throw Object.assign(
+      new Error(`未找到插件：${pluginId}，已尝试 ${pluginCandidates(pluginId).join('、')}`),
+      { code: 'ERR_PLUGIN_NOT_FOUND' },
+    )
   }
   const resolver: PluginResolver = async (pluginId) => {
     // 包已命中后，导入异常（包括内部依赖缺失）必须直接失败。
     const namespace = await importModule(resolveUrl(pluginId))
     if (typeof namespace !== 'object' || namespace === null) {
-      throw new Error(`插件模块无效：${pluginId}`)
+      throw Object.assign(new Error(`插件模块无效：${pluginId}`), {
+        code: 'ERR_PLUGIN_INVALID_EXPORT',
+      })
     }
     const exports = namespace as Record<string, unknown>
     const plugin = exports.default ?? exports
@@ -44,7 +49,9 @@ export function createPluginResolver(
         typeof plugin.apply === 'function'
       )
     ) {
-      throw new Error(`插件必须导出默认函数、类或 apply 函数：${pluginId}`)
+      throw Object.assign(new Error(`插件必须导出默认函数、类或 apply 函数：${pluginId}`), {
+        code: 'ERR_PLUGIN_INVALID_EXPORT',
+      })
     }
     return plugin as Plugin<unknown>
   }

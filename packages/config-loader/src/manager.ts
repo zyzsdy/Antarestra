@@ -20,6 +20,8 @@ import {
 import type { LoaderSettings, PanelLayout } from './document.js'
 import type { Config } from './index.js'
 import { logPluginLifecycle } from './logging.js'
+import { PluginLoadFailure, reportLoadFailure } from './diagnostics.js'
+import type { LoadStage } from './diagnostics.js'
 
 export type InstanceState = 'disabled' | 'waiting' | 'loading' | 'active' | 'failed' | 'unloading'
 interface Instance {
@@ -139,22 +141,30 @@ export class ConfigManager extends Service<ManagerConfig> {
   }
 
   private async prepared(entry: PluginEntry) {
-    const info = await metadata(this.options.resolvePlugin, entry.pluginId)
-    const value = resolveConfigEnvironment(
-      entry.config,
-      await environment(this.options.filename),
-      info.schema,
-    )
-    const config = info.schema
-      ? validateConfig<Record<string, unknown>>(info.schema, value)
-      : (value as Record<string, unknown>)
-    return { info, config }
+    let stage: LoadStage = 'metadata'
+    try {
+      const info = await metadata(this.options.resolvePlugin, entry.pluginId)
+      stage = 'environment'
+      const value = resolveConfigEnvironment(
+        entry.config,
+        await environment(this.options.filename),
+        info.schema,
+      )
+      stage = 'validation'
+      const config = info.schema
+        ? validateConfig<Record<string, unknown>>(info.schema, value)
+        : (value as Record<string, unknown>)
+      return { info, config }
+    } catch (error) {
+      throw reportLoadFailure(this.owner, entry, stage, error)
+    }
   }
 
   private async launch(item: Instance) {
     if (item.blocked) throw new ManagementError(409, '资源清理未完成，请重启系统')
     delete item.error
     delete item.timedOut
+    let stage: LoadStage = 'import'
     try {
       const { info, config } = await this.prepared(item.entry)
       item.info = info
@@ -163,6 +173,7 @@ export class ConfigManager extends Service<ManagerConfig> {
         this.settings.initializationTimeoutMs,
         '插件模块导入超时',
       )
+      stage = 'registration'
       let owner = this.owner
       if (this.options.resolvePlugin.resolveUrl) {
         const tracked = new Entry(this.owner.loader)
@@ -183,8 +194,11 @@ export class ConfigManager extends Service<ManagerConfig> {
       if (item.tracked) item.tracked.fiber = item.fiber
       void item.fiber.await().catch(() => {})
     } catch (error) {
-      item.error =
-        error instanceof ManagementError ? error.message : '插件加载失败，请检查配置、模块及依赖'
+      item.error = (
+        error instanceof PluginLoadFailure
+          ? error
+          : reportLoadFailure(this.owner, item.entry, stage, error)
+      ).message
     }
   }
 
@@ -231,7 +245,13 @@ export class ConfigManager extends Service<ManagerConfig> {
       return await Promise.race([
         Promise.resolve(promise),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new ManagementError(409, message)), ms)
+          timer = setTimeout(
+            () =>
+              reject(
+                Object.assign(new ManagementError(409, message), { code: 'ERR_PLUGIN_TIMEOUT' }),
+              ),
+            ms,
+          )
         }),
       ])
     } finally {
@@ -497,11 +517,7 @@ export class ConfigManager extends Service<ManagerConfig> {
     if (!previous) throw new ManagementError(404, '配置已移除，请刷新')
     const next: PluginEntry = { ...previous, enabled, config: config as Record<string, unknown> }
     if (enabled) {
-      try {
-        await this.prepared(next)
-      } catch (error) {
-        throw new ManagementError(400, error instanceof Error ? error.message : '配置无效')
-      }
+      await this.prepared(next)
       if (
         (
           await this.duplicates(
