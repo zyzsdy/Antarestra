@@ -1,5 +1,6 @@
 import type { ArchivedMessage, ChatPolicy, IncomingMessage, MessageContext } from '@antarestra/im'
 import type { UserInput } from '@antarestra/ai'
+import { replyFormatGuide } from './reply.js'
 
 export interface InputSnapshot {
   template: string
@@ -7,6 +8,7 @@ export interface InputSnapshot {
   last_message: string
   active_reason: string
   attachments: NonNullable<UserInput['attachments']>
+  replyFormat?: { append: boolean; guide: string }
 }
 const labels = { image: '图片', video: '视频', audio: '音频', file: '文件' }
 export const defaultInputTemplate = (type: 'private' | 'group') =>
@@ -77,6 +79,10 @@ export function prepareInput(
   const attached = new Map(attachments.map((file, index) => [file.resourceId, index + 1]))
   return {
     template,
+    replyFormat: {
+      append: policy.appendReplyFormat === true,
+      guide: replyFormatGuide(message.connection.capabilities),
+    },
     history_message: history
       .map((entry) =>
         withSender(entry.message, formatMessage(entry.message, entry.media, attached)),

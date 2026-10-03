@@ -3,9 +3,10 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import type { Access, RunCommand } from '@antarestra/ai'
-import type { MessageContext } from '@antarestra/im'
+import type { MessageContext, MessageSegment } from '@antarestra/im'
 import '@antarestra/plugin-im-commands'
 import { activationReason, finalText } from './messages.js'
+import { parseReply } from './reply.js'
 import {
   prepareInput,
   renderInput,
@@ -225,6 +226,7 @@ export class ImAiService extends Service<Config> {
             run_id: null,
             status: 'queued',
             answer: null,
+            reply_plan: null,
             delivery: 'pending',
             attempts: 0,
             created_at: now,
@@ -426,16 +428,49 @@ export class ImAiService extends Service<Config> {
       if (row.answer) {
         live()
         await this.ai.verify(access)
+        if (!row.reply_plan) {
+          let messages: MessageSegment[][]
+          try {
+            messages =
+              row.status === 'completed'
+                ? parseReply(
+                    row.answer,
+                    this.ctx.im.listConnections().find((item) => item.id === row.connection_id)
+                      ?.capabilities,
+                  )
+                : [[{ type: 'text', text: row.answer }]]
+            // 完整预检后才发送第一条；引用必须属于当前空间。
+            for (const segments of messages) await this.ctx.im.validateSend(target, segments)
+          } catch {
+            row.status = 'failed'
+            messages = [
+              [{ type: 'text', text: 'AI 回复格式、引用或图片地址无效，本次回复未发送，请重试。' }],
+            ]
+            this.ctx.logger.warn('IM AI 回复预检失败，未发送回复内容')
+          }
+          row.reply_plan = JSON.stringify(messages)
+          await this.db
+            .updateTable('jobs')
+            .set({ reply_plan: row.reply_plan, status: row.status })
+            .where('id', '=', row.id)
+            .execute()
+        }
+        const messages = JSON.parse(row.reply_plan) as MessageSegment[][]
         await this.db
           .updateTable('jobs')
           .set({ attempts: row.attempts + 1 })
           .where('id', '=', row.id)
           .execute()
         try {
-          await this.ctx.im.send(target, [{ type: 'text', text: row.answer }], {
-            idempotencyKey: `im-ai-${row.id}`,
-            signal: this.abort.signal,
-          })
+          for (const [index, segments] of messages.entries()) {
+            live()
+            await this.ai.verify(access)
+            await this.ctx.im.send(target, segments, {
+              // 首条沿用旧键，恢复旧任务时也不会重复发送。
+              idempotencyKey: `im-ai-${row.id}${index ? `-${index}` : ''}`,
+              signal: this.abort.signal,
+            })
+          }
           await this.db
             .updateTable('jobs')
             .set({ delivery: 'sent' })
@@ -467,6 +502,15 @@ export class ImAiService extends Service<Config> {
       const unavailable =
         !!error && typeof error === 'object' && 'status' in error && error.status === 503
       if (unavailable && !access) return
+      // 已固化的投递内容不可换成另一份答案复用原有幂等键。
+      if (row.reply_plan) {
+        await this.db
+          .updateTable('jobs')
+          .set({ delivery: 'failed' })
+          .where('id', '=', row.id)
+          .execute()
+        return
+      }
       let canNotify = false
       if (access) {
         try {

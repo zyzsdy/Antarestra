@@ -107,6 +107,9 @@ export function apply(ctx: Context, input: Config) {
     ...(config.label ? { label: config.label } : {}),
     ...(config.policy ? { policy: config.policy } : {}),
     capabilities: ['text', 'mention', 'reply', 'image.key', 'file.key', 'member'],
+    validateMessage: (segments) => {
+      encodeMessage(segments)
+    },
     async downloadMedia(message, segment, signal, maxBytes) {
       if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')
       const url = new URL(segment.url)

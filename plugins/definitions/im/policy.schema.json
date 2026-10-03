@@ -61,6 +61,9 @@
         "ai": {
           "type": "boolean"
         },
+        "appendReplyFormat": {
+          "type": "boolean"
+        },
         "agentId": {
           "type": "string",
           "minLength": 1

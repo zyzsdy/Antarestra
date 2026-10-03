@@ -20,6 +20,7 @@ export interface JobRow {
   run_id: string | null
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   answer: string | null
+  reply_plan: string | null
   delivery: 'pending' | 'sent' | 'failed' | 'unknown'
   attempts: number
   created_at: number
@@ -99,5 +100,9 @@ export const migrations = [
         ],
       },
     ],
+  }),
+  defineMigration({
+    id: '003_reply_plan',
+    steps: [{ kind: 'addColumn', table: 'jobs', column: { name: 'reply_plan', type: 'text' } }],
   }),
 ]

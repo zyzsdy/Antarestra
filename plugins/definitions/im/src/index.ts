@@ -566,11 +566,7 @@ export class ImService extends Service<ServiceOptions> {
       })
     })
   }
-  async send(
-    target: ScopedTarget,
-    segments: readonly MessageSegment[],
-    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
-  ): Promise<{ messageId?: string }> {
+  async validateSend(target: ScopedTarget, segments: readonly MessageSegment[]): Promise<void> {
     const entry = this.entry(target.connectionId)
     const route = await this.db()
       .selectFrom('route')
@@ -595,6 +591,15 @@ export class ImService extends Service<ServiceOptions> {
         .executeTakeFirst()
       if (!reference) throw new ImError(403, 'foreign_message', '引用消息不属于当前空间')
     }
+    entry.descriptor.validateMessage?.(segments)
+  }
+  async send(
+    target: ScopedTarget,
+    segments: readonly MessageSegment[],
+    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
+  ): Promise<{ messageId?: string }> {
+    const entry = this.entry(target.connectionId)
+    await this.validateSend(target, segments)
     const deliver = async () => {
       this.assertEntry(entry)
       if (!this.getChatPolicy(target.connectionId, target.chat).enabled)

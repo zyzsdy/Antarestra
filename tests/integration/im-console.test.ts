@@ -72,6 +72,7 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
     group: { mode: 'whitelist', ids: ['40894918'] },
     defaults: {
       ai: true,
+      appendReplyFormat: true,
       activation: { dynamic: { baseProbability: 0.003, maxSilentMessages: 150 } },
     },
   }

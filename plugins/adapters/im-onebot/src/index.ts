@@ -112,6 +112,9 @@ export function apply(ctx: Context, input: Config) {
     ...(config.label ? { label: config.label } : {}),
     ...(config.policy ? { policy: config.policy } : {}),
     capabilities: ['text', 'mention', 'reply', 'image', 'member', 'group.ban', 'group.kick'],
+    validateMessage: (segments) => {
+      encodeMessage(segments)
+    },
     async downloadMedia(message, segment, signal, maxBytes) {
       if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')
       return downloadMedia(message, segment, signal, maxBytes, rpc)

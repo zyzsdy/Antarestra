@@ -126,6 +126,8 @@ export interface ChatPolicy {
   enabled?: boolean
   commands?: boolean
   ai?: boolean
+  /** 自动在系统提示词末尾追加 IM 回复格式；不影响显式模板变量。 */
+  appendReplyFormat?: boolean
   agentId?: string
   activation?: ActivationPolicy
   userInputTemplate?: string
@@ -162,6 +164,8 @@ export interface ConnectionDescriptor {
     signal: AbortSignal,
     maxBytes: number,
   ): Promise<{ data: Uint8Array; mimeType: string; filename: string }>
+  /** 无发送副作用的消息格式检查，可用于批量投递前的完整预检。 */
+  validateMessage?(segments: readonly MessageSegment[]): void
   send(
     target: ChatTarget,
     segments: readonly MessageSegment[],

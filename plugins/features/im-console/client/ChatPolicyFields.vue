@@ -12,10 +12,10 @@ const choices = [
   { id: 'on', name: '启用' },
   { id: 'off', name: '关闭' },
 ]
-function getFlag(key: 'enabled' | 'commands' | 'ai') {
+function getFlag(key: 'enabled' | 'commands' | 'ai' | 'appendReplyFormat') {
   return model.value[key] === undefined ? 'inherit' : model.value[key] ? 'on' : 'off'
 }
-function setFlag(key: 'enabled' | 'commands' | 'ai', value: string) {
+function setFlag(key: 'enabled' | 'commands' | 'ai' | 'appendReplyFormat', value: string) {
   if (value === 'inherit') delete model.value[key]
   else model.value[key] = value === 'on'
 }
@@ -76,6 +76,22 @@ function setDynamic(enabled: boolean) {
           autocomplete="off"
       /></label>
     </div>
+    <label :for="`${id}-reply-format`">
+      自动追加回复格式指引
+      <SelectField
+        :id="`${id}-reply-format`"
+        label="自动追加回复格式指引"
+        :options="choices"
+        :model-value="getFlag('appendReplyFormat')"
+        :disabled="busy"
+        @update:model-value="setFlag('appendReplyFormat', $event)"
+      />
+    </label>
+    <p class="im-hint">
+      系统默认关闭。启用后，在系统提示词末尾追加分条消息、引用和图片的格式说明。
+      也可在系统提示词任意位置插入 <code v-text="'{{im_reply_format}}'"></code>，不受此开关影响；
+      已插入变量时不会重复追加。表情包按图片发送，具体支持取决于接入平台。
+    </p>
     <HistoryFields v-model="model" :id="id" :busy="busy" :private-chat="privateChat" />
     <label class="im-check"
       ><CheckboxField

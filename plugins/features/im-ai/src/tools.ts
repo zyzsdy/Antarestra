@@ -1,11 +1,25 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import { AiError, type RunContext, type Json } from '@antarestra/ai'
 import { formatMessage, type InputSnapshot } from './history.js'
+import { replyFormatGuide, replyFormatVariable } from './reply.js'
 
 export function registerHistoryTools(
   ctx: Context,
   snapshot: (context: RunContext) => Promise<InputSnapshot | undefined>,
 ) {
+  ctx.ai.registerTemplateVariable(ctx, {
+    id: 'im_reply_format',
+    description: 'IM 分条回复、引用、图片和表情包格式指引；不受自动追加开关影响，非 IM 运行为空。',
+    async resolve(context) {
+      const input = await snapshot(context)
+      return input ? (input.replyFormat?.guide ?? replyFormatGuide()) : ''
+    },
+  })
+  ctx.on('ai/template', async (context, draft) => {
+    const input = await snapshot(context)
+    if (input?.replyFormat?.append && !replyFormatVariable.test(context.agent.systemTemplate))
+      draft.systemPrompt += `\n\n${input.replyFormat.guide}`
+  })
   for (const [id, description] of [
     [
       'history_message',
