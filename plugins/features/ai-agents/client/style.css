@@ -210,6 +210,18 @@
 .agents-form .agents-hint {
   font-size: 13px;
 }
+.agents-template-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+}
+.agents-template-help > .agents-hint {
+  flex: 1 1 320px;
+  margin: 0;
+}
 @media (max-width: 760px) {
   .agents-grid {
     grid-template-columns: 1fr;

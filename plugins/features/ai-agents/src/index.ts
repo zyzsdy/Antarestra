@@ -56,6 +56,7 @@ export default defineDatabasePlugin({
         }
         route('GET', '', async () => ({ agents: ctx.aiAgents.list(), defaultAgentId }))
         route('GET', '/capabilities', async () => ctx.ai.capabilities())
+        route('GET', '/template-variables', async () => ctx.ai.listTemplateVariables())
         route('POST', '', async (http) => ctx.aiAgents.save(await readJson(http, 524288)))
         route('PUT', '/:id', async (http) =>
           ctx.aiAgents.save(await readJson(http, 524288), id(http)),

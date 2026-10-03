@@ -27,6 +27,7 @@ function registerTools(ctx: Context) {
   const memory = ctx.memory
   ctx.ai.registerTemplateVariable(ctx, {
     id: 'global_memory',
+    description: '当前工作空间的全局记忆内容，由记忆插件提供；尚未保存记忆时为空文本。',
     resolve: async (context) => (await memory.global(context)).content,
   })
   const register = (

@@ -137,6 +137,7 @@ it('SQLite 初始化唯一默认助理、持久保存修改并重启恢复，数
 it('管理 API 拒绝未登录和普通用户；默认会话跨空间隔离', async () => {
   const app = await setup()
   expect((await app.request('/ai-agents')).status).toBe(401)
+  expect((await app.request('/ai-agents/template-variables')).status).toBe(401)
   await app.request('/auth/local/local/register', '', {
     email: 'member@example.com',
     password: 'member-password-42',
@@ -150,6 +151,7 @@ it('管理 API 拒绝未登录和普通用户；默认会话跨空间隔离', as
   for (const [path, body, method] of [
     ['/ai-agents', undefined, 'GET'],
     ['/ai-agents/capabilities', undefined, 'GET'],
+    ['/ai-agents/template-variables', undefined, 'GET'],
     ['/ai-agents', newAgent('bad', '越权'), 'POST'],
     [`/ai-agents/${defaultAgentId}`, { revision: 1 }, 'DELETE'],
   ] as const)
@@ -165,6 +167,37 @@ it('管理 API 拒绝未登录和普通用户；默认会话跨空间隔离', as
     (await app.request(`/ai-agents/${defaultAgentId}`, app.cookie, { revision: 1 }, 'DELETE'))
       .status,
   ).toBe(403)
+})
+it('变量目录包含内置与已注册说明，不解析空间内容，卸载后移除', async () => {
+  const app = await setup()
+  let resolved = false
+  const plugin = await app.ctx.plugin({
+    inject: ['ai'],
+    apply(ctx: Context) {
+      ctx.ai.registerTemplateVariable(ctx, {
+        id: 'test_memory',
+        description: '测试空间记忆',
+        async resolve() {
+          resolved = true
+          return '不应出现在目录中的私密内容'
+        },
+      })
+      ctx.ai.registerTemplateVariable(ctx, { id: 'no_description', resolve: async () => '' })
+    },
+  })
+  const response = await app.request('/ai-agents/template-variables', app.cookie)
+  expect(response.status).toBe(200)
+  const entries = await response.json()
+  expect(entries).toEqual([
+    { id: 'input', description: expect.stringContaining('本次用户输入') },
+    { id: 'test_memory', description: '测试空间记忆' },
+    { id: 'no_description', description: expect.stringContaining('尚未提供含义说明') },
+  ])
+  expect(resolved).toBe(false)
+  await plugin.dispose()
+  expect(await (await app.request('/ai-agents/template-variables', app.cookie)).json()).toEqual([
+    { id: 'input', description: expect.any(String) },
+  ])
 })
 it('API 创建编辑校验、重复 ID 与并发修订冲突，默认助理之外可删除', async () => {
   const app = await setup()

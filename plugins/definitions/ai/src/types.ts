@@ -149,6 +149,7 @@ export interface TemplateDraft {
 }
 export interface TemplateVariable {
   id: string
+  description?: string
   resolve(context: RunContext): Promise<string>
 }
 export interface ToolDraft {

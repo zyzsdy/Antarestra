@@ -110,6 +110,18 @@ export class AiService extends Service<Config> {
     return this.templateVariables.register(owner, value.id, Object.freeze({ ...value }))
   }
 
+  /** 只返回变量说明，不解析或暴露当前空间的变量内容。 */
+  listTemplateVariables() {
+    this.active()
+    return [
+      { id: 'input', description: '本次用户输入的文本，其中已注册的服务端变量会先展开。' },
+      ...this.templateVariables.list().map(({ id, description }) => ({
+        id,
+        description: description?.trim() || '由插件提供的服务端变量；该插件尚未提供含义说明。',
+      })),
+    ]
+  }
+
   async authorizeRunContext(context: RunContext, toolOnly = false): Promise<Access> {
     this.active()
     const live = this.running.get(context.runId)

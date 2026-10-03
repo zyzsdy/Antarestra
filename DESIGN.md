@@ -106,6 +106,8 @@ components:
 
 ## Agents 编辑
 
+提示词下方的说明与“查看变量”按钮自然换行。变量说明复用 WebUI `FloatingPanel.vue` 非模态浮层：白色表面、蓝灰边框、12px 圆角，宽 340px，标题可拖动，内容独立滚动。优先显示在编辑弹窗右侧，空间不足时向左避让或贴近视口右侧，保留 12px 安全边距；不挤压表单布局。浮层挂载于所属 Dialog 内，沿用全局焦点与滚动条样式。
+
 Agents 沿用控制台标题与蓝白表格，默认助理置顶并带“默认”文字标记。表格每页 20 项；编辑采用共享 EditorDialog，模型单选沿用 SelectField，能力多选使用基于 Reka UI Checkbox 的共享 CheckboxField。系统提示词按内容自动调整为 4–60 行，并允许右下角手动调整高度；EditorDialog 提供 footer 插槽时固定标题、关闭与底部操作，仅中间表单区域滚动，Agents 使用此布局保持“保存 Agent”可见。窄屏名称和 ID 改为单列，弹窗内边距缩为 16px。弹窗布局由 EditorDialog.vue 维护，业务样式由 ai-agents/client/style.css 维护，不新增全局令牌。
 
 ## Reka UI 组件优先策略

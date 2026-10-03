@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckboxField } from '@antarestra/webui/components'
+import { CheckboxField, FloatingPanel } from '@antarestra/webui/components'
 import { computed, reactive, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import {
   SelectField,
@@ -12,6 +12,7 @@ import type { ModelRef, JsonObject } from '@antarestra/ai'
 import { newAgent, defaultAgentId } from '../src/types.js'
 import { defaultContextPolicy, validTokenAmount } from '@antarestra/contracts'
 import ContextSettings from './ContextSettings.vue'
+import TemplateVariables from './TemplateVariables.vue'
 import type { AgentRecord, Capabilities } from '../src/types.js'
 const props = defineProps<{
   value: AgentRecord | undefined
@@ -236,10 +237,16 @@ function save(event: Event) {
         rows="4"
         maxlength="65536"
       />
-      <p class="agents-hint">
-        定义助理的职责、语气和行动规则。模板支持双花括号变量，如 <code v-pre>{{ input }}</code
-        >；自定义变量须由调用方提供。
-      </p>
+      <div class="agents-template-help">
+        <p class="agents-hint">
+          定义助理的职责、语气和行动规则。模板支持双花括号变量，如 <code v-pre>{{ input }}</code
+          >；自定义变量须由调用方提供。
+        </p>
+        <FloatingPanel title="可替换变量">
+          <template #trigger><button type="button">查看变量</button></template>
+          <TemplateVariables />
+        </FloatingPanel>
+      </div>
       <section class="agents-scope">
         <h3>可用模型</h3>
         <label class="agents-check"
