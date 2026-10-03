@@ -50,6 +50,10 @@ export class WakeTasksService extends Service<Config> {
   private polling: Promise<void> | undefined
   private readonly db: DatabaseScope<Tables>
   private timer: ReturnType<typeof setTimeout> | undefined
+  // 固定构造时的实例；若在 arm 中捕获代理 this，每轮会继续叠加 Cordis shadow。
+  private readonly onTimer = () => {
+    void this.tick()
+  }
 
   constructor(
     ctx: Context,
@@ -154,9 +158,7 @@ export class WakeTasksService extends Service<Config> {
   private arm(ms: number) {
     if (!this.active) return
     clearTimeout(this.timer)
-    this.timer = setTimeout(() => {
-      void this.tick()
-    }, ms)
+    this.timer = setTimeout(this.onTimer, ms)
     this.timer.unref()
   }
   async tick() {

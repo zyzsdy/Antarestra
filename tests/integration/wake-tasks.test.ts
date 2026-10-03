@@ -217,6 +217,27 @@ it('严格校验一次性默认值、时区、未来日期和周期，并跳过�
   expect(nextOccurrence(1000, 60000, 181000)).toBe(241000)
 })
 
+it('长期空闲轮询不累积调用代理，卸载后不再创建定时器', async () => {
+  const app = await setup(':memory:', { pollIntervalMs: 60000 })
+  await app.ctx.wakeTasks.tick()
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout'],
+    shouldClearNativeTimers: true,
+  })
+  try {
+    app.ctx.wakeTasks.start()
+    for (let i = 0; i < 2000; i++) {
+      await vi.advanceTimersToNextTimerAsync()
+      expect(vi.getTimerCount()).toBe(1)
+    }
+    expect(app.inputs).toHaveLength(0)
+    await app.plugin.dispose()
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+}, 30000)
+
 it('工具落库自动关联身份与助理，并在原空间的新会话提交原提示词且只执行一次', async () => {
   const app = await setup()
   const row = await app.create()
