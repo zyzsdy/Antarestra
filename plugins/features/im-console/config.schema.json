@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IM 接入管理",
+  "description": "无需启动配置；连接和聊天规则请在管理控制台的机器人 → IM 接入中管理。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

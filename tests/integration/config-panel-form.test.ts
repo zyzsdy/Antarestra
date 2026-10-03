@@ -116,6 +116,14 @@ it('Markdown 渲染插件无需配置也声明 Schema 并支持自动表单', as
   expect(() => validateConfig(schema, { unknown: true })).toThrow()
 })
 
+it('IM 接入管理声明空配置自动表单，聊天规则不属于插件启动配置', async () => {
+  const schema = await pluginSchema('plugins/features/im-console')
+  expect(supportsForm(schema)).toBe(true)
+  expect(schema.properties).toEqual({})
+  expect(validateConfig(schema, {})).toEqual({})
+  expect(() => validateConfig(schema, { policy: {} })).toThrow()
+})
+
 it('数据库配置提供自动表单，同时保留数据库类型的条件校验和敏感字段', async () => {
   const schema = JSON.parse(
     await readFile('plugins/implementations/database-kysely/config.schema.json', 'utf8'),

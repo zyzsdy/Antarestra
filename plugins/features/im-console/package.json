@@ -1,0 +1,40 @@
+{
+  "name": "@antarestra/plugin-im-console",
+  "description": "管理 IM 连接、群聊与私聊准入规则和 AI 激活条件。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit && vite build",
+    "typecheck": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit",
+    "dev": "vite build --watch"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@antarestra/im": "workspace:*",
+    "@antarestra/plugin-admin-console": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/rbac": "workspace:*",
+    "@antarestra/webui": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "^8.2.2",
+    "vue": "^3.5.42",
+    "vue-tsc": "^3.3.11"
+  },
+  "antarestra": {
+    "title": "IM 接入管理",
+    "configSchema": "./config.schema.json"
+  }
+}
