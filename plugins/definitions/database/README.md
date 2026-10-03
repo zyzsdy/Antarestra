@@ -67,6 +67,8 @@ export default defineDatabasePlugin({
 
 ## 查询契约
 
+PostgreSQL 专用消费者可调用 `await ctx.database.postgres<Tables>(ctx, pluginId, url?)`，返回同样的 CRUD、事务及绑定命名空间的 `migrate(migrations)`。主库为 PostgreSQL 时复用连接池，否则必须提供额外 PostgreSQL 连接串；额外连接跟随调用方及主后端回收，不改变主数据库服务。它允许使用 PostgreSQL 查询表达式，并支持迁移步骤 `{ kind: 'createFullTextIndex', table, name, column }`，为预分词文本创建 `to_tsvector('simple', column)` 的 GIN 索引。非 PostgreSQL 普通迁移拒绝此步骤。
+
 `scope<Tables>(ctx, pluginId)` 返回类型化的 `selectFrom`、`insertInto`、`updateTable`、`deleteFrom` 和 `transaction(callback)`。查询支持关联、别名、普通及关联子查询、排序、分页和聚合。事务回调接收相同 CRUD 入口，不提供嵌套事务；事务结束后保存的入口拒绝继续执行。
 
 逻辑表、列及索引标识为小写字母开头的 1–32 位字母、数字或下划线。插件标识为最多 128 字符的小写包名或稳定标识。表和索引物理名称为 `p_<插件标识 SHA-256 前 20 位>_<逻辑名称>`；元数据检查插件前缀冲突。索引名称在同一插件内唯一。

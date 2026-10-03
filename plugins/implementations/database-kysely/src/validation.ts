@@ -57,6 +57,11 @@ function step(value: SchemaStep): void {
   if (!value || typeof value !== 'object') throw new Error('迁移步骤必须是对象')
   identifier(value.table)
   switch (value.kind) {
+    case 'createFullTextIndex':
+      keys(value, ['kind', 'table', 'name', 'column'])
+      identifier(value.name)
+      identifier(value.column)
+      break
     case 'createTable':
       keys(value, ['kind', 'table', 'columns'])
       if (!Array.isArray(value.columns) || !value.columns.length)
@@ -132,7 +137,7 @@ export function migrations(input: readonly Migration[]): (Migration & { checksum
     if (!Array.isArray(item.steps) || !item.steps.length) throw new Error('迁移步骤不能为空')
     item.steps.forEach(step)
     for (const operation of item.steps) {
-      if (operation.kind === 'createIndex') {
+      if (operation.kind === 'createIndex' || operation.kind === 'createFullTextIndex') {
         if (indexes.has(operation.name)) throw new Error('同一插件的索引名称必须唯一')
         indexes.set(operation.name, operation.table)
       } else if (operation.kind === 'dropIndex') indexes.delete(operation.name)

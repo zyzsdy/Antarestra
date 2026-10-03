@@ -33,6 +33,26 @@ const event = (sequence: number, type: AiEvent['type'], data: unknown): AiEvent 
   createdAt: 2,
 })
 
+it('记忆整理请求保留正在显示的思考和工具过程', () => {
+  const state = emptyReply()
+  applyEvent(state, event(1, 'message-delta', { kind: 'thinking', text: '正在整理资料' }))
+  const pending = structuredClone(state.pending)
+  applyEvent(
+    state,
+    event(2, 'tool-start', {
+      type: 'tool-call',
+      id: 'memory-call',
+      name: 'global_memory',
+      arguments: { action: 'append', content: '资料' },
+    }),
+  )
+  const tools = structuredClone(state.tools)
+  applyEvent(state, event(3, 'request', { purpose: 'memory' }))
+  expect(state.pending).toEqual(pending)
+  expect(state.tools).toEqual(tools)
+  expect(state.status).toBe('正在整理记忆')
+})
+
 it('上下文事件去重，摘要请求不清空回复，实时和历史处理顺序一致', () => {
   const state = emptyReply()
   const message = { role: 'assistant', content: [{ type: 'text', text: '中途说明' }] }

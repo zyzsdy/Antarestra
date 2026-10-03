@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "globalTokenBudget": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 4096,
+      "title": "全局记忆最大 Token 数"
+    },
+    "postgresUrl": {
+      "type": "string",
+      "minLength": 1,
+      "format": "password",
+      "title": "额外 PostgreSQL 连接串",
+      "description": "主数据库不是 PostgreSQL 时必填，支持环境变量引用。"
+    }
+  },
+  "additionalProperties": false
+}

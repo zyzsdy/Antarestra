@@ -48,6 +48,9 @@ plugins:
   ai: {}
   ai-agent-core: {}
   basic-tools: {}
+  memory:
+    globalTokenBudget: 4096
+    # 主库不是 PostgreSQL 时必填：postgresUrl: $ANTARESTRA_MEMORY_POSTGRES_URL
   web-tools:
     apiKey: $SERPER_API_KEY
     searchProxy: socks5://127.0.0.1:7890

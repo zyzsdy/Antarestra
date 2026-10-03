@@ -23,7 +23,9 @@ Agent 的 `models` 是 `{ providerId, modelId }` 列表，`defaultModel` 必须�
 
 `skillIds: null` 表示全部，`[]` 禁用，其余为显式选择；Skill 服务负责目录描述和执行范围校验。核心不假设 Skill 的存储方式。
 
-模板使用 `{{input}}` 和 `{{变量名}}`；变量来自输入的 `variables`，`input` 固定为用户原始文本。缺失变量报错，不执行表达式。Run 保存原始输入、渲染后的用户消息和每次模型请求最终快照。
+模板使用 `{{input}}` 和 `{{变量名}}`；普通变量来自输入的 `variables`。插件可通过 `registerTemplateVariable(ctx, { id, resolve })` 注册服务端变量，在系统模板、用户模板与原始输入中按需解析一次；输入变量不能覆盖注册名称。`input` 为展开服务端变量后的用户文本，插入的变量内容不递归解析。缺失模板变量报错，不执行表达式。Run 保存原始输入、渲染后的用户消息和每次模型请求最终快照。
+
+`authorizeRunContext(context, toolOnly)` 验证核心签发的活动运行或工具上下文，并重新核对授权；`checkRunConversation(context, id)` 验证工具引用的会话属于当前空间。`generateMemory(context, text, maxTokens, prompt)` 通过当前运行模型执行无工具的辅助文本整理，复用调用次数上限、窗口分段、取消和无活动超时；请求用途为 `memory`，并保存返回用量。记忆插件仍负责固定分词器预算校验与数据库提交。
 
 ## 最小执行后端
 

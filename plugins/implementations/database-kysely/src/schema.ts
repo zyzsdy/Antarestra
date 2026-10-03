@@ -51,6 +51,12 @@ export async function applyStep<Tables>(
 ): Promise<void> {
   const table = physicalName(pluginId, step.table)
   switch (step.kind) {
+    case 'createFullTextIndex':
+      if (type !== 'postgresql') throw new Error('全文索引需要 PostgreSQL')
+      await sql`create index ${sql.id(physicalName(pluginId, step.name))} on ${sql.id(table)} using gin (to_tsvector('simple', ${sql.ref(step.column)}))`.execute(
+        db,
+      )
+      break
     case 'createTable': {
       let builder: CreateTableBuilder<string, string> = db.schema.createTable(table)
       for (const column of step.columns)

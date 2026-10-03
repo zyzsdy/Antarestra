@@ -28,6 +28,7 @@ import type {
   SkillService,
   Tool,
   GeneratedImage,
+  TemplateVariable,
 } from './types.js'
 import { Registry } from './registry.js'
 import {
@@ -57,6 +58,7 @@ export interface Access {
   readonly workspaceId: string
 }
 export interface Bound {
+  templateVariables: Map<string, Registration<TemplateVariable>>
   agent: Registration<AgentPreset>
   backend: Registration<ExecutionBackend>
   providers: Map<string, Registration<Provider>>
@@ -73,6 +75,9 @@ declare module '@antarestra/plugin-sdk' {
   }
 }
 export class AiService extends Service<Config> {
+  private readonly templateVariables = new Registry<TemplateVariable>((entry) =>
+    this.removed(entry),
+  )
   private readonly agents = new Registry<AgentPreset>((entry) => this.removed(entry))
   private readonly agentDefinitions = new Registry<AgentDefinition>((entry) => this.removed(entry))
   private readonly providers = new Registry<Provider>((entry) => this.removed(entry))
@@ -99,6 +104,34 @@ export class AiService extends Service<Config> {
   }
   get context() {
     return this.ctx
+  }
+  registerTemplateVariable(owner: Context, value: TemplateVariable) {
+    check(/^[\w.-]+$/.test(value.id) && value.id !== 'input', '模板变量名称无效')
+    return this.templateVariables.register(owner, value.id, Object.freeze({ ...value }))
+  }
+
+  async authorizeRunContext(context: RunContext, toolOnly = false): Promise<Access> {
+    this.active()
+    const live = this.running.get(context.runId)
+    if (
+      !live ||
+      live.record.status !== 'running' ||
+      context.signal.aborted ||
+      !(live.ownsToolContext(context) || (!toolOnly && live.context === context))
+    )
+      throw new AiError('forbidden', '运行上下文已失效', 403)
+    await this.verify(live.access)
+    context.signal.throwIfAborted()
+    return live.access
+  }
+
+  async generateMemory(context: RunContext, text: string, maxTokens: number, prompt: string) {
+    await this.authorizeRunContext(context)
+    return this.running.get(context.runId)!.summarize(text, maxTokens, { context, prompt })
+  }
+  async checkRunConversation(context: RunContext, conversationId: string) {
+    const access = await this.authorizeRunContext(context, true)
+    await this.conversation(access, conversationId)
   }
   private db() {
     return this.ctx.database.scope<Tables>(this.ctx, pluginId)
@@ -629,6 +662,11 @@ export class AiService extends Service<Config> {
   private bind(agentId: string): Bound {
     const agent = this.resolvedAgent(agentId)
     const bound: Bound = {
+      templateVariables: new Map(
+        this.templateVariables
+          .list()
+          .map((value) => [value.id, this.templateVariables.get(value.id)]),
+      ),
       agent,
       backend: this.backends.get(agent.value.backendId),
       providers: new Map(),
@@ -670,6 +708,7 @@ export class AiService extends Service<Config> {
       ...bound.drivers.values(),
       ...bound.tools.values(),
       ...bound.extensions,
+      ...bound.templateVariables.values(),
       bound.skill,
       bound.resources,
     ])

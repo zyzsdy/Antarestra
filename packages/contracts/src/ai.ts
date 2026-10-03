@@ -107,7 +107,9 @@ export interface MessageNode {
 }
 export type RunStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
 export interface RequestSnapshot {
-  purpose?: 'reply' | 'compaction'
+  purpose?: 'reply' | 'compaction' | 'memory'
+  /** 辅助模型请求完成后保存的用量，不作为模型输入参数。 */
+  usage?: JsonObject
   maxOutputTokens?: number
   model: ModelRef
   thinking: string | null

@@ -1,0 +1,33 @@
+{
+  "name": "@antarestra/plugin-memory",
+  "description": "按工作空间隔离的全局记忆、长期记忆和全文召回。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "记忆",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "js-tiktoken": "^1.0.21",
+    "kysely": "^0.29.5"
+  }
+}

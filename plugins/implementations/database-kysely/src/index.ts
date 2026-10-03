@@ -4,6 +4,7 @@ import type {
   DatabaseScope,
   DatabaseTransaction,
   DatabaseType,
+  PostgresScope,
   Migration,
 } from '@antarestra/database'
 import { Kysely, sql } from 'kysely'
@@ -24,6 +25,7 @@ class Backend implements DatabaseBackend {
   private queue: Promise<void> = Promise.resolve()
   private closing: Promise<void> | undefined
   private readonly owners = new WeakMap<Context, () => void>()
+  private readonly extraBackends = new Set<Backend>()
 
   constructor(
     readonly type: DatabaseType,
@@ -58,6 +60,43 @@ class Backend implements DatabaseBackend {
 
   async initialize(): Promise<void> {
     await sql`select 1`.execute(this.db)
+  }
+
+  async postgres<Tables>(
+    ctx: Context,
+    pluginId: string,
+    url?: string,
+  ): Promise<PostgresScope<Tables>> {
+    pluginName(pluginId)
+    const guard = this.guard(ctx)
+    let backend: Backend = this
+    if (this.type !== 'postgresql') {
+      if (!url) throw new Error('记忆等 PostgreSQL 专用能力需要额外 PostgreSQL 连接串')
+      backend = new Backend(
+        'postgresql',
+        await createDialect(parseConfig({ type: 'postgresql', url }), () => {
+          void backend.close()
+        }),
+      )
+      try {
+        guard()
+        this.extraBackends.add(backend)
+        ctx.effect(() => async () => {
+          this.extraBackends.delete(backend)
+          await backend.close()
+        })
+        await backend.initialize()
+        guard()
+      } catch {
+        this.extraBackends.delete(backend)
+        await backend.close()
+        throw new Error('额外 PostgreSQL 连接失败')
+      }
+    }
+    return {
+      ...backend.scope<Tables>(ctx, pluginId),
+      migrate: (migrations) => backend.migrate(ctx, pluginId, migrations),
+    }
   }
 
   scope<Tables>(ctx: Context, pluginId: string): DatabaseScope<Tables> {
@@ -138,6 +177,8 @@ class Backend implements DatabaseBackend {
 
   private async shutdown(): Promise<void> {
     this.active = false
+    await Promise.all([...this.extraBackends].map((backend) => backend.close()))
+    this.extraBackends.clear()
     await this.queue
     await this.db.destroy()
   }

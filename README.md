@@ -318,6 +318,8 @@ export function apply(ctx: Context): void {
 
 ## 工作空间存储
 
+工作空间记忆由 [memory 插件](plugins/features/memory/README.md) 提供：`{{global_memory}}` 注入共享记忆，默认预算 4096 Token，超额自动整理；模型工具维护长期记忆并使用中英文全文索引召回。主库为 PostgreSQL 时复用，否则配置额外连接。向量检索目前仅预留接口。
+
 已提供 storage、storage-s3 与 workspace-file 三个插件。文件页为 /files/，控制台配额页为 /admin/storage/；聊天菜单可以上传文件，Agent 文件工具支持目录与 UTF-8 文本读取。原始文件路径仅保存在数据库，S3 使用随机对象键。
 
 本地依次运行 pnpm startdevstorage、pnpm initdevstorage 和 pnpm test:storage。启用根配置中的 storage-s3 示例并将 .env.storage.local 的凭据加入启动环境。详细契约与限制见 [工作空间文件](plugins/features/workspace-file/README.md) 和 [S3 / RustFS 配置](plugins/implementations/storage-s3/README.md)。

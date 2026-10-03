@@ -147,6 +147,10 @@ export interface TemplateDraft {
   systemPrompt: string
   userPrompt: string
 }
+export interface TemplateVariable {
+  id: string
+  resolve(context: RunContext): Promise<string>
+}
 export interface ToolDraft {
   call: Extract<ContentBlock, { type: 'tool-call' }>
   blocked: string | null

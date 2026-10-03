@@ -24,6 +24,7 @@ try {
   await writeFile(
     filename,
     config
+      .replace(/\r?\n  memory:\r?\n(?:    [^\r\n]*\r?\n)*/g, '\n')
       .replace(/(\s{2}(?:plugin-)?server): \{\}/, `$1: { host: 127.0.0.1, port: ${port} }`)
       .replace(
         /((?:plugin-)?database-kysely):(?: \{\}|\r?\n    type: postgresql\r?\n    url: \$ANTARESTRA_DATABASE_URL)/,

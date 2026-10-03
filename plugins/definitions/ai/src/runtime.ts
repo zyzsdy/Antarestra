@@ -89,6 +89,7 @@ export class Running {
       ...this.bound.drivers.values(),
       ...this.bound.tools.values(),
       ...this.bound.extensions,
+      ...this.bound.templateVariables.values(),
       this.bound.skill,
       this.bound.resources,
     ]) {
@@ -134,6 +135,34 @@ export class Running {
         ...this.record.input.variables,
         input: this.record.input.text,
       }
+      const sources = [
+        this.record.agent.systemTemplate,
+        this.record.agent.userTemplate,
+        this.record.input.text,
+      ]
+      const used = new Set(
+        sources.flatMap((source) =>
+          [...source.matchAll(/\{\{\s*([\w.-]+)\s*\}\}/g)].map((match) => match[1]!),
+        ),
+      )
+      for (const [id, registration] of this.bound.templateVariables) {
+        check(
+          !Object.hasOwn(this.record.input.variables ?? {}, id),
+          `不能覆盖服务端模板变量：${id}`,
+        )
+        if (used.has(id))
+          variables[id] = await abortable(
+            registration.value.resolve(this.context),
+            this.context.signal,
+          )
+      }
+      if (used.has('global_memory'))
+        check(this.bound.templateVariables.has('global_memory'), '记忆插件未启用')
+      variables.input = this.record.input.text.replace(
+        /\{\{\s*([\w.-]+)\s*\}\}/g,
+        (match, key: string) =>
+          this.bound.templateVariables.has(key) ? String(variables[key]) : match,
+      )
       const draft = {
         systemPrompt: template(this.record.agent.systemTemplate, variables),
         userPrompt: template(this.record.agent.userTemplate, variables),
@@ -552,13 +581,20 @@ export class Running {
       throw error
     }
   }
-  async summarize(text: string, maxSummaryTokens: number) {
+  async summarize(
+    text: string,
+    maxSummaryTokens: number,
+    memory?: { context: RunContext; prompt: string },
+  ) {
     const policy = this.record.agent.contextPolicy ?? defaultContextPolicy()
     // 使用实际主请求选择，包含请求钩子对模型/思考强度的合法修改。
     const latest = this.record.contextBudgets?.at(-1)
-    const ref = policy.compaction.model ?? latest?.model ?? this.record.model
-    const thinking =
-      policy.compaction.thinking === 'off'
+    const ref = (memory ? undefined : policy.compaction.model) ?? latest?.model ?? this.record.model
+    const thinking = memory
+      ? latest
+        ? this.requestThinking
+        : this.record.thinking
+      : policy.compaction.thinking === 'off'
         ? null
         : (policy.compaction.thinking ?? this.requestThinking)
     const provider = this.bound.providers.get(ref.providerId)?.value
@@ -573,19 +609,21 @@ export class Running {
       maxSummaryTokens,
       model.maxOutputTokens,
       Math.max(1, Math.floor(model.contextWindow / 4)),
-      resolveTokenAmount(policy.compaction.reserve, latest?.window ?? model.contextWindow),
+      memory
+        ? model.maxOutputTokens
+        : resolveTokenAmount(policy.compaction.reserve, latest?.window ?? model.contextWindow),
     )
     const usage: ContextSummary['usage'] = []
     let summary = ''
     let offset = 0
     const characters = Array.from(text)
     const requestFor = (part: string): RequestSnapshot => ({
-      purpose: 'compaction',
+      purpose: memory ? 'memory' : 'compaction',
       model: json(ref),
       thinking,
       parameters: {},
       maxOutputTokens,
-      systemPrompt: summarizationPrompt,
+      systemPrompt: memory?.prompt ?? summarizationPrompt,
       tools: [],
       messages: [
         {
@@ -609,6 +647,7 @@ export class Running {
     }
     while (offset < characters.length) {
       this.active()
+      memory?.context.signal.throwIfAborted()
       // 二分选择适合压缩模型窗口的连续资料块，不截掉任何文字。
       let low = 0
       let high = characters.length - offset
@@ -630,14 +669,19 @@ export class Running {
       if (this.record.requests.length >= this.service.config.maxModelCalls)
         throw new AiError('model_call_limit', '压缩所需模型调用次数达到上限')
       const request = freeze(json(requestFor(characters.slice(offset, offset + low).join(''))))
+      const requestIndex = this.record.requests.length
       this.record.requests.push(json(request))
       await this.service.persist(this, 'request', {
         index: this.record.requests.length,
         model: ref,
-        purpose: 'compaction',
+        purpose: memory ? 'memory' : 'compaction',
       })
       const local = new AbortController()
-      const signal = AbortSignal.any([this.context.signal, local.signal])
+      const signal = AbortSignal.any([
+        this.context.signal,
+        local.signal,
+        ...(memory ? [memory.context.signal] : []),
+      ])
       let timer: ReturnType<typeof setTimeout> | undefined
       const touch = () => {
         if (timer) clearTimeout(timer)
@@ -675,7 +719,10 @@ export class Running {
           .join('')
           .trim()
         if (!summary) throw new AiError('compaction_failed', '压缩模型返回空摘要')
-        if (result.usage) usage.push(json(result.usage))
+        if (result.usage) {
+          usage.push(json(result.usage))
+          if (memory) this.record.requests[requestIndex]!.usage = json(result.usage)
+        }
         offset += low
       } finally {
         if (timer) clearTimeout(timer)

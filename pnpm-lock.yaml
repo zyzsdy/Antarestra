@@ -65,6 +65,9 @@ importers:
       '@antarestra/plugin-markdown-render':
         specifier: workspace:*
         version: link:plugins/features/markdown-render
+      '@antarestra/plugin-memory':
+        specifier: workspace:*
+        version: link:plugins/features/memory
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:packages/plugin-sdk
@@ -188,6 +191,9 @@ importers:
       '@antarestra/plugin-markdown-render':
         specifier: workspace:*
         version: link:../../plugins/features/markdown-render
+      '@antarestra/plugin-memory':
+        specifier: workspace:*
+        version: link:../../plugins/features/memory
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -683,6 +689,24 @@ importers:
       vue-tsc:
         specifier: ^3.3.11
         version: 3.3.11(typescript@6.0.3)
+
+  plugins/features/memory:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../../definitions/database
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      js-tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.21
+      kysely:
+        specifier: ^0.29.5
+        version: 0.29.5
 
   plugins/features/web-tools:
     dependencies:
@@ -2592,6 +2616,9 @@ packages:
 
   is-property@1.0.2:
     resolution: {integrity: sha512-Ks/IoX00TtClbGQr4TWXemAnktAQvYB7HzcCxDGqEZU6oCmb2INHuOoKxbtR+HFkmYWBKv/dOZtGRiAjDhj92g==}
+
+  js-tiktoken@1.0.21:
+    resolution: {integrity: sha512-biOj/6M5qdgx5TKjDnFT1ymSpM5tbd3ylwDtrQvFQSu0Z7bBYko2dF+W/aUkXUPuk6IVpRxk/3Q2sHOzGlS36g==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -5418,6 +5445,10 @@ snapshots:
   is-potential-custom-element-name@1.0.1: {}
 
   is-property@1.0.2: {}
+
+  js-tiktoken@1.0.21:
+    dependencies:
+      base64-js: 1.5.1
 
   js-tokens@4.0.0: {}
 

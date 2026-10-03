@@ -14,6 +14,9 @@ export type Queries<Tables> = Pick<
 export type DatabaseScope<Tables> = Queries<Tables> & {
   transaction<T>(callback: (db: Queries<Tables>) => Promise<T>): Promise<T>
 }
+export type PostgresScope<Tables> = DatabaseScope<Tables> & {
+  migrate(migrations: readonly Migration[]): Promise<void>
+}
 
 export interface DatabaseTransaction {
   scope<Tables>(ctx: Context, pluginId: string): Queries<Tables>
@@ -21,6 +24,7 @@ export interface DatabaseTransaction {
 
 export interface DatabaseBackend {
   readonly type: DatabaseType
+  postgres<Tables>(ctx: Context, pluginId: string, url?: string): Promise<PostgresScope<Tables>>
   scope<Tables>(ctx: Context, pluginId: string): DatabaseScope<Tables>
   migrate(ctx: Context, pluginId: string, migrations: readonly Migration[]): Promise<void>
   transaction<T>(
@@ -52,6 +56,11 @@ export class DatabaseService extends Service<DatabaseBackend> {
 
   get type(): DatabaseType {
     return this.backend.type
+  }
+
+  postgres<Tables>(ctx: Context, pluginId: string, url?: string): Promise<PostgresScope<Tables>> {
+    this.assertActive()
+    return this.backend.postgres<Tables>(ctx, pluginId, url)
   }
 
   scope<Tables>(ctx: Context, pluginId: string): DatabaseScope<Tables> {

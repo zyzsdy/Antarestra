@@ -10,6 +10,7 @@ export interface Column {
 }
 
 export type SchemaStep =
+  | { kind: 'createFullTextIndex'; table: string; name: string; column: string }
   | { kind: 'createTable'; table: string; columns: readonly Column[] }
   | { kind: 'dropTable'; table: string }
   | { kind: 'addColumn'; table: string; column: Column }

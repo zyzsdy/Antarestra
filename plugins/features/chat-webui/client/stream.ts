@@ -83,6 +83,10 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
       break
     }
     case 'request':
+      if (data.purpose === 'memory') {
+        state.status = '正在整理记忆'
+        break
+      }
       if (data.purpose === 'compaction') {
         state.status = '正在压缩上下文'
         break
