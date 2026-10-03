@@ -1,0 +1,32 @@
+{
+  "name": "@antarestra/plugin-im-feishu",
+  "description": "通过飞书官方长连接接入企业自建应用机器人。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "build": "tsc -b"
+  },
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "antarestra": {
+    "multipleInstances": true,
+    "configSchema": "./config.schema.json",
+    "title": "飞书接入"
+  },
+  "dependencies": {
+    "@antarestra/im": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@larksuiteoapi/node-sdk": "^1.74.0",
+    "axios": "^1.20.0"
+  }
+}

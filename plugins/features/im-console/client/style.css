@@ -1,0 +1,173 @@
+.im-page,
+.im-editor,
+.im-form {
+  color: #263047;
+}
+.im-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.im-toolbar > p {
+  flex: 1;
+}
+.im-toolbar > input {
+  flex: 1;
+  min-width: 130px;
+}
+.im-hint {
+  color: #657087;
+  line-height: 1.7;
+}
+.im-panel {
+  background: #fff;
+  border: 1px solid #e0e5ed;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.im-table {
+  overflow-x: auto;
+}
+.im-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.im-table th,
+.im-table td {
+  padding: 16px 12px;
+  border-bottom: 1px solid #e4e9f1;
+}
+.im-table th {
+  white-space: nowrap;
+  color: #657087;
+  font-size: 13px;
+}
+.im-table td {
+  min-width: 110px;
+  overflow-wrap: anywhere;
+}
+.im-table td:first-child {
+  min-width: 170px;
+}
+.im-table small {
+  display: block;
+  color: #657087;
+  margin-top: 5px;
+}
+.im-page button,
+.im-editor button {
+  border: 1px solid #ccd4e1;
+  border-radius: 7px;
+  background: white;
+  color: #263047;
+  padding: 9px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.im-page button:hover:not(:disabled),
+.im-editor button:hover:not(:disabled) {
+  background: #edf2ff;
+}
+.im-page button:disabled,
+.im-editor button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.im-editor button.im-primary {
+  background: #315ed1;
+  color: white;
+  border-color: #315ed1;
+}
+.im-editor button.im-primary:hover:not(:disabled) {
+  background: #244aa9;
+}
+.im-page input,
+.im-form input,
+.im-form textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #ccd4e1;
+  border-radius: 7px;
+  padding: 9px 12px;
+  font: inherit;
+  background: white;
+  color: inherit;
+}
+.im-form textarea {
+  resize: vertical;
+  max-height: 220px;
+  overflow: auto;
+}
+.im-form fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.im-form label {
+  display: block;
+  line-height: 1.6;
+  margin: 12px 0;
+}
+.im-form label > input,
+.im-form label > textarea {
+  display: block;
+  margin-top: 5px;
+}
+.im-form .im-check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.im-form h3 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.im-form h4 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+.im-form-section {
+  padding: 20px 0;
+  border-top: 1px solid #e0e5ed;
+}
+.im-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+}
+.im-grid > label {
+  min-width: 0;
+}
+.im-activation,
+.im-override {
+  background: #f4f6fa;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+.im-error,
+.im-table small.im-error {
+  color: #a32b24;
+  overflow-wrap: anywhere;
+}
+.im-error button {
+  margin-left: 12px;
+}
+@media (max-width: 760px) {
+  .im-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .im-panel {
+    padding: 16px;
+  }
+  .im-form .im-toolbar > label {
+    flex: 1 1 180px;
+  }
+}

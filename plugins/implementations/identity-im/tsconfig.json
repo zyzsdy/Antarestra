@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": true
+  },
+  "include": ["src/**/*.ts"],
+  "extends": "../../../tsconfig.base.json",
+  "references": [
+    {
+      "path": "../../../packages/plugin-sdk"
+    },
+    {
+      "path": "../../definitions/database"
+    },
+    {
+      "path": "../../definitions/rbac"
+    },
+    {
+      "path": "../../definitions/im"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "composite": true, "rootDir": "src", "outDir": "dist" },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../../packages/plugin-sdk" },
+    { "path": "../../definitions/im" },
+    { "path": "../../definitions/ai" },
+    { "path": "../../definitions/database" },
+    { "path": "../im-commands" }
+  ]
+}

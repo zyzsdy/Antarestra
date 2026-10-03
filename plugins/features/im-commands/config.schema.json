@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "prefix": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8,
+      "default": "/",
+      "description": "固定命令前缀。"
+    },
+    "builtins": { "type": "boolean", "default": true, "description": "启用 ping 与 help 命令。" }
+  },
+  "additionalProperties": false
+}

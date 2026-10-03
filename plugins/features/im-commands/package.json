@@ -1,0 +1,31 @@
+{
+  "name": "@antarestra/plugin-im-commands",
+  "description": "基于 Cordis 生命周期的 IM 固定命令。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "IM 命令",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/im": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/rbac": "workspace:*"
+  }
+}

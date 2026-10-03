@@ -28,6 +28,10 @@ components:
 
 # Antarestra 视觉规范
 
+## IM 接入管理
+
+IM 接入页沿用控制台蓝白表格、系统字体和自然滚动；连接状态始终带中文文字。聊天规则使用共享 EditorDialog、SelectField、CheckboxField、NumberField 和 FeedbackHost，不建立新的表单或弹层基础组件。表格局部横向滚动，760px 以下规则表单双列变单列，底部保存操作保留在弹窗固定操作区。样式由 im-console/client/style.css 维护。
+
 ## 产品与视觉方向
 
 面向管理插件、用户和权限的管理员，以及进入个人工作空间的聊天用户。界面为简体中文，现有业务资料未规定特定地域市场。桌面用于管理，窄屏保证导航和操作可达。

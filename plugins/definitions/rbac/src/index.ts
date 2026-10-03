@@ -402,13 +402,36 @@ export class RbacService extends Service<Config> {
       (await this.roleAllows(identity.roles, permission)) ||
       (identity.auth &&
         identity.workspaceId &&
-        (await this.can(identity.auth, permission, identity.workspaceId)))
+        (await this.can(identity.auth, permission, identity.workspaceId))) ||
+      (!identity.auth &&
+        identity.actorId &&
+        identity.workspaceId &&
+        (await this.requestBindingAllows(identity.actorId, identity.workspaceId, permission)))
     if (!allowed)
       throw new AuthError(
         identity.actorId ? 403 : 401,
         identity.actorId ? '没有操作权限' : '请先登录',
       )
     return identity
+  }
+
+  /** 仅由重新验证身份的请求来源调用；显式空间绑定不依赖网页登录会话。 */
+  private async requestBindingAllows(actorId: string, workspaceId: string, permission: string) {
+    return !!(await this.db()
+      .selectFrom('binding')
+      .innerJoin('role', 'role.id', 'binding.role_id')
+      .innerJoin('role_permission', 'role_permission.role_id', 'role.id')
+      .innerJoin('principal', 'principal.id', 'binding.principal_id')
+      .select('role.id')
+      .where('principal.id', '=', actorId)
+      .where('principal.status', '=', 'active')
+      .where('role.status', '=', 'active')
+      .where('role_permission.permission', '=', permission)
+      .where('binding.scope_key', '=', hash(workspaceId))
+      .where((eb) =>
+        eb.or([eb('binding.expires_at', 'is', null), eb('binding.expires_at', '>', Date.now())]),
+      )
+      .executeTakeFirst())
   }
 
   /** 可信身份插件使用；不创建会话，也不绕过账号、身份和提供者状态。 */

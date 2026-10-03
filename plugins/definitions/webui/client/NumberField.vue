@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { NumberFieldRoot, NumberFieldInput } from 'reka-ui'
 defineOptions({ inheritAttrs: false })
-defineProps<{ id: string; modelValue: number; min: number; max?: number; disabled?: boolean }>()
+defineProps<{
+  id: string
+  modelValue: number
+  min: number
+  max?: number
+  step?: number
+  disabled?: boolean
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: number] }>()
 </script>
 <template>
@@ -11,6 +18,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: number] }>()
     :min="min"
     :disabled="disabled"
     v-bind="max === undefined ? {} : { max }"
+    :step="step ?? 1"
     locale="zh-CN"
     disable-wheel-change
     :format-options="{ useGrouping: false }"

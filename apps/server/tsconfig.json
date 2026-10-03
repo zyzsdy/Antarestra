@@ -7,13 +7,27 @@
   },
   "extends": "../../tsconfig.base.json",
   "references": [
-    { "path": "../../plugins/features/wake-tasks" },
-    { "path": "../../plugins/features/memory" },
-    { "path": "../../plugins/features/web-tools" },
-    { "path": "../../plugins/definitions/http" },
-    { "path": "../../plugins/definitions/playwright" },
-    { "path": "../../plugins/definitions/puppeteer" },
-    { "path": "../../plugins/features/basic-tools" },
+    {
+      "path": "../../plugins/features/wake-tasks"
+    },
+    {
+      "path": "../../plugins/features/memory"
+    },
+    {
+      "path": "../../plugins/features/web-tools"
+    },
+    {
+      "path": "../../plugins/definitions/http"
+    },
+    {
+      "path": "../../plugins/definitions/playwright"
+    },
+    {
+      "path": "../../plugins/definitions/puppeteer"
+    },
+    {
+      "path": "../../plugins/features/basic-tools"
+    },
     {
       "path": "../../plugins/features/markdown-render"
     },
@@ -76,6 +90,27 @@
     },
     {
       "path": "../../plugins/implementations/storage-s3"
+    },
+    {
+      "path": "../../plugins/definitions/im"
+    },
+    {
+      "path": "../../plugins/implementations/identity-im"
+    },
+    {
+      "path": "../../plugins/adapters/im-onebot"
+    },
+    {
+      "path": "../../plugins/adapters/im-feishu"
+    },
+    {
+      "path": "../../plugins/features/im-commands"
+    },
+    {
+      "path": "../../plugins/features/im-ai"
+    },
+    {
+      "path": "../../plugins/features/im-console"
     }
   ]
 }

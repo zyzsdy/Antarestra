@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "pollIntervalMs": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 5000,
+      "default": 250,
+      "description": "检查运行终态的间隔。"
+    },
+    "queueLimit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 5,
+      "description": "每个空间最多等待的 AI 消息数。"
+    },
+    "recentMaxAgeMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 3600000,
+      "default": 300000,
+      "description": "可选近期群聊缓冲的有效时长。"
+    },
+    "deliveryAttempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 2,
+      "description": "已生成回复的最多投递尝试数；不会重新调用模型。"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@antarestra/plugin-im-onebot",
+  "description": "通过 OneBot 11 反向 WebSocket 接入 QQ。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -b",
+    "build": "tsc -b"
+  },
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "antarestra": {
+    "multipleInstances": true,
+    "configSchema": "./config.schema.json",
+    "title": "OneBot 接入"
+  },
+  "dependencies": {
+    "@antarestra/im": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/plugin-server": "workspace:*",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}

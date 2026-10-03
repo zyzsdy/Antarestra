@@ -1,0 +1,32 @@
+{
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "build": "tsc -b"
+  },
+  "version": "0.1.0",
+  "antarestra": {
+    "title": "即时消息身份映射",
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
+  },
+  "private": true,
+  "name": "@antarestra/plugin-identity-im",
+  "description": "即时消息身份映射",
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts"
+    }
+  },
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "dependencies": {
+    "@antarestra/database": "workspace:*",
+    "@antarestra/im": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/rbac": "workspace:*"
+  }
+}
