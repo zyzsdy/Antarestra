@@ -138,7 +138,7 @@ export class Running {
       const sources = [
         this.record.agent.systemTemplate,
         this.record.agent.userTemplate,
-        this.record.input.text,
+        ...(this.record.input.expandTemplateVariables === false ? [] : [this.record.input.text]),
       ]
       const used = new Set(
         sources.flatMap((source) =>
@@ -158,11 +158,12 @@ export class Running {
       }
       if (used.has('global_memory'))
         check(this.bound.templateVariables.has('global_memory'), '记忆插件未启用')
-      variables.input = this.record.input.text.replace(
-        /\{\{\s*([\w.-]+)\s*\}\}/g,
-        (match, key: string) =>
-          this.bound.templateVariables.has(key) ? String(variables[key]) : match,
-      )
+      variables.input =
+        this.record.input.expandTemplateVariables === false
+          ? this.record.input.text
+          : this.record.input.text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, key: string) =>
+              this.bound.templateVariables.has(key) ? String(variables[key]) : match,
+            )
       const draft = {
         systemPrompt: template(this.record.agent.systemTemplate, variables),
         userPrompt: template(this.record.agent.userTemplate, variables),

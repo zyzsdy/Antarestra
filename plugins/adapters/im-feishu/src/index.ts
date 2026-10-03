@@ -5,6 +5,7 @@ import '@antarestra/im'
 import * as lark from '@larksuiteoapi/node-sdk'
 import axios from 'axios'
 import { createHash } from 'node:crypto'
+import type { Readable } from 'node:stream'
 import { encodeMessage, normalizeMessage } from './message.js'
 
 export const name = 'im-feishu'
@@ -58,7 +59,11 @@ export function apply(ctx: Context, input: Config) {
   const stopped = new AbortController()
   // SDK HTTP 默认实例为全局对象；本插件独立创建实例并在卸载时取消在途请求。
   const http = axios.create({ timeout: 15000, signal: stopped.signal })
-  http.interceptors.response.use((response) => response.data)
+  http.interceptors.response.use((response) =>
+    response.config.responseType === 'stream'
+      ? { data: response.data, headers: response.headers }
+      : response.data,
+  )
   // Axios 类型不反映响应拦截器的拆包行为；此处限定为 SDK 的 HTTP 边界类型。
   type SdkHttp = NonNullable<ConstructorParameters<typeof lark.Client>[0]['httpInstance']>
   const httpInstance = http as unknown as SdkHttp
@@ -102,6 +107,49 @@ export function apply(ctx: Context, input: Config) {
     ...(config.label ? { label: config.label } : {}),
     ...(config.policy ? { policy: config.policy } : {}),
     capabilities: ['text', 'mention', 'reply', 'image.key', 'file.key', 'member'],
+    async downloadMedia(message, segment, signal, maxBytes) {
+      if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')
+      const url = new URL(segment.url)
+      if (url.protocol !== 'feishu:') throw new Error('飞书资源键无效')
+      const fileKey = decodeURIComponent(url.pathname.slice(1))
+      const requestSignal = AbortSignal.any([stopped.signal, signal, AbortSignal.timeout(60_000)])
+      return track(
+        (async () => {
+          const result = await client.request<{ data: Readable; headers: Record<string, unknown> }>(
+            {
+              method: 'GET',
+              url: `/open-apis/im/v1/messages/${encodeURIComponent(message.id)}/resources/${encodeURIComponent(fileKey)}`,
+              params: { type: segment.type === 'image' ? 'image' : 'file' },
+              responseType: 'stream',
+              signal: requestSignal,
+            },
+          )
+          const stream = result.data
+          const abort = () => stream.destroy(new Error('媒体下载已取消'))
+          requestSignal.addEventListener('abort', abort, { once: true })
+          const chunks: Buffer[] = []
+          let size = 0
+          try {
+            requestSignal.throwIfAborted()
+            for await (const chunk of stream) {
+              const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array)
+              size += bytes.length
+              if (size > maxBytes) throw new Error('媒体超过空间单文件上限')
+              chunks.push(bytes)
+            }
+            const headers = result.headers as Record<string, unknown>
+            const mimeType =
+              typeof headers['content-type'] === 'string'
+                ? headers['content-type'].split(';')[0]!
+                : 'application/octet-stream'
+            return { data: Buffer.concat(chunks), mimeType, filename: segment.name || segment.type }
+          } finally {
+            requestSignal.removeEventListener('abort', abort)
+            stream.destroy()
+          }
+        })(),
+      )
+    },
     async getMember(target, userId) {
       stopped.signal.throwIfAborted()
       if (!allowed(config.policy, target) || !userId) return { active: false }

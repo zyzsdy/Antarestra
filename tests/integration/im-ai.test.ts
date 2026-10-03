@@ -31,7 +31,7 @@ it('闲聊、命令、不相关 @、禁用聊天不调用模型，只发送最�
   await poll(() => app.sent.length).toBe(2)
   expect(app.aiState.calls).toBe(1)
   expect(app.sent[1]?.segments).toEqual([{ type: 'text', text: '最终回答' }])
-  expect((await app.jobs())[0]?.input).not.toContain('群里闲聊')
+  expect((await app.jobs())[0]?.input).toContain('群里闲聊')
 })
 
 it('同群不同发言者共用会话并保持各自授权，双账号同群隔离且重复消息只运行一次', async () => {
@@ -256,8 +256,8 @@ it('组合激活条件、冷却与近期缓冲按群策略执行', async () => {
     ...app.defaultPolicy,
     chats: {
       'group:40894918': {
-        context: 'recent',
-        recentLimit: 1,
+        userInputTemplate: '{{history_message}}',
+        historyLimit: 2,
         activation: { mode: 'all', mention: true, keywords: ['问题'], cooldownMs: 60000 },
       },
     },

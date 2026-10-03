@@ -65,6 +65,8 @@ export interface AgentPreset {
 }
 export interface UserInput {
   text: string
+  /** 已由可信入口展开的文本不再解释其中的模板占位符。默认开启以兼容普通输入。 */
+  expandTemplateVariables?: boolean
   variables?: JsonObject
   attachments?: Extract<ContentBlock, { resourceId: string }>[]
 }

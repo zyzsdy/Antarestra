@@ -49,8 +49,6 @@ plugins:
       group:
         mode: whitelist
         ids: ['40894918']
-        defaults:
-          context: recent
       defaults:
         commands: true
         ai: true

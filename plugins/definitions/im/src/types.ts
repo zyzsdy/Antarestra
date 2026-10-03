@@ -9,7 +9,53 @@ export type MessageSegment =
   | { type: 'text'; text: string }
   | { type: 'mention'; userId: string }
   | { type: 'reply'; messageId: string }
-  | { type: 'image' | 'file'; url: string; name?: string }
+  | MediaSegment
+  | { type: 'unsupported'; name: string }
+export interface MediaSegment {
+  type: 'image' | 'video' | 'audio' | 'file'
+  url: string
+  name?: string
+}
+export interface ArchivedMedia {
+  id: string
+  index: number
+  type: MediaSegment['type']
+  status: 'pending' | 'stored' | 'failed' | 'expired'
+  resource?: { resourceId: string; mimeType: string; filename: string; size: number }
+}
+export interface ArchivedMessage {
+  id: string
+  workspaceId: string
+  connectionId: string
+  platform: string
+  sequence: number
+  receivedAt: number
+  message: IncomingMessage
+  media: ArchivedMedia[]
+}
+export interface HistoryQuery {
+  afterSequence?: number
+  beforeSequence?: number
+  startTime?: number
+  endTime?: number
+  senderId?: string
+  keyword?: string
+  limit?: number
+}
+/** 服务端归档扩展；连接负责平台下载，文件服务负责持久化和回收。 */
+export interface MediaArchive {
+  store(
+    message: ArchivedMessage,
+    media: ArchivedMedia,
+    download: (
+      limit: number,
+      signal: AbortSignal,
+    ) => Promise<{ data: Uint8Array; mimeType: string; filename: string }>,
+    signal: AbortSignal,
+  ): Promise<NonNullable<ArchivedMedia['resource']>>
+  retain(workspaceId: string, policy: Readonly<ChatPolicy>): Promise<void>
+  available(workspaceId: string, resourceId: string): Promise<boolean>
+}
 export interface IncomingMessage {
   id: string
   chat: ChatTarget
@@ -19,6 +65,10 @@ export interface IncomingMessage {
   chatName?: string
   /** 适配器验证引用的原消息确由本机器人发出后才设置。 */
   replyToBot?: boolean
+  /** 仅保存平台消息本身，不包含连接凭据。 */
+  raw?: unknown
+  /** 仍归档，但不进入命令与 AI 处理（例如机器人自身或忽略的用户）。 */
+  passive?: boolean
 }
 export interface ActivationPolicy {
   /** 群聊动态回复作为独立或条件，不参与 mode 的全部匹配。 */
@@ -44,8 +94,12 @@ export interface ChatPolicy {
   ai?: boolean
   agentId?: string
   activation?: ActivationPolicy
-  context?: 'activated' | 'recent'
-  recentLimit?: number
+  userInputTemplate?: string
+  historyLimit?: number
+  maxImages?: number
+  maxFiles?: number
+  mediaRetentionDays?: number
+  mediaMaxBytes?: number
   queueLimit?: number
 }
 export interface ChatAccessPolicy {
@@ -68,6 +122,12 @@ export interface ConnectionDescriptor {
   label?: string
   policy?: ConnectionPolicy
   capabilities?: readonly string[]
+  downloadMedia?(
+    message: IncomingMessage,
+    segment: MediaSegment,
+    signal: AbortSignal,
+    maxBytes: number,
+  ): Promise<{ data: Uint8Array; mimeType: string; filename: string }>
   send(
     target: ChatTarget,
     segments: readonly MessageSegment[],
@@ -111,6 +171,7 @@ export interface IdentityResolver {
   ): Promise<{ identity: ImIdentity; input: IdentityInput } | undefined>
 }
 export interface MessageContext extends ImIdentity {
+  readonly archived?: ArchivedMessage
   readonly connection: ConnectionSnapshot
   readonly message: IncomingMessage
   readonly policy: Readonly<ChatPolicy>

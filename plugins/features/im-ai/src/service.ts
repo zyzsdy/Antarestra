@@ -5,7 +5,15 @@ import type { Context } from '@antarestra/plugin-sdk'
 import type { Access, RunCommand } from '@antarestra/ai'
 import type { MessageContext } from '@antarestra/im'
 import '@antarestra/plugin-im-commands'
-import { activated, finalText, inputText, messageText } from './messages.js'
+import { activationReason, finalText } from './messages.js'
+import {
+  prepareInput,
+  renderInput,
+  defaultInputTemplate,
+  refreshAttachments,
+  type InputSnapshot,
+} from './history.js'
+import { registerHistoryTools } from './tools.js'
 import { dynamicReplyDefaults } from '@antarestra/im/activation'
 import { dynamicReplyProbability, recordDynamicActivation } from './dynamic-reply.js'
 import type { DynamicReplyState } from './dynamic-reply.js'
@@ -15,7 +23,6 @@ import type { JobRow, Tables } from './store.js'
 export interface Config {
   pollIntervalMs: number
   queueLimit: number
-  recentMaxAgeMs: number
   deliveryAttempts: number
 }
 declare module '@antarestra/plugin-sdk' {
@@ -28,7 +35,6 @@ export class ImAiService extends Service<Config> {
   private readonly workers = new Map<string, Promise<void>>()
   private readonly requests = new Map<string, MessageContext>()
   private readonly activeRuns = new Map<string, string>()
-  private readonly recent = new Map<string, { at: number; text: string }[]>()
   private readonly activatedAt = new Map<string, number[]>()
   private readonly lastActivatedAt = new Map<string, number>()
   private readonly dynamicReplies = new Map<string, DynamicReplyState>()
@@ -44,6 +50,20 @@ export class ImAiService extends Service<Config> {
   ) {
     super(ctx, 'imAi')
     this.ai = ctx.ai
+    registerHistoryTools(ctx, async (context) => {
+      const run = this.ai.running.get(context.runId)
+      const jobId = run?.record.input.variables?.imJobId
+      if (typeof jobId !== 'string') return undefined
+      const job = await this.db
+        .selectFrom('jobs')
+        .selectAll()
+        .where('id', '=', jobId)
+        .where('workspace_id', '=', context.workspaceId)
+        .where('actor_id', '=', context.actorId)
+        .where('conversation_id', '=', context.conversationId)
+        .executeTakeFirst()
+      return job?.snapshot ? (JSON.parse(job.snapshot) as InputSnapshot) : undefined
+    })
     ctx.im.registerHandler(ctx, {
       id: 'im-ai',
       stage: 'ai',
@@ -70,7 +90,6 @@ export class ImAiService extends Service<Config> {
           .deleteFrom('sessions')
           .where('workspace_id', '=', message.workspaceId)
           .execute()
-        this.recent.delete(message.workspaceId)
         return '已重置 AI 上下文；下一次激活将建立新会话。'
       },
     })
@@ -89,7 +108,6 @@ export class ImAiService extends Service<Config> {
       )
       await Promise.allSettled([...this.workers.values(), ...this.admission.values()])
       this.requests.clear()
-      this.recent.clear()
       this.lastActivatedAt.clear()
       this.dynamicReplies.clear()
     })
@@ -116,10 +134,12 @@ export class ImAiService extends Service<Config> {
         this.dynamicReplies.delete(message.workspaceId)
       if (!this.active || !policy.enabled || policy.ai === false) return 'continue' as const
       const now = Date.now()
-      const text = inputText(message, policy.activation)
+      const hasContent = message.message.segments.some((segment) =>
+        segment.type === 'text' ? !!segment.text.trim() : 'url' in segment,
+      )
       let dynamicState: DynamicReplyState | undefined
       let dynamicActivated = false
-      if (dynamic && text) {
+      if (dynamic && hasContent) {
         dynamicState = this.dynamicReplies.get(message.workspaceId) ?? { silentMessages: 0 }
         dynamicState.silentMessages = Math.min(
           dynamicState.silentMessages + 1,
@@ -128,20 +148,8 @@ export class ImAiService extends Service<Config> {
         this.dynamicReplies.set(message.workspaceId, dynamicState)
         dynamicActivated = Math.random() < dynamicReplyProbability(dynamic, dynamicState, now)
       }
-      const remembered = (this.recent.get(message.workspaceId) ?? []).filter(
-        (entry) => now - entry.at < this.config.recentMaxAgeMs,
-      )
-      if (!activated(message, policy.activation, dynamicActivated)) {
-        if (policy.context === 'recent') {
-          remembered.push({ at: now, text: this.speaker(message, messageText(message)) })
-          this.recent.set(
-            message.workspaceId,
-            remembered.slice(-Math.min(100, Math.max(1, policy.recentLimit ?? 10))),
-          )
-        } else this.recent.delete(message.workspaceId)
-        return 'continue' as const
-      }
-      if (!text) return 'consumed' as const
+      const reason = activationReason(message, policy.activation, dynamicActivated)
+      if (!reason) return 'continue' as const
       const times = (this.activatedAt.get(message.workspaceId) ?? []).filter(
         (time) => now - time < 60000,
       )
@@ -168,54 +176,83 @@ export class ImAiService extends Service<Config> {
         await message.reply([{ type: 'text', text: '当前等待消息较多，请稍后重试。' }])
         return 'consumed' as const
       }
-      const input = [
-        ...(policy.context === 'recent' && remembered.length
-          ? ['近期聊天（仅供上下文参考）：', ...remembered.map((entry) => entry.text), '本次消息：']
-          : []),
-        this.speaker(message, text),
-      ].join('\n')
-      await this.db
-        .insertInto('jobs')
-        .values({
-          id,
-          workspace_id: message.workspaceId,
-          actor_id: message.actorId,
-          connection_id: message.connection.id,
-          chat_type: message.message.chat.type,
-          chat_id: message.message.chat.id,
-          input,
-          conversation_id: null,
-          command: null,
-          run_id: null,
-          status: 'queued',
-          answer: null,
-          delivery: 'pending',
-          attempts: 0,
-          created_at: now,
-        })
-        .execute()
+      const cursor = await this.db
+        .selectFrom('cursors')
+        .selectAll()
+        .where('workspace_id', '=', message.workspaceId)
+        .executeTakeFirst()
+      const history = message.archived
+        ? await this.ctx.im.history(message.workspaceId, {
+            afterSequence: cursor?.sequence ?? 0,
+            beforeSequence: message.archived.sequence,
+            limit: policy.historyLimit ?? 50,
+          })
+        : []
+      const access = await this.ai.authorize('im', message.request)
+      const catalog = await this.ai.catalog(access)
+      const agent = catalog.agents.find(
+        (agent) => agent.id === (policy.agentId ?? this.ai.defaultAgentId),
+      )
+      const defaultTemplate =
+        policy.userInputTemplate ?? defaultInputTemplate(message.message.chat.type)
+      const templateUsage = agent
+        ? `${agent.systemTemplate}\n${agent.userTemplate.replace(/\{\{\s*input\s*\}\}/g, () => defaultTemplate)}`
+        : defaultTemplate
+      const model =
+        agent &&
+        catalog.providers
+          .find((provider) => provider.id === agent.defaultModel.providerId)
+          ?.models.find((model) => model.id === agent.defaultModel.modelId)
+      const prepared = await this.ctx.im.preparePrivateMedia(message)
+      const snapshot = prepareInput(prepared, history, policy, reason, templateUsage, model?.input)
+      const input = renderInput(snapshot)
+      await this.db.transaction(async (db) => {
+        await db
+          .insertInto('jobs')
+          .values({
+            id,
+            workspace_id: message.workspaceId,
+            actor_id: message.actorId,
+            connection_id: message.connection.id,
+            chat_type: message.message.chat.type,
+            chat_id: message.message.chat.id,
+            input,
+            snapshot: JSON.stringify(snapshot),
+            conversation_id: null,
+            command: null,
+            run_id: null,
+            status: 'queued',
+            answer: null,
+            delivery: 'pending',
+            attempts: 0,
+            created_at: now,
+          })
+          .execute()
+        if (message.archived) {
+          await db.deleteFrom('cursors').where('workspace_id', '=', message.workspaceId).execute()
+          await db
+            .insertInto('cursors')
+            .values({
+              workspace_id: message.workspaceId,
+              sequence: Math.max(cursor?.sequence ?? 0, message.archived.sequence),
+            })
+            .execute()
+        }
+      })
       this.requests.set(id, message)
       if (dynamic && dynamicState) recordDynamicActivation(dynamic, dynamicState, now)
-      this.recent.delete(message.workspaceId)
       this.activatedAt.set(message.workspaceId, [...times, now])
       this.lastActivatedAt.set(message.workspaceId, now)
       void this.pump()
       return 'consumed' as const
     })
   }
-  private speaker(message: MessageContext, text: string) {
-    return `发言者 ${JSON.stringify({ id: message.message.sender.id, name: message.message.sender.name ?? message.message.sender.id })}：\n${text}`
-  }
   private async pump() {
     if (!this.active || this.polling) return
     this.polling = true
     try {
       const now = Date.now()
-      for (const [workspace, entries] of this.recent) {
-        const current = entries.filter((entry) => now - entry.at < this.config.recentMaxAgeMs)
-        if (current.length) this.recent.set(workspace, current)
-        else this.recent.delete(workspace)
-      }
+
       for (const [workspace, times] of this.activatedAt) {
         if (!times.some((time) => now - time < 60000)) this.activatedAt.delete(workspace)
       }
@@ -304,6 +341,15 @@ export class ImAiService extends Service<Config> {
             })
           }
           const { conversation } = await this.ai.getConversation(access, session.conversation_id)
+          const snapshot = row.snapshot
+            ? await refreshAttachments(JSON.parse(row.snapshot) as InputSnapshot, (id) =>
+                this.ctx.im.mediaAvailable(row.workspace_id, id),
+              )
+            : undefined
+          if (snapshot) {
+            row.snapshot = JSON.stringify(snapshot)
+            row.input = renderInput(snapshot)
+          }
           const command: RunCommand = {
             operation: 'send',
             expectedRevision: conversation.revision,
@@ -311,14 +357,26 @@ export class ImAiService extends Service<Config> {
             idempotencyKey: row.id,
             input: {
               text: row.input,
-              variables: { imActorId: row.actor_id, imWorkspaceId: row.workspace_id },
+              expandTemplateVariables: false,
+              variables: {
+                imActorId: row.actor_id,
+                imWorkspaceId: row.workspace_id,
+                imJobId: row.id,
+              },
+              ...(snapshot ? { attachments: snapshot.attachments } : {}),
             },
           }
           row.conversation_id = conversation.id
           row.command = JSON.stringify(command)
           await this.db
             .updateTable('jobs')
-            .set({ conversation_id: row.conversation_id, command: row.command, status: 'running' })
+            .set({
+              conversation_id: row.conversation_id,
+              command: row.command,
+              status: 'running',
+              input: row.input,
+              snapshot: row.snapshot,
+            })
             .where('id', '=', row.id)
             .execute()
         }

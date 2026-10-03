@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Readable } from 'node:stream'
 import { Context, Service } from '@antarestra/plugin-sdk'
 import type { ConnectionDescriptor, IncomingMessage } from '@antarestra/im'
 import { normalizeMessage, encodeMessage } from '../../plugins/adapters/im-feishu/src/message.js'
@@ -98,7 +99,39 @@ async function setup() {
 }
 
 describe('飞书适配器（官方 SDK 边界模拟）', () => {
-  it('校验应用、租户和人类发言者，保留 @ 与消息结构', () => {
+  it('使用消息资源鉴权接口下载媒体，并限制实际响应大小', async () => {
+    const app = await setup()
+    const message = normalizeMessage(event(), account)!
+    sdk.request.mockResolvedValueOnce({
+      data: Readable.from([Buffer.from('image')]),
+      headers: { 'content-type': 'image/png' },
+    })
+    const result = await app.descriptor!.downloadMedia!(
+      message,
+      { type: 'image', url: 'feishu://image/img-key' },
+      new AbortController().signal,
+      20,
+    )
+    expect(Buffer.from(result.data).toString()).toBe('image')
+    expect(sdk.request).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        url: '/open-apis/im/v1/messages/om_message/resources/img-key',
+        params: { type: 'image' },
+        responseType: 'stream',
+      }),
+    )
+    sdk.request.mockResolvedValueOnce({ data: Readable.from([Buffer.alloc(21)]), headers: {} })
+    await expect(
+      app.descriptor!.downloadMedia!(
+        message,
+        { type: 'file', url: 'feishu://file/file-key' },
+        new AbortController().signal,
+        20,
+      ),
+    ).rejects.toThrow('上限')
+  })
+  it('校验应用与租户，标记机器人并保留消息结构', () => {
     expect(normalizeMessage(event(), account)?.segments).toEqual([
       { type: 'mention', userId: 'ou_bot' },
       { type: 'text', text: ' /ping' },
@@ -109,8 +142,8 @@ describe('飞书适配器（官方 SDK 边界模拟）', () => {
       normalizeMessage(
         event({ sender: { sender_type: 'app', sender_id: { open_id: 'ou_other' } } }),
         account,
-      ),
-    ).toBeUndefined()
+      )?.sender.bot,
+    ).toBe(true)
   })
 
   it('入口过滤白名单并及时确认事件，卸载关闭长连接和取消 HTTP', async () => {

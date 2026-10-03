@@ -18,8 +18,13 @@ import type {
   MessageHandler,
   MessageSegment,
   ScopedTarget,
+  ArchivedMessage,
+  HistoryQuery,
+  MediaArchive,
+  MediaSegment,
 } from './types.js'
 export * from './types.js'
+export { downloadHttpMedia } from './media.js'
 export interface Config {}
 export class ImError extends Error {
   constructor(
@@ -36,6 +41,26 @@ export function validateConnectionPolicy(policy: unknown): ConnectionPolicy {
   } catch {
     throw new ImError(400, 'invalid_policy', 'IM 策略格式无效')
   }
+}
+function migrateSavedPolicy(value: string): ConnectionPolicy {
+  const policy = JSON.parse(value)
+  for (const chat of [
+    policy.defaults,
+    policy.group?.defaults,
+    policy.private?.defaults,
+    ...Object.values(policy.chats ?? {}),
+  ]) {
+    if (!chat || typeof chat !== 'object') continue
+    const legacy = chat as Record<string, unknown>
+    if (legacy.context && !legacy.userInputTemplate)
+      legacy.userInputTemplate =
+        legacy.context === 'recent' ? '{{history_message}}' : '{{last_message}}'
+    if (typeof legacy.recentLimit === 'number' && legacy.historyLimit === undefined)
+      legacy.historyLimit = Math.min(200, legacy.recentLimit + 1)
+    delete legacy.context
+    delete legacy.recentLimit
+  }
+  return validateConnectionPolicy(policy)
 }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 export const connectionKey = (
@@ -76,21 +101,38 @@ export class ImService extends Service<ServiceOptions> {
   private readonly locks = new Map<string, Promise<unknown>>()
   private readonly saved = new Map<string, ConnectionPolicy>()
   private readonly revisions = new Map<string, number>()
+  private mediaArchive: MediaArchive | undefined
+  private maintenance: Promise<void> | undefined
+  private readonly abort = new AbortController()
   constructor(ctx: Context, options: ServiceOptions) {
     super(ctx, 'im')
     schemaConfig(new URL('../config.schema.json', import.meta.url), options.config)
     for (const row of options.policies) {
-      this.saved.set(row.id, validateConnectionPolicy(JSON.parse(row.value)))
+      this.saved.set(row.id, migrateSavedPolicy(row.value))
       this.revisions.set(row.id, row.revision)
     }
+    const timer = setInterval(() => {
+      if (!this.maintenance) {
+        this.maintenance = this.maintainHistory()
+          .catch(() => {
+            if (!this.abort.signal.aborted) ctx.logger.warn('群消息媒体归档或清理暂不可用，将重试')
+          })
+          .finally(() => {
+            this.maintenance = undefined
+          })
+      }
+    }, 60_000)
+    timer.unref()
     ctx.effect(() => async () => {
+      clearInterval(timer)
+      this.abort.abort()
       const pending = [...this.connections.values()].flatMap((entry) => [...entry.pending])
       for (const entry of this.connections.values()) entry.controller.abort()
       for (const entry of this.handlerWork.values()) entry.controller.abort()
       this.connections.clear()
       this.handlers.clear()
       this.resolver = undefined
-      await Promise.allSettled(pending)
+      await Promise.allSettled([...pending, this.maintenance])
     })
   }
   private db() {
@@ -302,6 +344,8 @@ export class ImService extends Service<ServiceOptions> {
   ): Promise<{ status: 'processed' | 'duplicate' | 'ignored' }> {
     this.assertEntry(entry)
     const message = structuredClone(original)
+    if (!Number.isFinite(message.timestamp) || Math.abs(message.timestamp!) > 8640000000000000)
+      message.timestamp = Date.now()
     if (
       !message.id ||
       !message.sender.id ||
@@ -309,12 +353,7 @@ export class ImService extends Service<ServiceOptions> {
       !['private', 'group'].includes(message.chat.type)
     )
       throw new Error('IM 消息标识无效')
-    if (
-      message.sender.id === entry.descriptor.accountId ||
-      message.sender.bot ||
-      !this.getChatPolicy(entry.descriptor.id, message.chat).enabled
-    )
-      return { status: 'ignored' }
+    if (!this.getChatPolicy(entry.descriptor.id, message.chat).enabled) return { status: 'ignored' }
     const resolver = this.resolver
     if (!resolver) throw new Error('IM 身份服务未就绪')
     const id = hash([
@@ -352,81 +391,109 @@ export class ImService extends Service<ServiceOptions> {
         )
           throw new Error('IM 空间路由冲突')
       })
-      const request = Object.freeze({})
-      this.requests.set(request, { entry, identity, input, resolver })
-      if (!(await this.authenticate(request))) return { status: 'ignored' }
-      await this.db()
-        .insertInto('inbox')
-        .values({ id, status: 'processing', created_at: Date.now() })
-        .execute()
-      await this.rememberMessage(identity.workspaceId, message.id)
-      const context: MessageContext = Object.freeze({
-        ...identity,
-        connection: input.connection,
-        message,
-        policy: this.getChatPolicy(entry.descriptor.id, message.chat),
-        signal: entry.controller.signal,
-        request,
-        reply: async (
-          segments: readonly MessageSegment[],
-          options?: { idempotencyKey?: string },
-        ) => {
-          if (!(await this.authenticate(request))) throw new Error('IM 身份或空间已不可用')
-          return this.send(
-            {
-              connectionId: entry.descriptor.id,
-              workspaceId: identity.workspaceId,
-              chat: message.chat,
-            },
-            segments,
-            options,
+      return this.exclusive(`dispatch:${identity.workspaceId}`, async () => {
+        const request = Object.freeze({})
+        this.requests.set(request, { entry, identity, input, resolver })
+        if (!(await this.authenticate(request))) return { status: 'ignored' }
+        for (const segment of message.segments) {
+          if (segment.type !== 'reply') continue
+          const original = await this.db()
+            .selectFrom('history')
+            .select('payload')
+            .where('id', '=', hash([identity.workspaceId, segment.messageId]))
+            .executeTakeFirst()
+          if (
+            original &&
+            (JSON.parse(original.payload) as ArchivedMessage).message.sender.id ===
+              entry.descriptor.accountId
           )
-        },
-      })
-      const stages = { command: 0, message: 1, ai: 2 }
-      try {
-        for (const handler of [...this.handlers.values()].sort(
-          (a, b) => stages[a.stage] - stages[b.stage],
-        )) {
-          if (this.handlers.get(handler.id) !== handler) continue
-          if (!(await this.authenticate(request))) break
-          const policy = this.getChatPolicy(entry.descriptor.id, message.chat)
-          if (handler.stage === 'ai' && policy.ai !== true) continue
-          const work = this.handlerWork.get(handler)
-          if (!work || work.controller.signal.aborted) continue
-          const invocation = Promise.resolve().then(() =>
-            handler.handle(
-              Object.freeze({
-                ...context,
-                policy,
-                signal: AbortSignal.any([context.signal, work.controller.signal]),
-              }),
-            ),
-          )
-          work.pending.add(invocation)
-          let result
-          try {
-            result = await invocation
-          } finally {
-            work.pending.delete(invocation)
-          }
-          if (result === 'consumed' || result === 'rejected') break
+            message.replyToBot = true
         }
+        const archived =
+          message.chat.type === 'group'
+            ? await this.archiveMessage(entry, identity.workspaceId, message)
+            : undefined
+        if (archived) await this.storeMedia(entry, archived)
         await this.db()
-          .updateTable('inbox')
-          .set({ status: 'processed' })
-          .where('id', '=', id)
+          .insertInto('inbox')
+          .values({ id, status: 'processing', created_at: Date.now() })
           .execute()
-        return { status: 'processed' }
-      } catch (error) {
-        if (!entry.controller.signal.aborted)
+        await this.rememberMessage(identity.workspaceId, message.id)
+        const context: MessageContext = Object.freeze({
+          ...identity,
+          connection: input.connection,
+          message,
+          policy: this.getChatPolicy(entry.descriptor.id, message.chat),
+          signal: entry.controller.signal,
+          request,
+          ...(archived ? { archived } : {}),
+          reply: async (
+            segments: readonly MessageSegment[],
+            options?: { idempotencyKey?: string },
+          ) => {
+            if (!(await this.authenticate(request))) throw new Error('IM 身份或空间已不可用')
+            return this.send(
+              {
+                connectionId: entry.descriptor.id,
+                workspaceId: identity.workspaceId,
+                chat: message.chat,
+              },
+              segments,
+              options,
+            )
+          },
+        })
+        const stages = { command: 0, message: 1, ai: 2 }
+        try {
+          for (const handler of [...this.handlers.values()].sort(
+            (a, b) => stages[a.stage] - stages[b.stage],
+          )) {
+            if (
+              message.passive ||
+              message.sender.bot ||
+              message.sender.id === entry.descriptor.accountId
+            )
+              break
+            if (this.handlers.get(handler.id) !== handler) continue
+            if (!(await this.authenticate(request))) break
+            const policy = this.getChatPolicy(entry.descriptor.id, message.chat)
+            if (handler.stage === 'ai' && policy.ai !== true) continue
+            const work = this.handlerWork.get(handler)
+            if (!work || work.controller.signal.aborted) continue
+            const invocation = Promise.resolve().then(() =>
+              handler.handle(
+                Object.freeze({
+                  ...context,
+                  policy,
+                  signal: AbortSignal.any([context.signal, work.controller.signal]),
+                }),
+              ),
+            )
+            work.pending.add(invocation)
+            let result
+            try {
+              result = await invocation
+            } finally {
+              work.pending.delete(invocation)
+            }
+            if (result === 'consumed' || result === 'rejected') break
+          }
           await this.db()
             .updateTable('inbox')
-            .set({ status: 'failed' })
+            .set({ status: 'processed' })
             .where('id', '=', id)
             .execute()
-        throw error
-      }
+          return { status: 'processed' }
+        } catch (error) {
+          if (!entry.controller.signal.aborted)
+            await this.db()
+              .updateTable('inbox')
+              .set({ status: 'failed' })
+              .where('id', '=', id)
+              .execute()
+          throw error
+        }
+      })
     })
   }
   async send(
@@ -476,6 +543,21 @@ export class ImService extends Service<ServiceOptions> {
         entry.pending.delete(operation)
       }
       if (result.messageId) await this.rememberMessage(target.workspaceId, result.messageId)
+      if (result.messageId && target.chat.type === 'group') {
+        // 发送已成功，归档失败不能把平台投递变成未知并重复发送。
+        try {
+          const archived = await this.archiveMessage(entry, target.workspaceId, {
+            id: result.messageId,
+            chat: target.chat,
+            sender: { id: entry.descriptor.accountId, bot: true },
+            segments,
+            timestamp: Date.now(),
+          })
+          await this.storeMedia(entry, archived)
+        } catch {
+          this.ctx.logger.warn('已发送群消息归档失败')
+        }
+      }
       return result
     }
     if (!options.idempotencyKey) return deliver()
@@ -502,6 +584,273 @@ export class ImService extends Service<ServiceOptions> {
         .execute()
       return result
     })
+  }
+  registerMediaArchive(owner: Context, archive: MediaArchive) {
+    if (this.mediaArchive) throw new Error('群消息媒体归档服务重复注册')
+    const controller = new AbortController()
+    const pending = new Set<Promise<unknown>>()
+    const track = <T>(operation: () => Promise<T>): Promise<T> => {
+      controller.signal.throwIfAborted()
+      const task = Promise.resolve().then(operation)
+      pending.add(task)
+      void task.finally(() => pending.delete(task)).catch(() => {})
+      return task
+    }
+    const registered: MediaArchive = {
+      store: (message, media, download, signal) =>
+        track(() =>
+          archive.store(message, media, download, AbortSignal.any([signal, controller.signal])),
+        ),
+      retain: (workspaceId, policy) => track(() => archive.retain(workspaceId, policy)),
+      available: (workspaceId, resourceId) =>
+        track(() => archive.available(workspaceId, resourceId)),
+    }
+    return owner.effect(() => {
+      this.mediaArchive = registered
+      return async () => {
+        if (this.mediaArchive === registered) this.mediaArchive = undefined
+        controller.abort()
+        await Promise.allSettled([...pending])
+      }
+    })
+  }
+  async preparePrivateMedia(context: MessageContext): Promise<MessageContext> {
+    if (context.message.chat.type !== 'private' || !this.mediaArchive) return context
+    const identity = await this.authenticate(context.request)
+    if (!identity || identity.workspaceId !== context.workspaceId)
+      throw new ImError(403, 'invalid_context', 'IM 空间授权无效')
+    const entry = this.entry(context.connection.id)
+    const message: ArchivedMessage = {
+      id: hash([context.workspaceId, context.message.id]),
+      workspaceId: context.workspaceId,
+      connectionId: context.connection.id,
+      platform: context.connection.platform,
+      sequence: 0,
+      receivedAt: Date.now(),
+      message: context.message,
+      media: [],
+    }
+    for (const [index, segment] of context.message.segments.entries()) {
+      if (!('url' in segment)) continue
+      const media: ArchivedMessage['media'][number] = {
+        id: hash([message.id, index]),
+        index,
+        type: segment.type,
+        status: 'pending',
+      }
+      message.media.push(media)
+      try {
+        if (!entry.descriptor.downloadMedia) throw new Error('接入不支持媒体下载')
+        media.resource = await this.mediaArchive.store(
+          message,
+          media,
+          (limit, signal) =>
+            entry.descriptor.downloadMedia!(context.message, segment, signal, limit),
+          context.signal,
+        )
+        media.status = 'stored'
+      } catch {
+        context.signal.throwIfAborted()
+        media.status = 'failed'
+      }
+    }
+    return { ...context, archived: message }
+  }
+  async mediaAvailable(workspaceId: string, resourceId: string) {
+    return this.mediaArchive ? this.mediaArchive.available(workspaceId, resourceId) : false
+  }
+  private async archiveMessage(entry: Entry, workspaceId: string, message: IncomingMessage) {
+    return this.exclusive(`history:${workspaceId}`, async () => {
+      const id = hash([workspaceId, message.id])
+      const prior = await this.db()
+        .selectFrom('history')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirst()
+      if (prior) return JSON.parse(prior.payload) as ArchivedMessage
+      const last = await this.db()
+        .selectFrom('history')
+        .select('sequence')
+        .where('workspace_id', '=', workspaceId)
+        .orderBy('sequence', 'desc')
+        .limit(1)
+        .executeTakeFirst()
+      const archived: ArchivedMessage = {
+        id,
+        workspaceId,
+        connectionId: entry.snapshot.id,
+        platform: entry.snapshot.platform,
+        sequence: (last?.sequence ?? 0) + 1,
+        receivedAt: Date.now(),
+        message,
+        media: message.segments.flatMap((segment, index) =>
+          'url' in segment
+            ? [{ id: hash([id, index]), index, type: segment.type, status: 'pending' as const }]
+            : [],
+        ),
+      }
+      await this.db()
+        .insertInto('history')
+        .values({
+          id,
+          workspace_id: workspaceId,
+          connection_id: entry.snapshot.id,
+          connection_key: connectionKey(entry.descriptor),
+          sequence: archived.sequence,
+          timestamp: Number.isFinite(message.timestamp) ? message.timestamp! : archived.receivedAt,
+          sender_id: message.sender.id,
+          text: message.segments
+            .flatMap((segment) => (segment.type === 'text' ? [segment.text] : []))
+            .join(''),
+          payload: JSON.stringify(archived),
+          media_pending: archived.media.length ? 1 : 0,
+        })
+        .execute()
+      return archived
+    })
+  }
+  private async storeMedia(entry: Entry, message: ArchivedMessage) {
+    if (!message.media.length) return
+    return this.exclusive(`media:${message.id}`, async () => {
+      const stored = await this.db()
+        .selectFrom('history')
+        .select('payload')
+        .where('id', '=', message.id)
+        .executeTakeFirst()
+      if (stored) message.media = (JSON.parse(stored.payload) as ArchivedMessage).media
+      const archive = this.mediaArchive
+      if (!archive) return
+      const policy = this.getChatPolicy(entry.snapshot.id, message.message.chat)
+      await archive.retain(message.workspaceId, policy)
+      const signal = AbortSignal.any([entry.controller.signal, this.abort.signal])
+      for (const media of message.media) {
+        if (media.status === 'stored' || media.status === 'expired') continue
+        const days = policy.mediaRetentionDays ?? 7
+        if (
+          days > 0 &&
+          Date.now() - (message.message.timestamp ?? message.receivedAt) >= days * 86400000
+        ) {
+          media.status = 'expired'
+          continue
+        }
+        try {
+          if (!entry.descriptor.downloadMedia) throw new Error('接入不支持媒体下载')
+          media.resource = await archive.store(
+            message,
+            media,
+            (limit, downloadSignal) =>
+              entry.descriptor.downloadMedia!(
+                message.message,
+                message.message.segments[media.index] as MediaSegment,
+                downloadSignal,
+                limit,
+              ),
+            signal,
+          )
+          media.status = 'stored'
+        } catch {
+          signal.throwIfAborted()
+          media.status = 'failed'
+          this.ctx.logger.warn('群消息媒体保存失败，保留消息与资源标识并等待重试')
+        }
+      }
+      await this.db()
+        .updateTable('history')
+        .set({
+          payload: JSON.stringify(message),
+          media_pending: message.media.some(
+            (media) => media.status === 'pending' || media.status === 'failed',
+          )
+            ? 1
+            : 0,
+        })
+        .where('id', '=', message.id)
+        .execute()
+      await archive.retain(message.workspaceId, policy)
+      for (const media of message.media)
+        if (
+          media.resource &&
+          !(await archive.available(message.workspaceId, media.resource.resourceId))
+        )
+          media.status = 'expired'
+    })
+  }
+  /** 服务端接口；AI 调用方必须从可信 RunContext 取得空间，不接受模型传入空间。 */
+  async history(workspaceId: string, input: HistoryQuery = {}): Promise<ArchivedMessage[]> {
+    let query = this.db().selectFrom('history').selectAll().where('workspace_id', '=', workspaceId)
+    if (input.afterSequence !== undefined) query = query.where('sequence', '>', input.afterSequence)
+    if (input.beforeSequence !== undefined)
+      query = query.where('sequence', '<=', input.beforeSequence)
+    if (input.startTime !== undefined) query = query.where('timestamp', '>=', input.startTime)
+    if (input.endTime !== undefined) query = query.where('timestamp', '<=', input.endTime)
+    if (input.senderId) query = query.where('sender_id', '=', input.senderId)
+    // 关键词按原文子串匹配；数据库层不把 % 和 _ 当作用户通配符。
+    const limit = Math.min(200, Math.max(0, input.limit ?? 50))
+    if (!Number.isSafeInteger(limit)) throw new ImError(400, 'invalid_limit', '消息条数无效')
+    if (!limit) return []
+    const result: ArchivedMessage[] = []
+    let before: number | undefined
+    while (result.length < limit) {
+      const rows = await (before === undefined ? query : query.where('sequence', '<', before))
+        .orderBy('sequence', 'desc')
+        .limit(200)
+        .execute()
+      for (const row of rows) {
+        if (
+          !input.keyword ||
+          row.text.toLocaleLowerCase().includes(input.keyword.toLocaleLowerCase())
+        )
+          result.push(JSON.parse(row.payload) as ArchivedMessage)
+        if (result.length === limit) break
+      }
+      if (rows.length < 200) break
+      before = rows.at(-1)!.sequence
+    }
+    for (const message of result)
+      for (const media of message.media) {
+        if (
+          media.resource &&
+          this.mediaArchive &&
+          !(await this.mediaArchive.available(workspaceId, media.resource.resourceId))
+        )
+          media.status = 'expired'
+      }
+    return result.reverse()
+  }
+  async maintainHistory() {
+    if (!this.mediaArchive) return
+    const routes = await this.db()
+      .selectFrom('route')
+      .selectAll()
+      .where('chat_type', '=', 'group')
+      .execute()
+    for (const route of routes) {
+      this.abort.signal.throwIfAborted()
+      const entry = [...this.connections.values()].find(
+        (entry) => connectionKey(entry.descriptor) === route.connection_key,
+      )
+      if (!entry) continue
+      await this.mediaArchive.retain(
+        route.workspace_id,
+        this.getChatPolicy(entry.snapshot.id, { type: 'group', id: route.chat_id }),
+      )
+      let after = 0
+      while (!this.abort.signal.aborted) {
+        const rows = await this.db()
+          .selectFrom('history')
+          .selectAll()
+          .where('workspace_id', '=', route.workspace_id)
+          .where('media_pending', '=', 1)
+          .where('sequence', '>', after)
+          .orderBy('sequence')
+          .limit(100)
+          .execute()
+        for (const row of rows)
+          await this.storeMedia(entry, JSON.parse(row.payload) as ArchivedMessage)
+        if (rows.length < 100) break
+        after = rows.at(-1)!.sequence
+      }
+    }
   }
   private async rememberMessage(workspaceId: string, messageId: string) {
     const id = hash([workspaceId, messageId])

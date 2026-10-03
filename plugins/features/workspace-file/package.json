@@ -26,6 +26,7 @@
   "dependencies": {
     "@antarestra/ai": "workspace:*",
     "@antarestra/database": "workspace:*",
+    "@antarestra/im": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",

@@ -14,6 +14,7 @@ export interface JobRow {
   chat_type: 'private' | 'group'
   chat_id: string
   input: string
+  snapshot: string | null
   conversation_id: string | null
   command: string | null
   run_id: string | null
@@ -24,6 +25,7 @@ export interface JobRow {
   created_at: number
 }
 export interface Tables {
+  cursors: { workspace_id: string; sequence: number }
   sessions: SessionRow
   jobs: JobRow
 }
@@ -81,6 +83,20 @@ export const migrations = [
         table: 'jobs',
         name: 'workspace_jobs',
         columns: ['workspace_id', 'status'],
+      },
+    ],
+  }),
+  defineMigration({
+    id: '002_input_snapshot',
+    steps: [
+      { kind: 'addColumn', table: 'jobs', column: { name: 'snapshot', type: 'text' } },
+      {
+        kind: 'createTable',
+        table: 'cursors',
+        columns: [
+          { name: 'workspace_id', type: 'string', length: 200, primaryKey: true },
+          { name: 'sequence', type: 'integer', notNull: true },
+        ],
       },
     ],
   }),

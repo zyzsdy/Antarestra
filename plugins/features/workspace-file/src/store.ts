@@ -2,6 +2,7 @@ import { defineMigration } from '@antarestra/database'
 import type { BlobUpload } from '@antarestra/storage'
 export const name = '@antarestra/plugin-workspace-file'
 export interface FileEntry {
+  groupArchive?: { id: string; timestamp: number }
   id?: string
   path: string
   kind: 'file' | 'directory'
@@ -12,6 +13,7 @@ export interface FileEntry {
   contentType?: string
 }
 export interface UploadRecord {
+  groupArchive?: { id: string; timestamp: number }
   id: string
   path: string
   backend: string
@@ -19,6 +21,7 @@ export interface UploadRecord {
   status: 'pending' | 'complete' | 'cancelled'
 }
 export interface Space {
+  groupRetention?: { days: number; maxBytes: number }
   label: string
   quota: number
   files: FileEntry[]

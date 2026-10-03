@@ -11,6 +11,7 @@ import type {
   IncomingMessage,
   MessageContext,
   MessageSegment,
+  ConnectionDescriptor,
 } from '@antarestra/im'
 import identityIm from '@antarestra/plugin-identity-im'
 import commands from '@antarestra/plugin-im-commands'
@@ -31,6 +32,10 @@ export async function setup(
     driver?: ModelDriver
     queueLimit?: number
     deliveryAttempts?: number
+    modelInput?: ('text' | 'image' | 'file')[]
+    contextWindow?: number
+    userTemplate?: string
+    toolIds?: string[]
   } = {},
 ) {
   const ctx = new Context()
@@ -56,12 +61,18 @@ export async function setup(
     group: { mode: 'whitelist', ids: ['40894918'], defaults: { ai: true, agentId: 'assistant' } },
     private: { mode: 'whitelist', ids: [] },
   }
-  function connect(id = 'qq-a', accountId = '05', policy = defaultPolicy) {
+  function connect(
+    id = 'qq-a',
+    accountId = '05',
+    policy = defaultPolicy,
+    downloadMedia?: ConnectionDescriptor['downloadMedia'],
+  ) {
     const handle = ctx.im.registerConnection(ctx, {
       id,
       accountId,
       platform: 'qq',
       policy,
+      ...(downloadMedia ? { downloadMedia } : {}),
       getMember: async () => ({ active: true }),
       async send(target, segments) {
         if (sendError) throw sendError
@@ -97,9 +108,9 @@ export async function setup(
         {
           id: 'model',
           title: '测试模型',
-          contextWindow: 10000,
+          contextWindow: options.contextWindow ?? 10000,
           maxOutputTokens: 1000,
-          input: ['text'],
+          input: options.modelInput ?? ['text'],
           output: ['text'],
           thinkingLevels: [],
           tools: true,
@@ -128,10 +139,10 @@ export async function setup(
       title: '测试助理',
       backendId: 'ai-agent-core',
       systemTemplate: '系统',
-      userTemplate: '{{input}}',
+      userTemplate: options.userTemplate ?? '{{input}}',
       models: [{ providerId: 'provider', modelId: 'model' }],
       defaultModel: { providerId: 'provider', modelId: 'model' },
-      toolIds: [],
+      toolIds: options.toolIds ?? [],
       skillIds: [],
       extensions: {},
       contextPolicy: {

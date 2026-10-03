@@ -20,6 +20,7 @@ const input: JsonObject = {
   additionalProperties: false,
   properties: {
     text: { type: 'string' },
+    expandTemplateVariables: { type: 'boolean' },
     variables: { type: 'object' },
     attachments: {
       type: 'array',

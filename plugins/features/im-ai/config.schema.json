@@ -16,13 +16,6 @@
       "default": 5,
       "description": "每个空间最多等待的 AI 消息数。"
     },
-    "recentMaxAgeMs": {
-      "type": "integer",
-      "minimum": 1000,
-      "maximum": 3600000,
-      "default": 300000,
-      "description": "可选近期群聊缓冲的有效时长。"
-    },
     "deliveryAttempts": {
       "type": "integer",
       "minimum": 1,

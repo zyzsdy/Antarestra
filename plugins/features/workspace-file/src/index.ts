@@ -10,6 +10,7 @@ import { name, migrations } from './store.js'
 import { WorkspaceFileService } from './service.js'
 import type { Config, FileAccess } from './service.js'
 import { agentFiles } from './agent.js'
+import { imFiles } from './im.js'
 export { WorkspaceFileService } from './service.js'
 export type { Config, FileAccess } from './service.js'
 export default defineDatabasePlugin({
@@ -22,6 +23,7 @@ export default defineDatabasePlugin({
     ctx.rbac.registerPermission(ctx, 'admin.storage.manage', '管理工作空间存储配额', ['admin'])
     await ctx.plugin(WorkspaceFileService, config)
     await ctx.plugin(agentFiles)
+    await ctx.plugin(imFiles)
     await ctx.plugin({
       inject: ['workspaceFile'],
       apply(ctx: Context) {

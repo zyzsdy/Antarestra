@@ -95,10 +95,6 @@
         "ai": {
           "type": "boolean"
         },
-        "context": {
-          "type": "string",
-          "enum": ["activated", "recent"]
-        },
         "agentId": {
           "type": "string",
           "minLength": 1
@@ -108,11 +104,6 @@
         },
         "activation": {
           "$ref": "#/$defs/activation"
-        },
-        "recentLimit": {
-          "minimum": 0,
-          "type": "integer",
-          "maximum": 100
         },
         "queueLimit": {
           "minimum": 0,
@@ -132,10 +123,26 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "baseProbability": { "type": "number", "minimum": 0, "maximum": 1 },
-            "hotProbability": { "type": "number", "minimum": 0, "maximum": 1 },
-            "hotDurationMs": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
-            "maxSilentMessages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+            "baseProbability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "hotProbability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "hotDurationMs": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 3600000
+            },
+            "maxSilentMessages": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            }
           }
         },
         "maxPerMinute": {

@@ -77,7 +77,7 @@ const event = (changes: Record<string, unknown> = {}) => ({
 })
 
 describe('OneBot 11 反向 WebSocket', () => {
-  it('校验令牌、账号、角色，并在入口排除私聊、其他群、自身与错误账号事件', async () => {
+  it('校验令牌、账号、角色，在入口排除未准入聊天与错误账号，自身消息交给核心归档', async () => {
     const app = await setup()
     await expect(app.connect({ Authorization: 'Bearer wrong' })).rejects.toThrow('401')
     await expect(app.connect({ 'X-Self-ID': '123' })).rejects.toThrow('401')
@@ -91,7 +91,7 @@ describe('OneBot 11 反向 WebSocket', () => {
       event(),
     ])
       socket.send(JSON.stringify(message))
-    await expect.poll(() => app.received.length).toBe(1)
+    await expect.poll(() => app.received.length).toBe(2)
     expect(app.received[0]?.chat).toEqual({ type: 'group', id: '40894918' })
     expect(app.statuses.at(-1)).toBe('online')
   })
@@ -156,7 +156,7 @@ describe('OneBot 11 反向 WebSocket', () => {
     expect(app.statuses.at(-1)).toBe('online')
   })
 
-  it('保留 @、引用和媒体结构，忽略机器人发言和字符串 CQ 消息', () => {
+  it('保留 @、引用和媒体结构，标记机器人发言并忽略字符串 CQ 消息', () => {
     const message = normalizeMessage(
       event({
         message: [
@@ -172,9 +172,11 @@ describe('OneBot 11 反向 WebSocket', () => {
       { type: 'image', url: 'https://example.test/image.png' },
       { type: 'file', url: 'https://example.test/file.txt', name: '文件.txt' },
     ])
-    expect(normalizeMessage(event({ sender: { is_bot: true } }), '152408856')).toBeUndefined()
+    expect(normalizeMessage(event({ sender: { is_bot: true } }), '152408856')?.sender.bot).toBe(
+      true,
+    )
     expect(
-      normalizeMessage(event({ message: '[CQ:at,qq=152408856]' }), '152408856'),
-    ).toBeUndefined()
+      normalizeMessage(event({ message: '[CQ:at,qq=152408856]' }), '152408856')?.segments,
+    ).toEqual([{ type: 'mention', userId: '152408856' }])
   })
 })

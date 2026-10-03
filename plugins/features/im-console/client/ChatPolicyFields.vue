@@ -4,7 +4,8 @@ import { CheckboxField, NumberField, SelectField } from '@antarestra/webui/compo
 import type { ChatPolicy } from '@antarestra/im'
 import { dynamicReplyDefaults } from '@antarestra/im/activation'
 import DynamicReplyFields from './DynamicReplyFields.vue'
-const props = defineProps<{ id: string; busy: boolean }>()
+import HistoryFields from './HistoryFields.vue'
+const props = defineProps<{ id: string; busy: boolean; privateChat?: boolean }>()
 const model = defineModel<ChatPolicy>({ required: true })
 const choices = [
   { id: 'inherit', name: '继承默认值' },
@@ -75,6 +76,7 @@ function setDynamic(enabled: boolean) {
           autocomplete="off"
       /></label>
     </div>
+    <HistoryFields v-model="model" :id="id" :busy="busy" :private-chat="privateChat" />
     <label class="im-check"
       ><CheckboxField
         :checked="!!model.activation"

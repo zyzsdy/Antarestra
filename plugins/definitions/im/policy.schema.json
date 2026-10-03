@@ -3,14 +3,26 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "enabled": { "type": "boolean" },
-    "defaults": { "$ref": "#/$defs/chat" },
-    "private": { "$ref": "#/$defs/access" },
-    "group": { "$ref": "#/$defs/access" },
+    "enabled": {
+      "type": "boolean"
+    },
+    "defaults": {
+      "$ref": "#/$defs/chat"
+    },
+    "private": {
+      "$ref": "#/$defs/access"
+    },
+    "group": {
+      "$ref": "#/$defs/access"
+    },
     "chats": {
       "type": "object",
-      "propertyNames": { "pattern": "^(private|group):.+$" },
-      "additionalProperties": { "$ref": "#/$defs/chat" }
+      "propertyNames": {
+        "pattern": "^(private|group):.+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/chat"
+      }
     }
   },
   "$defs": {
@@ -19,26 +31,45 @@
       "additionalProperties": false,
       "required": ["mode", "ids"],
       "properties": {
-        "mode": { "enum": ["whitelist", "blacklist"] },
+        "mode": {
+          "enum": ["whitelist", "blacklist"]
+        },
         "ids": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
         },
-        "defaults": { "$ref": "#/$defs/chat" }
+        "defaults": {
+          "$ref": "#/$defs/chat"
+        }
       }
     },
     "chat": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
-        "commands": { "type": "boolean" },
-        "ai": { "type": "boolean" },
-        "agentId": { "type": "string", "minLength": 1 },
-        "context": { "enum": ["activated", "recent"] },
-        "recentLimit": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "queueLimit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "enabled": {
+          "type": "boolean"
+        },
+        "commands": {
+          "type": "boolean"
+        },
+        "ai": {
+          "type": "boolean"
+        },
+        "agentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queueLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
         "activation": {
           "type": "object",
           "additionalProperties": false,
@@ -47,21 +78,93 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "baseProbability": { "type": "number", "minimum": 0, "maximum": 1 },
-                "hotProbability": { "type": "number", "minimum": 0, "maximum": 1 },
-                "hotDurationMs": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
-                "maxSilentMessages": { "type": "integer", "minimum": 1, "maximum": 100000 }
+                "baseProbability": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "hotProbability": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "hotDurationMs": {
+                  "type": "integer",
+                  "minimum": 1000,
+                  "maximum": 3600000
+                },
+                "maxSilentMessages": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100000
+                }
               }
             },
-            "mode": { "enum": ["any", "all"] },
-            "always": { "type": "boolean" },
-            "mention": { "type": "boolean" },
-            "reply": { "type": "boolean" },
-            "prefixes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "keywords": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "cooldownMs": { "type": "integer", "minimum": 0 },
-            "maxPerMinute": { "type": "integer", "minimum": 1 }
+            "mode": {
+              "enum": ["any", "all"]
+            },
+            "always": {
+              "type": "boolean"
+            },
+            "mention": {
+              "type": "boolean"
+            },
+            "reply": {
+              "type": "boolean"
+            },
+            "prefixes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "keywords": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "cooldownMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxPerMinute": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
+        },
+        "userInputTemplate": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "historyLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "maxImages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "maxFiles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "mediaRetentionDays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 36500
+        },
+        "mediaMaxBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       }
     }

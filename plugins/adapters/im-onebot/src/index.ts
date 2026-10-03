@@ -3,6 +3,7 @@ import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import '@antarestra/plugin-server'
 import type { ChatTarget, ConnectionPolicy } from '@antarestra/im'
 import '@antarestra/im'
+import { downloadMedia } from './media.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
 import { encodeMessage, id, normalizeMessage, record } from './message.js'
@@ -111,6 +112,10 @@ export function apply(ctx: Context, input: Config) {
     ...(config.label ? { label: config.label } : {}),
     ...(config.policy ? { policy: config.policy } : {}),
     capabilities: ['text', 'mention', 'reply', 'image', 'member', 'group.ban', 'group.kick'],
+    async downloadMedia(message, segment, signal, maxBytes) {
+      if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')
+      return downloadMedia(message, segment, signal, maxBytes, rpc)
+    },
     async send(target, segments, options) {
       if (!allowed(config.policy, target)) throw new Error('目标聊天未获准接入')
       const data = record(
@@ -227,12 +232,8 @@ export function apply(ctx: Context, input: Config) {
             return
           }
           const message = normalizeMessage(event, config.selfId)
-          if (
-            !message ||
-            !allowed(config.policy, message.chat) ||
-            config.ignoredUserIds?.includes(message.sender.id)
-          )
-            return
+          if (!message || !allowed(config.policy, message.chat)) return
+          if (config.ignoredUserIds?.includes(message.sender.id)) message.passive = true
           message.replyToBot = message.segments.some(
             (segment) => segment.type === 'reply' && sentIds.has(segment.messageId),
           )

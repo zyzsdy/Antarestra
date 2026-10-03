@@ -2,7 +2,7 @@
 import { nextTick, reactive, ref, watch } from 'vue'
 import { CheckboxField, SelectField } from '@antarestra/webui/components'
 import type { ChatPolicy, ConnectionPolicy } from '@antarestra/im'
-import { invalidDynamicReplyField } from '@antarestra/im/activation'
+import { invalidDynamicReplyField, invalidHistoryField } from '@antarestra/im/activation'
 import ChatPolicyFields from './ChatPolicyFields.vue'
 const props = defineProps<{ policy: ConnectionPolicy; busy: boolean }>()
 const emit = defineEmits<{ dirty: []; save: [policy: ConnectionPolicy] }>()
@@ -53,6 +53,12 @@ async function save() {
     draft.private?.defaults,
     ...Object.values(draft.chats ?? {}),
   ]) {
+    if (scope && invalidHistoryField(scope)) {
+      error.value = '请修正消息与媒体参数后保存。'
+      await nextTick()
+      form.value?.querySelector<HTMLInputElement>('[aria-invalid="true"]')?.focus()
+      return
+    }
     if (!scope?.activation) continue
     const activation = scope.activation
     if (activation.dynamic && invalidDynamicReplyField(activation.dynamic)) {
@@ -138,6 +144,7 @@ function updateDefaults(type: 'private' | 'group', value: ChatPolicy) {
         <ChatPolicyFields
           :model-value="draft[scope.key]!.defaults ?? {}"
           :id="`im-${scope.key}`"
+          :private-chat="scope.key === 'private'"
           :busy="busy"
           @update:model-value="updateDefaults(scope.key, $event)"
         />
@@ -174,6 +181,7 @@ function updateDefaults(type: 'private' | 'group', value: ChatPolicy) {
           <ChatPolicyFields
             :model-value="value"
             :id="`im-chat-${key}`"
+            :private-chat="key.startsWith('private:')"
             :busy="busy"
             @update:model-value="draft.chats![key] = $event"
           />

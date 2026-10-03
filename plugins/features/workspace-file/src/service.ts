@@ -25,6 +25,7 @@ declare module '@antarestra/plugin-sdk' {
 }
 export class WorkspaceFileService extends Service<Config> {
   private accesses = new WeakMap<FileAccess, { source: string; request: unknown }>()
+  private archiveAccesses = new WeakMap<FileAccess, Context>()
   private tasks = new Set<Promise<unknown>>()
   private active = true
   constructor(
@@ -79,6 +80,11 @@ export class WorkspaceFileService extends Service<Config> {
   }
   private async verify(access: FileAccess) {
     this.db()
+    const owner = this.archiveAccesses.get(access)
+    if (owner) {
+      owner.fiber.assertActive()
+      return
+    }
     const entry = this.accesses.get(access)
     if (!entry) throw new AuthError(403, '无效的工作空间授权')
     const current = await this.ctx.rbac.authorizeRequest(
@@ -203,7 +209,13 @@ export class WorkspaceFileService extends Service<Config> {
   }
   async begin(
     access: FileAccess,
-    input: { path: unknown; size: unknown; attachment?: boolean; mimeType?: unknown },
+    input: {
+      path: unknown
+      size: unknown
+      attachment?: boolean
+      mimeType?: unknown
+      groupArchive?: FileEntry['groupArchive']
+    },
   ) {
     await this.verify(access)
     const filename = input.attachment ? filePath('/' + String(input.path)).slice(1) : ''
@@ -231,7 +243,14 @@ export class WorkspaceFileService extends Service<Config> {
       const { used, reserved } = usage(state)
       if (state.quota === 0 || size > state.quota - used - reserved)
         throw new AuthError(413, '工作空间剩余配额不足')
-      state.uploads.push({ id, path, backend: backendId, blob, status: 'pending' })
+      state.uploads.push({
+        id,
+        path,
+        backend: backendId,
+        blob,
+        status: 'pending',
+        ...(input.groupArchive ? { groupArchive: input.groupArchive } : {}),
+      })
     })
     try {
       const initialized = await backend.begin(blob)
@@ -278,6 +297,7 @@ export class WorkspaceFileService extends Service<Config> {
         key: upload.blob.key,
         contentType: blob.contentType,
         createdAt: Date.now(),
+        ...(upload.groupArchive ? { groupArchive: upload.groupArchive } : {}),
       })
       current.status = 'complete'
     })
@@ -285,7 +305,12 @@ export class WorkspaceFileService extends Service<Config> {
   }
   writeAttachment(
     access: FileAccess,
-    input: { filename: string; mimeType: string; data: Uint8Array },
+    input: {
+      filename: string
+      mimeType: string
+      data: Uint8Array
+      groupArchive?: FileEntry['groupArchive']
+    },
     signal: AbortSignal,
   ) {
     return this.track(
@@ -298,6 +323,7 @@ export class WorkspaceFileService extends Service<Config> {
           size: input.data.byteLength,
           mimeType: input.mimeType,
           attachment: true,
+          ...(input.groupArchive ? { groupArchive: input.groupArchive } : {}),
         })
         const { state } = await this.snapshot(access.workspaceId)
         const entry = state.uploads.find((item) => item.id === upload.token)!
@@ -500,6 +526,96 @@ export class WorkspaceFileService extends Service<Config> {
     })
     return { ok: true }
   }
+  /** 仅供持有所属插件 Context 的服务端归档扩展使用，不签发给网页或模型。 */
+  async groupArchiveAccess(
+    owner: Context,
+    workspaceId: string,
+    label: string,
+  ): Promise<FileAccess> {
+    owner.fiber.assertActive()
+    if (
+      !(await this.db()
+        .selectFrom('spaces')
+        .select('id')
+        .where('id', '=', workspaceId)
+        .executeTakeFirst())
+    )
+      await this.ensure(workspaceId, label)
+    const access = Object.freeze({ workspaceId })
+    this.archiveAccesses.set(access, owner)
+    return access
+  }
+  get archiveMaxFileSize() {
+    return this.options.maxFileSize ?? 1024 ** 3
+  }
+  async findGroupArchive(access: FileAccess, id: string) {
+    await this.verify(access)
+    const { state } = await this.snapshot(access.workspaceId)
+    const file = state.files.find((file) => file.groupArchive?.id === id)
+    return file ? this.descriptor(file) : undefined
+  }
+  async reserveGroupArchive(access: FileAccess, size: number) {
+    await this.verify(access)
+    await this.mutate(access.workspaceId, (state) => this.pruneGroupArchive(state, size))
+    await this.track(
+      this.collectGarbage(access.workspaceId, (await this.snapshot(access.workspaceId)).state),
+    )
+  }
+  async retainGroupArchive(owner: Context, workspaceId: string, days: number, maxBytes: number) {
+    owner.fiber.assertActive()
+    if (!Number.isSafeInteger(days) || days < 0 || !Number.isSafeInteger(maxBytes) || maxBytes < 0)
+      throw new Error('群媒体清理策略无效')
+    if (
+      !(await this.db()
+        .selectFrom('spaces')
+        .select('id')
+        .where('id', '=', workspaceId)
+        .executeTakeFirst())
+    )
+      return
+    await this.mutate(workspaceId, (state) => {
+      state.groupRetention = { days, maxBytes }
+      this.pruneGroupArchive(state)
+    })
+    const { state } = await this.snapshot(workspaceId)
+    await this.track(this.collectGarbage(workspaceId, state))
+  }
+  private pruneGroupArchive(state: Space, incomingBytes = 0) {
+    const policy = state.groupRetention ?? { days: 7, maxBytes: 0 }
+    const files = state.files
+      .filter((file) => file.groupArchive)
+      .sort(
+        (a, b) =>
+          a.groupArchive!.timestamp - b.groupArchive!.timestamp || a.path.localeCompare(b.path),
+      )
+    let bytes = files.reduce((total, file) => total + file.size, incomingBytes)
+    const removed = new Set<FileEntry>()
+    for (const file of files) {
+      if (
+        (policy.days > 0 && file.groupArchive!.timestamp <= Date.now() - policy.days * 86400000) ||
+        (policy.maxBytes > 0 && bytes > policy.maxBytes)
+      ) {
+        removed.add(file)
+        bytes -= file.size
+        state.garbage.push({ key: file.key, backend: file.backend })
+      }
+    }
+    state.files = state.files.filter((file) => !removed.has(file))
+  }
+  private async collectGarbage(workspaceId: string, state: Space) {
+    for (const item of state.garbage) {
+      try {
+        await this.ctx.storage.backend(item.backend).remove(item.key)
+        await this.mutate(workspaceId, (state) => {
+          state.garbage = state.garbage.filter(
+            (g) => g.key !== item.key || g.backend !== item.backend,
+          )
+        })
+      } catch {
+        /* 保留任务，下轮继续回收物理对象。 */
+      }
+    }
+  }
   async sweep() {
     for (let offset = 0; this.active; offset += 100) {
       const rows = await this.db()
@@ -510,7 +626,8 @@ export class WorkspaceFileService extends Service<Config> {
         .limit(100)
         .execute()
       for (const row of rows) {
-        const state = JSON.parse(row.payload) as Space
+        await this.mutate(row.id, (state) => this.pruneGroupArchive(state))
+        const { state } = await this.snapshot(row.id)
         for (const upload of state.uploads) {
           // 留出传输与时钟偏差缓冲；完成记录也在此回收临时对象。
           if (upload.blob.expiresAt + 60 * 60_000 > Date.now()) continue
@@ -525,18 +642,7 @@ export class WorkspaceFileService extends Service<Config> {
             /* 保留记录，下轮重试；后端卸载不遗失回收任务。 */
           }
         }
-        for (const item of state.garbage) {
-          try {
-            await this.ctx.storage.backend(item.backend).remove(item.key)
-            await this.mutate(row.id, (state) => {
-              state.garbage = state.garbage.filter(
-                (g) => g.key !== item.key || g.backend !== item.backend,
-              )
-            })
-          } catch {
-            /* 保留任务重试。 */
-          }
-        }
+        await this.collectGarbage(row.id, state)
       }
       if (rows.length < 100) return
     }

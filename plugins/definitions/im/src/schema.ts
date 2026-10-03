@@ -1,6 +1,18 @@
 import { defineMigration } from '@antarestra/database'
 export const pluginId = '@antarestra/im'
 export interface Tables {
+  history: {
+    id: string
+    workspace_id: string
+    connection_id: string
+    connection_key: string
+    sequence: number
+    timestamp: number
+    sender_id: string
+    text: string
+    payload: string
+    media_pending: number
+  }
   inbox: { id: string; status: string; created_at: number }
   policy: { id: string; value: string; revision: number }
   route: { workspace_id: string; connection_key: string; chat_type: string; chat_id: string }
@@ -61,6 +73,48 @@ export const migrations = [
           { name: 'workspace_id', type: 'string', length: 128, notNull: true },
           { name: 'message_id', type: 'string', length: 256, notNull: true },
         ],
+      },
+    ],
+  }),
+  defineMigration({
+    id: '003_group_history',
+    steps: [
+      {
+        kind: 'createTable',
+        table: 'history',
+        columns: [
+          { name: 'id', type: 'string', length: 128, primaryKey: true },
+          ...['workspace_id', 'connection_id', 'connection_key', 'sender_id'].map((name) => ({
+            name,
+            type: 'string' as const,
+            length: 200,
+            notNull: true,
+          })),
+          { name: 'sequence', type: 'integer', notNull: true },
+          { name: 'timestamp', type: 'timestamp', notNull: true },
+          { name: 'text', type: 'text', notNull: true },
+          { name: 'payload', type: 'text', notNull: true },
+          { name: 'media_pending', type: 'integer', notNull: true },
+        ],
+      },
+      {
+        kind: 'createIndex',
+        table: 'history',
+        name: 'history_sequence',
+        columns: ['workspace_id', 'sequence'],
+        unique: true,
+      },
+      {
+        kind: 'createIndex',
+        table: 'history',
+        name: 'history_time',
+        columns: ['workspace_id', 'timestamp'],
+      },
+      {
+        kind: 'createIndex',
+        table: 'history',
+        name: 'history_sender',
+        columns: ['workspace_id', 'sender_id', 'timestamp'],
       },
     ],
   }),

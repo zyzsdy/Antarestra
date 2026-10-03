@@ -904,6 +904,9 @@ importers:
       '@antarestra/database':
         specifier: workspace:*
         version: link:../../definitions/database
+      '@antarestra/im':
+        specifier: workspace:*
+        version: link:../../definitions/im
       '@antarestra/plugin-admin-console':
         specifier: workspace:*
         version: link:../admin-console
