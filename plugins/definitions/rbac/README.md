@@ -1,6 +1,6 @@
 # 主体、会话与 RBAC
 
-`@antarestra/rbac` 提供认证与授权服务契约，依赖 `database`、`server`，通过 `ctx.rbac` 统一主体、认证实例、身份映射、会话与授权检查。`@antarestra/plugin-auth-local` 管理登录名和密码凭据，所有数据库操作都经过 database 插件；当前个人空间枚举还包含对该实现的显式识别，第三方身份源需扩展这一边界。
+`@antarestra/rbac` 提供认证与授权服务契约，依赖 `database`、`server`，通过 `ctx.rbac` 统一主体、认证实例、身份映射、会话、空间目录与授权检查。认证实现管理自己的凭据和空间映射，RBAC 不按实现插件名称推断空间。
 
 ## 装配与请求规则
 
@@ -57,6 +57,8 @@ export function apply(ctx: Context) {
 
 认证插件调用 `registerProvider(owner, providerId, pluginId)` 获得绑定该实例的句柄。通过 `handle.provision(transaction, stableSubject, displayName)` 创建主体与身份，通过 `handle.issue(stableSubject)` 为已验证的身份签发会话。插件必须先验证密码或外部凭证，不得把 issue 暴露为接受任意 subject 的公开 API。
 
+`handle.principals(offset = 0, limit = 100)` 为可信插件分页枚举该认证实例的主体，按主体 ID 排序、去重，包含停用账号。`offset` 为非负整数，`limit` 为 1–1000；句柄卸载后失效。身份插件可据此构建个人空间目录，不必跨插件读取 RBAC 私有表，也不会让 IM 主体自动产生不存在的个人空间。
+
 会话使用 256 位随机令牌，数据库只保存 SHA-256。local 通过 HttpOnly、SameSite=Strict Cookie 传递，直接 HTTPS 时带 Secure，浏览器脚本不接触令牌，不写 localStorage。内部客户端可通过 `Authorization: Bearer` 携带已签发令牌。每次验证检查会话有效期、主体、身份、提供者状态与运行登记。
 
 禁用账号撤销其会话；注销删除当前会话。提供者卸载立即撤销运行登记，主体与角色数据保留；重新注册提供者时清除旧会话，重载或进程重启后需要重新登录。首版按单个服务进程设计，不支持多副本共享会话在线状态。数据库账号与 Cordis 上下文不构成不可信插件隔离边界。
@@ -91,3 +93,24 @@ export function apply(ctx: Context) {
 迁移首次执行时，旧版本已存在的 admin、user、guest 自定义角色会改名为 legacy-原ID-随机UUID，保留其名称、绑定及额外授权，避免同名角色意外升级为默认角色。迁移标记与数据变更同事务保存。
 
 默认角色的额外授权在已验证的请求通道内与默认声明取并集；system 范围的 can/require 对已登录默认角色应用同样规则。自定义角色仍只在绑定的准确范围内生效。匿名请求不会获得 user 或 admin。用户目录批量读取主体与角色以避免逐账号查询，当前在服务端组合过滤后分页，适用于现阶段的本地用户管理。
+
+## 空间管理目录
+
+请求来源可实现 `listWorkspaces(offset, limit): Promise<readonly WorkspaceSummary[]>`，返回 `{ id, label }`。空间 ID 必须与 `resolve` / `resolveBackground` 使用的 ID 一致、全局稳定且不超过 200 字符；展示名称由身份实现决定。目录按稳定 ID 排序，少于 `limit` 项表示结束，应包含需要管理历史数据和配额的停用空间。新插件可返回个人、团队、组织、群聊等任意已建立的空间，不需要修改 RBAC 或文件插件，也不依赖空间先访问文件服务。
+
+```ts
+ctx.rbac.registerRequestSource(ctx, 'enterprise', {
+  id: 'company-sso',
+  resolve: (request) => identityService.resolve(request),
+  listWorkspaces: (offset, limit) => identityService.listWorkspaces(offset, limit),
+})
+
+// 仅在管理权限检查通过后枚举。
+for await (const space of ctx.rbac.workspaceDirectory()) {
+  // space.id、space.label 可用于管理目录。
+}
+```
+
+`workspaceDirectory()` 逐来源、每批 100 项读取目录，并按空间 ID 合并。多个通道可返回同一空间及相同名称；同 ID 不同名称、同一来源分页重复 ID 或超过分页上限都会明确报错。提供者查询失败直接传播，枚举期间卸载会拒绝迟到结果，注册回收沿用请求来源的所属插件生命周期。它是可信服务接口，不是公开 HTTP 空间列表；调用方必须检查管理权限，目录收录不授予成员资格或文件访问权限。
+
+文件管理将目录与自身已有空间合并，刷新名称但保留配额、文件和上传状态。提供者卸载或停止列出空间不会删除已收录的管理记录；没有实现目录的旧入口仍可通过经授权的首次文件访问登记空间。当前为每次管理查询分页遍历全部来源，未提供跨来源一致性快照，枚举期间应保持排序与分页稳定；不宣称支持海量空间索引。

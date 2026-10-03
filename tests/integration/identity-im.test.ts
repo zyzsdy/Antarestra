@@ -6,6 +6,8 @@ import Server from '@antarestra/plugin-server'
 import rbac from '@antarestra/rbac'
 import im, { type MessageContext, type IncomingMessage } from '@antarestra/im'
 import identityIm from '@antarestra/plugin-identity-im'
+import Storage from '@antarestra/storage'
+import files from '@antarestra/plugin-workspace-file'
 import type { Tables as RbacTables } from '../../plugins/definitions/rbac/src/schema.js'
 
 const contexts: Context[] = []
@@ -137,6 +139,36 @@ it('映射在身份插件重装后保留，停用主体不会因再次收到消�
   await a.receive(message('3'))
   expect(received).toHaveLength(2)
   expect(await ctx.im.authenticate(received[1]!.request)).toBeUndefined()
+})
+
+it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与重载保留空间和配额', async () => {
+  const { ctx, received, register, identityFiber } = await setup()
+  const connection = register('a', '05')
+  await connection.receive(message())
+  await connection.receive({ ...message('2'), chat: { type: 'private', id: 'fish' } })
+  // 映射先建立，文件插件后加载，不依赖文件访问触发目录登记。
+  await ctx.plugin(Storage)
+  await ctx.plugin(files, { defaultQuota: 100 })
+  const initial = await ctx.workspaceFile.spaces(1, '')
+  expect(initial.total).toBe(2)
+  expect(initial.entries.map((row) => row.id).sort()).toEqual(
+    received.map((row) => row.workspaceId).sort(),
+  )
+  expect(initial.entries.map((row) => row.label)).toEqual(
+    expect.arrayContaining(['qq·群聊·40894918', 'qq·私聊·fish']),
+  )
+  const group = initial.entries.find((row) => row.id === received[0]!.workspaceId)!
+  await ctx.workspaceFile.quota(group.id, 50, group.revision)
+  await ctx.identityIm.setWorkspaceActive(group.id, false)
+  await expect(ctx.workspaceFile.authorize('im', received[0]!.request)).rejects.toMatchObject({
+    status: 401,
+  })
+  const disabled = await ctx.workspaceFile.spaces(1, '群聊')
+  expect(disabled.entries[0]).toMatchObject({ id: group.id, quota: 50 })
+  await identityFiber.dispose()
+  expect((await ctx.workspaceFile.spaces(1, '')).total).toBe(2)
+  await ctx.plugin(identityIm)
+  expect((await ctx.workspaceFile.spaces(1, '群聊')).entries).toEqual(disabled.entries)
 })
 
 it('非Web身份的手工空间授权只作用于指定群，不接受system范围扩散', async () => {

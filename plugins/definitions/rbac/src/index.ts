@@ -20,6 +20,8 @@ export interface AuthContext {
   readonly channel: 'web' | 'api'
 }
 export interface ProviderHandle {
+  /** 枚举本认证实例的主体（含停用账号），供可信插件构建管理目录。 */
+  principals(offset?: number, limit?: number): Promise<readonly Principal[]>
   provision(
     transaction: DatabaseTransaction,
     subject: string,
@@ -43,12 +45,18 @@ export interface RequestAccess extends RequestIdentity {
   readonly requestSource: string
   readonly requestProvider?: string
 }
+export interface WorkspaceSummary {
+  readonly id: string
+  readonly label: string
+}
 export interface RequestSourceProvider {
   readonly id: string
   readonly loginPath?: string
   resolve(request: unknown): Promise<RequestIdentity | undefined>
   /** 后台任务恢复身份；必须重新校验账号状态及目标空间，不依赖登录令牌。 */
   resolveBackground?(actorId: string, workspaceId: string): Promise<RequestIdentity | undefined>
+  /** 管理目录，按稳定 ID 排序分页，少于 limit 项表示结束；不代表访问授权。 */
+  listWorkspaces?(offset: number, limit: number): Promise<readonly WorkspaceSummary[]>
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
@@ -67,6 +75,7 @@ declare module '@antarestra/plugin-sdk' {
 }
 
 export class RbacService extends Service<Config> {
+  private active = true
   private readonly reauthenticators = new Map<
     string,
     (auth: AuthContext, password: string, ip: string) => Promise<boolean>
@@ -100,6 +109,7 @@ export class RbacService extends Service<Config> {
       }),
     )
     ctx.effect(() => () => {
+      this.active = false
       this.providers.clear()
       this.permissions.clear()
       this.sources.clear()
@@ -324,6 +334,47 @@ export class RbacService extends Service<Config> {
     if (providerId) return this.sources.get(source)?.get(providerId)?.loginPath
     return [...(this.sources.get(source)?.values() ?? [])].find((provider) => provider.loginPath)
       ?.loginPath
+  }
+
+  /** 可信服务使用的空间目录；调用方须独立检查管理权限。 */
+  async *workspaceDirectory(): AsyncGenerator<WorkspaceSummary> {
+    this.ctx.fiber.assertActive()
+    if (!this.active) throw new AuthError(503, '空间目录服务已卸载')
+    const entries = [...this.sources].flatMap(([source, providers]) =>
+      [...providers.values()].map((provider) => ({ source, providers, provider })),
+    )
+    const labels = new Map<string, string>()
+    const limit = 100
+    for (const { source, providers, provider } of entries) {
+      if (!provider.listWorkspaces) continue
+      const assertActive = () => {
+        this.ctx.fiber.assertActive()
+        if (!this.active) throw new AuthError(503, '空间目录服务已卸载')
+        if (this.sources.get(source) !== providers || providers.get(provider.id) !== provider)
+          throw new AuthError(503, '空间目录提供者已卸载')
+      }
+      const seen = new Set<string>()
+      for (let offset = 0; ; offset += limit) {
+        assertActive()
+        const rows = await provider.listWorkspaces(offset, limit)
+        assertActive()
+        if (rows.length > limit) throw new Error('空间目录超过分页上限')
+        for (const { id, label } of rows) {
+          assertActive()
+          if (!id.trim() || id.length > 200 || !label.trim()) throw new Error('空间目录条目无效')
+          if (seen.has(id)) throw new Error(`空间目录分页包含重复标识：${id}`)
+          seen.add(id)
+          const previous = labels.get(id)
+          if (previous !== undefined) {
+            if (previous !== label) throw new Error(`空间目录名称冲突：${id}`)
+            continue
+          }
+          labels.set(id, label)
+          yield Object.freeze({ id, label })
+        }
+        if (rows.length < limit) break
+      }
+    }
   }
 
   async resolveRequest(source: string, request: unknown): Promise<RequestAccess> {
@@ -588,6 +639,29 @@ export class RbacService extends Service<Config> {
       throw error
     }
     return Object.freeze({
+      principals: async (offset = 0, limit = 100) => {
+        assertReady()
+        if (
+          !Number.isSafeInteger(offset) ||
+          offset < 0 ||
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 1000
+        )
+          throw new Error('主体目录分页无效')
+        const rows = await this.db()
+          .selectFrom('principal')
+          .innerJoin('identity', 'identity.principal_id', 'principal.id')
+          .selectAll('principal')
+          .distinct()
+          .where('identity.provider_id', '=', id)
+          .orderBy('principal.id')
+          .offset(offset)
+          .limit(limit)
+          .execute()
+        assertReady()
+        return rows
+      },
       provision: async (transaction: DatabaseTransaction, subject: string, displayName: string) => {
         assertReady()
         textField(subject, '身份标识')
@@ -768,24 +842,6 @@ export class RbacService extends Service<Config> {
 
   async principal(id: string): Promise<Principal | undefined> {
     return this.db().selectFrom('principal').selectAll().where('id', '=', id).executeTakeFirst()
-  }
-
-  /** 可信服务用于展示已建立的本地个人空间；调用方仍需执行管理权限检查。 */
-  async personalWorkspaces(offset = 0, limit = 100) {
-    const rows = await this.db()
-      .selectFrom('principal')
-      .innerJoin('identity', 'identity.principal_id', 'principal.id')
-      .innerJoin('provider', 'provider.id', 'identity.provider_id')
-      .select(['principal.id', 'principal.display_name', 'provider.id as providerId'])
-      .where('provider.plugin_id', '=', '@antarestra/plugin-auth-local')
-      .orderBy('principal.id')
-      .offset(offset)
-      .limit(limit)
-      .execute()
-    return rows.map((row) => ({
-      id: `personal:${row.id}`,
-      label: `本地用户·${row.display_name}（${row.providerId}）`,
-    }))
   }
 
   async role(id: string): Promise<{ id: string; name: string; status: string } | undefined> {

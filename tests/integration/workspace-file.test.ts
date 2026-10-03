@@ -339,6 +339,81 @@ it('管理 API 显示中文空间来源、限制管理员、校验配额版本�
     (await app.request('/workspace-files/uploads', cookie, { path: '/x', size: 1 })).status,
   ).toBe(413)
 })
+it('第三方身份目录在首次文件访问前出现，刷新名称保留配额和文件，卸载后保留管理记录', async () => {
+  const app = await setup()
+  const owner = await app.ctx.plugin({ inject: ['rbac'], apply() {} })
+  const provider = await app.ctx.rbac.registerProvider(owner.ctx, 'sso', 'test-sso')
+  const identity = await app.ctx.database.transaction(owner.ctx, (transaction) =>
+    provider.provision(transaction, 'alice', '企业成员'),
+  )
+  const workspaceId = `enterprise:${identity.principalId}`
+  let displayName = '企业成员'
+  app.ctx.rbac.registerRequestSource(owner.ctx, 'enterprise', {
+    id: 'sso',
+    listWorkspaces: async (offset, limit) =>
+      [
+        { id: workspaceId, label: `SSO·${displayName}` },
+        { id: 'team:engineering', label: '团队·研发部' },
+      ].slice(offset, offset + limit),
+    resolve: async (request) =>
+      request === 'verified-sso'
+        ? {
+            actorId: identity.principalId,
+            workspaceId,
+            workspaceLabel: `SSO·${displayName}`,
+            roles: ['user'],
+          }
+        : undefined,
+  })
+  const initial = await app.ctx.workspaceFile.spaces(1, 'SSO·')
+  expect(initial.total).toBe(1)
+  expect(initial.entries[0]).toMatchObject({
+    id: workspaceId,
+    label: 'SSO·企业成员',
+    used: 0,
+    quota: 20,
+  })
+  expect((await app.ctx.workspaceFile.spaces(1, '团队·研发部')).total).toBe(1)
+  await app.ctx.workspaceFile.quota(workspaceId, 15, initial.entries[0]!.revision)
+  const access = await app.ctx.workspaceFile.authorize('enterprise', 'verified-sso')
+  await app.upload(access, '/preserved.txt', 'hello')
+  displayName = '更名成员'
+  const updated = await app.ctx.workspaceFile.spaces(1, '更名成员')
+  expect(updated.entries[0]).toMatchObject({
+    id: workspaceId,
+    label: 'SSO·更名成员',
+    used: 5,
+    quota: 15,
+  })
+  expect(Buffer.from(await app.ctx.workspaceFile.read(access, '/preserved.txt')).toString()).toBe(
+    'hello',
+  )
+  await expect(
+    app.ctx.workspaceFile.list({ workspaceId: 'team:engineering' }, '/', 1),
+  ).rejects.toMatchObject({ status: 403 })
+  await expect(
+    app.ctx.workspaceFile.authorize('enterprise', { workspaceId: 'team:engineering' }),
+  ).rejects.toMatchObject({ status: 401 })
+  const login = await app.request('/auth/local/local/login', '', {
+    email: 'admin@example.com',
+    password: 'storage-password-42',
+  })
+  const cookie = login.headers.get('set-cookie')!.split(';')[0]!
+  expect(
+    (await app.request(`/workspace-files?workspaceId=${encodeURIComponent(workspaceId)}`, cookie))
+      .status,
+  ).toBe(403)
+  const response = await app.request('/workspace-file-admin?search=SSO', cookie)
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({
+    entries: [expect.objectContaining({ id: workspaceId, quota: 15 })],
+  })
+  await owner.dispose()
+  expect((await app.ctx.workspaceFile.spaces(1, '更名成员')).entries).toEqual(updated.entries)
+  await expect(app.ctx.workspaceFile.read(access, '/preserved.txt')).rejects.toMatchObject({
+    status: 503,
+  })
+})
 it('Agent 文件工具只接受核心当前运行上下文，不能通过工具参数越过空间', async () => {
   const app = await setup()
   await app.upload(app.a, '/note.txt', 'hello')

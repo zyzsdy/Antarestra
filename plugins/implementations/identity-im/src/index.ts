@@ -33,6 +33,14 @@ export class IdentityImService extends Service<{ provider: ProviderHandle; provi
     })
     ctx.rbac.registerRequestSource(ctx, 'im', {
       id: config.providerId,
+      listWorkspaces: (offset, limit) =>
+        this.db()
+          .selectFrom('workspace')
+          .select(['id', 'label'])
+          .orderBy('id')
+          .offset(offset)
+          .limit(limit)
+          .execute(),
       resolve: async (request) => {
         const identity = await ctx.im.authenticate(request)
         if (identity) return { ...identity, roles: ['user'] }

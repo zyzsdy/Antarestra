@@ -35,9 +35,18 @@ export default defineDatabasePlugin({
     const base = `/auth/local/${providerId}`
     const accountPath = providerId === 'local' ? '/auth/user/' : `/auth/user/${providerId}/`
     const changePasswordPath = accountPath + 'change-password/'
+    const workspace = (actorId: string, displayName: string) => ({
+      id: `personal:${actorId}`,
+      label: `本地用户·${displayName}（${providerId}）`,
+    })
     ctx.rbac.registerRequestSource(ctx, 'web', {
       id: providerId,
       loginPath: accountPath,
+      async listWorkspaces(offset, limit) {
+        return (await provider.principals(offset, limit)).map((principal) =>
+          workspace(principal.id, principal.display_name),
+        )
+      },
       async resolveBackground(actorId, workspaceId) {
         if (workspaceId !== `personal:${actorId}`) return
         const roles = await ctx.rbac.backgroundRoles(providerId, actorId)
@@ -47,10 +56,14 @@ export default defineDatabasePlugin({
         const http = request as HttpContext
         const auth = await ctx.rbac.authenticate(ctx.rbac.token(http))
         if (!auth || auth.providerId !== providerId) return
+        const space = workspace(
+          auth.principalId,
+          (await ctx.rbac.principal(auth.principalId))?.display_name ?? '用户',
+        )
         return {
           actorId: auth.principalId,
-          workspaceId: `personal:${auth.principalId}`,
-          workspaceLabel: `本地用户·${(await ctx.rbac.principal(auth.principalId))?.display_name ?? '用户'}（${providerId}）`,
+          workspaceId: space.id,
+          workspaceLabel: space.label,
           roles: await ctx.rbac.defaultRoles(auth),
           auth,
         }

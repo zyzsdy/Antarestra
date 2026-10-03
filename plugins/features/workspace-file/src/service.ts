@@ -495,12 +495,9 @@ export class WorkspaceFileService extends Service<Config> {
     return this.ctx.storage.backend(file.backend).read(file.key)
   }
   async spaces(page: number, search: string) {
-    // 通过身份服务公开契约同步未使用过存储的本地空间，不跨插件读表。
-    for (let offset = 0; ; offset += 100) {
-      const values = await this.ctx.rbac.personalWorkspaces(offset, 100)
-      for (const value of values) await this.ensure(value.id, value.label)
-      if (values.length < 100) break
-    }
+    // 各身份来源自行声明空间；同步目录只更新名称，不授予文件访问权限。
+    for await (const value of this.ctx.rbac.workspaceDirectory())
+      await this.ensure(value.id, value.label)
     const rows = await this.db().selectFrom('spaces').selectAll().orderBy('id').execute()
     const values = rows
       .map((row) => {
