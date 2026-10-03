@@ -398,58 +398,6 @@ onUnmounted(() => {
       </div>
       <div class="model-heading">
         <h2>
-          提供商内置工具 <span class="count">{{ current.builtinTools?.length ?? 0 }}</span>
-        </h2>
-        <button
-          class="primary"
-          :disabled="
-            busy ||
-            !['openai-responses', 'azure-openai-responses', 'openai-codex-responses'].includes(
-              current.api,
-            )
-          "
-          @click="editTool()"
-        >
-          添加内置工具
-        </button>
-      </div>
-      <p class="hint">
-        内置工具由提供商内部调用，可在 Agents 中选择。需要 OpenAI Responses
-        接口；修改后正在使用此提供商的运行会中断。
-      </p>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>工具名 / 类型</th>
-              <th>可用模型</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="tool in current.builtinTools ?? []" :key="tool.name">
-              <td>
-                <strong>{{ tool.name }}</strong
-                ><code>{{ tool.type }}</code>
-              </td>
-              <td>{{ tool.modelIds.join('、') }}</td>
-              <td>{{ tool.enabled ? '已启用' : '已停用' }}</td>
-              <td>
-                <div class="actions">
-                  <button :disabled="busy" @click="editTool(tool)">编辑</button
-                  ><button class="danger" :disabled="busy" @click="removeTool(tool)">删除</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-if="!current.builtinTools?.length" class="state">
-          尚无内置工具，添加后可为已有模型启用搜索或图片生成。
-        </p>
-      </div>
-      <div class="model-heading">
-        <h2>
           模型 <span class="count">{{ models.length }}</span>
         </h2>
         <div class="actions">
@@ -504,6 +452,58 @@ onUnmounted(() => {
         class="pagination"
         label="模型分页"
       />
+      <div class="model-heading">
+        <h2>
+          提供商内置工具 <span class="count">{{ current.builtinTools?.length ?? 0 }}</span>
+        </h2>
+        <button
+          class="primary"
+          :disabled="
+            busy ||
+            !['openai-responses', 'azure-openai-responses', 'openai-codex-responses'].includes(
+              current.api,
+            )
+          "
+          @click="editTool()"
+        >
+          添加内置工具
+        </button>
+      </div>
+      <p class="hint">
+        内置工具由提供商内部调用，可在 Agents 中选择。需要 OpenAI Responses
+        接口；修改后正在使用此提供商的运行会中断。
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>工具名 / 类型</th>
+              <th>可用模型</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tool in current.builtinTools ?? []" :key="tool.name">
+              <td>
+                <strong>{{ tool.name }}</strong
+                ><code>{{ tool.type }}</code>
+              </td>
+              <td>{{ tool.modelIds.join('、') }}</td>
+              <td>{{ tool.enabled ? '已启用' : '已停用' }}</td>
+              <td>
+                <div class="actions">
+                  <button :disabled="busy" @click="editTool(tool)">编辑</button
+                  ><button class="danger" :disabled="busy" @click="removeTool(tool)">删除</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="!current.builtinTools?.length" class="state">
+          尚无内置工具，添加后可为已有模型启用搜索或图片生成。
+        </p>
+      </div>
     </template>
     <EditorDialog
       v-if="providerDialog"
