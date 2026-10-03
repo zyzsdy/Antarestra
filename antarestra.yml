@@ -48,6 +48,7 @@ plugins:
   ai: {}
   ai-agent-core: {}
   basic-tools: {}
+  wake-tasks: {}
   memory:
     globalTokenBudget: 4096
     # 主库不是 PostgreSQL 时必填：postgresUrl: $ANTARESTRA_MEMORY_POSTGRES_URL

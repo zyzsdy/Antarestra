@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "pollIntervalMs": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 60000,
+      "default": 1000,
+      "description": "数据库补查间隔（毫秒）。"
+    },
+    "batchSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20,
+      "description": "每次最多读取的到期任务数。"
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32,
+      "default": 4,
+      "description": "同时执行的唤醒任务上限。"
+    },
+    "leaseMs": {
+      "type": "integer",
+      "minimum": 3000,
+      "maximum": 300000,
+      "default": 60000,
+      "description": "任务执行租约，执行期间自动续期。"
+    }
+  },
+  "additionalProperties": false
+}

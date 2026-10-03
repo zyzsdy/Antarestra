@@ -75,6 +75,7 @@ declare module '@antarestra/plugin-sdk' {
   }
 }
 export class AiService extends Service<Config> {
+  private readonly owner: Context
   private readonly templateVariables = new Registry<TemplateVariable>((entry) =>
     this.removed(entry),
   )
@@ -87,13 +88,17 @@ export class AiService extends Service<Config> {
   private readonly extensions = new Registry<Extension>((entry) => this.removed(entry))
   private skills = new Registry<SkillService>((entry) => this.removed(entry))
   private resources = new Registry<ResourceResolver>((entry) => this.removed(entry))
-  private accesses = new WeakMap<Access, { source: string; request: unknown }>()
+  private accesses = new WeakMap<
+    Access,
+    { source: string; request?: unknown; owner?: Context; providerId?: string }
+  >()
   readonly running = new Map<string, Running>()
   private queue: Promise<unknown> = Promise.resolve()
   private closing = false
   readonly config: Config
   constructor(ctx: Context, config: Config) {
     super(ctx, 'ai')
+    this.owner = ctx
     this.config = config
     ctx.rbac.registerPermission(ctx, 'ai.chat.use', '使用 AI 对话', ['user', 'admin'])
     ctx.effect(() => async () => {
@@ -103,7 +108,7 @@ export class AiService extends Service<Config> {
     })
   }
   get context() {
-    return this.ctx
+    return this.owner
   }
   registerTemplateVariable(owner: Context, value: TemplateVariable) {
     check(/^[\w.-]+$/.test(value.id) && value.id !== 'input', '模板变量名称无效')
@@ -146,7 +151,8 @@ export class AiService extends Service<Config> {
     await this.conversation(access, conversationId)
   }
   private db() {
-    return this.ctx.database.scope<Tables>(this.ctx, pluginId)
+    // 运行记录归 AI 核心所有，入口插件卸载后仍须能够保存取消终态。
+    return this.owner.database.scope<Tables>(this.owner, pluginId)
   }
   private locked<T>(work: () => Promise<T>): Promise<T> {
     const result = this.queue.then(work)
@@ -348,6 +354,18 @@ export class AiService extends Service<Config> {
     this.active()
     const source = this.accesses.get(access)
     if (!source) throw new AiError('forbidden', '访问上下文未经认证', 403)
+    if (source.owner) {
+      source.owner.fiber.assertActive()
+      const current = await this.ctx.rbac.authorizeBackground(
+        source.source,
+        access.actorId,
+        access.workspaceId,
+        'ai.chat.use',
+        source.providerId,
+      )
+      source.owner.fiber.assertActive()
+      return current
+    }
     const current = await this.ctx.rbac.authorizeRequest(
       source.source,
       source.request,
@@ -356,6 +374,33 @@ export class AiService extends Service<Config> {
     if (current.actorId !== access.actorId || current.workspaceId !== access.workspaceId)
       throw new AiError('forbidden', '身份或空间已变化', 403)
     return current
+  }
+  async backgroundSource(context: RunContext): Promise<{ source: string; providerId: string }> {
+    const access = await this.authorizeRunContext(context, true)
+    const source = this.accesses.get(access)!.source
+    const identity = await this.verify(access)
+    if (!identity.requestProvider) throw new AiError('forbidden', '身份入口未关联提供者', 403)
+    await this.ctx.rbac.authorizeBackground(
+      source,
+      access.actorId,
+      access.workspaceId,
+      'ai.chat.use',
+      identity.requestProvider,
+    )
+    context.signal.throwIfAborted()
+    return { source, providerId: identity.requestProvider }
+  }
+  async authorizeBackground(
+    owner: Context,
+    source: string,
+    actorId: string,
+    workspaceId: string,
+    providerId?: string,
+  ): Promise<Access> {
+    const access = Object.freeze({ actorId, workspaceId })
+    this.accesses.set(access, { source, owner, ...(providerId ? { providerId } : {}) })
+    await this.verify(access)
+    return access
   }
   async catalog(access: Access) {
     await this.verify(access)
@@ -374,15 +419,21 @@ export class AiService extends Service<Config> {
         .map((t) => ({ id: t.id, description: t.description, parameters: t.parameters })),
     })
   }
-  async createConversation(access: Access, agentId?: string, title = '') {
+  async createConversation(
+    access: Access,
+    agentId?: string,
+    title = '',
+    id: string = randomUUID(),
+  ) {
     await this.verify(access)
+    identifier(id)
     agentId ??= this.defaultAgentId ?? undefined
     if (!agentId) throw new AiError('capability_unavailable', '尚未配置默认 Agent', 503)
     if (!this.agentDefinitions.list().some((entry) => entry.id === agentId))
       this.agents.get(agentId)
     check(typeof title === 'string' && title.length <= 200, '标题无效')
     const value: Conversation = {
-      id: randomUUID(),
+      id,
       agentId,
       title,
       ...access,
@@ -393,14 +444,29 @@ export class AiService extends Service<Config> {
       lastActivityAt: Date.now(),
       archivedAt: null,
     }
-    await this.locked(async () => {
+    return this.locked(async () => {
+      const existing = await this.db()
+        .selectFrom('conversations')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirst()
+      if (existing) {
+        const prior = decode<Conversation>(existing)
+        if (
+          prior.workspaceId !== access.workspaceId ||
+          prior.actorId !== access.actorId ||
+          prior.agentId !== agentId
+        )
+          throw new AiError('conflict', '会话标识已被使用', 409)
+        return prior
+      }
       await this.db()
         .insertInto('conversations')
         .values({ ...row(value, access.workspaceId), ...conversationFields(value) })
         .execute()
       this.notifyConversation(value)
+      return value
     })
-    return value
   }
   async listConversations(access: Access, offset = 0, limit = 50, archived = false) {
     await this.verify(access)

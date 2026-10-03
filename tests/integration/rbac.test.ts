@@ -84,6 +84,40 @@ async function setup(config: DatabaseConfig = { filename: ':memory:' }, options:
   }
 }
 
+it('后台身份不依赖登录会话，并重新检查空间、账号状态及提供者生命周期', async () => {
+  const app = await setup()
+  app.ctx.rbac.registerPermission(app.ctx, 'test.background.use', '后台测试', ['user'])
+  const account = await app.accounts.selectFrom('account').selectAll().executeTakeFirstOrThrow()
+  const actorId = account.principal_id
+  const workspaceId = `personal:${actorId}`
+  const authorize = () =>
+    app.ctx.rbac.authorizeBackground('web', actorId, workspaceId, 'test.background.use')
+  await expect(authorize()).resolves.toMatchObject({
+    actorId,
+    workspaceId,
+    roles: ['user', 'admin'],
+  })
+  await app.login()
+  await app.db.deleteFrom('session').execute()
+  await expect(authorize()).resolves.toMatchObject({ actorId, workspaceId })
+  await expect(
+    app.ctx.rbac.authorizeBackground('web', actorId, 'other', 'test.background.use'),
+  ).rejects.toMatchObject({ status: 403 })
+  await app.db
+    .updateTable('principal')
+    .set({ status: 'disabled' })
+    .where('id', '=', actorId)
+    .execute()
+  await expect(authorize()).rejects.toMatchObject({ status: 403 })
+  await app.db
+    .updateTable('principal')
+    .set({ status: 'active' })
+    .where('id', '=', actorId)
+    .execute()
+  await app.implementation.dispose()
+  await expect(authorize()).rejects.toMatchObject({ status: 503 })
+})
+
 const backends: { name: string; config: DatabaseConfig; enabled: boolean }[] = [
   { name: 'SQLite', config: { filename: ':memory:' }, enabled: true },
   {

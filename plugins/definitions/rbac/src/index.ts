@@ -41,11 +41,14 @@ export interface RequestIdentity {
 }
 export interface RequestAccess extends RequestIdentity {
   readonly requestSource: string
+  readonly requestProvider?: string
 }
 export interface RequestSourceProvider {
   readonly id: string
   readonly loginPath?: string
   resolve(request: unknown): Promise<RequestIdentity | undefined>
+  /** 后台任务恢复身份；必须重新校验账号状态及目标空间，不依赖登录令牌。 */
+  resolveBackground?(actorId: string, workspaceId: string): Promise<RequestIdentity | undefined>
 }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const cookieName = 'antarestra_session'
@@ -328,6 +331,7 @@ export class RbacService extends Service<Config> {
     const providers = this.sources.get(source)
     if (!providers?.size) throw new AuthError(503, '请求通道不可用')
     let identity: RequestIdentity | undefined
+    let requestProvider: string | undefined
     for (const provider of providers.values()) {
       const result = await provider.resolve(request)
       this.ctx.fiber.assertActive()
@@ -335,11 +339,13 @@ export class RbacService extends Service<Config> {
       if (!result) continue
       if (identity) throw new AuthError(403, '请求身份存在歧义')
       identity = result
+      requestProvider = provider.id
     }
     if (this.sources.get(source) !== providers || !providers.size)
       throw new AuthError(503, '请求通道已卸载')
     return Object.freeze({
       requestSource: source,
+      ...(requestProvider ? { requestProvider } : {}),
       ...(identity ?? { actorId: null, workspaceId: null, roles: ['guest'] as const }),
     })
   }
@@ -350,6 +356,45 @@ export class RbacService extends Service<Config> {
     permission: string,
   ): Promise<RequestAccess> {
     const identity = await this.resolveRequest(source, request)
+    return this.authorizeIdentity(identity, permission)
+  }
+
+  async authorizeBackground(
+    source: string,
+    actorId: string,
+    workspaceId: string,
+    permission: string,
+    providerId?: string,
+  ) {
+    this.ctx.fiber.assertActive()
+    const providers = this.sources.get(source)
+    if (!providers?.size) throw new AuthError(503, '后台身份通道不可用')
+    if (providerId && !providers.has(providerId)) throw new AuthError(503, '后台身份提供者尚未就绪')
+    let identity: RequestIdentity | undefined
+    let requestProvider: string | undefined
+    for (const provider of providers.values()) {
+      if (providerId && provider.id !== providerId) continue
+      const resolved = await provider.resolveBackground?.(actorId, workspaceId)
+      this.ctx.fiber.assertActive()
+      if (this.sources.get(source) !== providers || providers.get(provider.id) !== provider)
+        throw new AuthError(503, '后台身份通道已卸载')
+      if (!resolved) continue
+      if (identity || resolved.actorId !== actorId || resolved.workspaceId !== workspaceId)
+        throw new AuthError(403, '后台身份或空间无效')
+      identity = resolved
+      requestProvider = provider.id
+    }
+    if (!identity) throw new AuthError(403, '账号或空间不可用，或入口不支持后台任务')
+    return this.authorizeIdentity(
+      { ...identity, requestSource: source, requestProvider: requestProvider! },
+      permission,
+    )
+  }
+
+  private async authorizeIdentity(
+    identity: RequestAccess,
+    permission: string,
+  ): Promise<RequestAccess> {
     const declaration = this.permissions.get(permission)
     if (!declaration) throw new AuthError(403, '权限未注册')
     const allowed =
@@ -364,6 +409,27 @@ export class RbacService extends Service<Config> {
         identity.actorId ? '没有操作权限' : '请先登录',
       )
     return identity
+  }
+
+  /** 可信身份插件使用；不创建会话，也不绕过账号、身份和提供者状态。 */
+  async backgroundRoles(
+    providerId: string,
+    principalId: string,
+  ): Promise<readonly DefaultRole[] | undefined> {
+    if (!this.providers.get(providerId)?.ready) return
+    const active = await this.db()
+      .selectFrom('identity')
+      .innerJoin('principal', 'principal.id', 'identity.principal_id')
+      .innerJoin('provider', 'provider.id', 'identity.provider_id')
+      .select('identity.id')
+      .where('principal.id', '=', principalId)
+      .where('provider.id', '=', providerId)
+      .where('identity.status', '=', 'active')
+      .where('principal.status', '=', 'active')
+      .where('provider.status', '=', 'active')
+      .executeTakeFirst()
+    if (!active) return
+    return this.principalRoles(principalId)
   }
 
   async defaultRoles(auth: AuthContext): Promise<readonly DefaultRole[]> {
@@ -383,11 +449,15 @@ export class RbacService extends Service<Config> {
       .where('provider.status', '=', 'active')
       .executeTakeFirst()
     if (!active || !this.providers.get(auth.providerId)?.ready) throw new AuthError(401, '请先登录')
+    return this.principalRoles(auth.principalId)
+  }
+
+  private async principalRoles(principalId: string): Promise<readonly DefaultRole[]> {
     const admin = await this.db()
       .selectFrom('binding')
       .innerJoin('role', 'role.id', 'binding.role_id')
       .select('role.id')
-      .where('binding.principal_id', '=', auth.principalId)
+      .where('binding.principal_id', '=', principalId)
       .where('role.id', '=', 'admin')
       .where('role.status', '=', 'active')
       .where('binding.scope_key', '=', hash('system'))

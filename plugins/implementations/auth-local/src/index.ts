@@ -38,6 +38,11 @@ export default defineDatabasePlugin({
     ctx.rbac.registerRequestSource(ctx, 'web', {
       id: providerId,
       loginPath: accountPath,
+      async resolveBackground(actorId, workspaceId) {
+        if (workspaceId !== `personal:${actorId}`) return
+        const roles = await ctx.rbac.backgroundRoles(providerId, actorId)
+        if (roles) return { actorId, workspaceId, roles }
+      },
       async resolve(request) {
         const http = request as HttpContext
         const auth = await ctx.rbac.authenticate(ctx.rbac.token(http))

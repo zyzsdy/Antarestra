@@ -47,6 +47,7 @@
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/plugin-storage-s3": "workspace:*",
+    "@antarestra/plugin-wake-tasks": "workspace:*",
     "@antarestra/plugin-web-tools": "workspace:*",
     "@antarestra/plugin-workspace-file": "workspace:*",
     "@antarestra/puppeteer": "workspace:*",

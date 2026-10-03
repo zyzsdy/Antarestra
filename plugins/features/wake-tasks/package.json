@@ -1,0 +1,31 @@
+{
+  "name": "@antarestra/plugin-wake-tasks",
+  "description": "持久化一次性与周期 AI 定时唤醒任务。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "定时唤醒任务",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*"
+  }
+}

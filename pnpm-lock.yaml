@@ -77,6 +77,9 @@ importers:
       '@antarestra/plugin-storage-s3':
         specifier: workspace:*
         version: link:plugins/implementations/storage-s3
+      '@antarestra/plugin-wake-tasks':
+        specifier: workspace:*
+        version: link:plugins/features/wake-tasks
       '@antarestra/plugin-web-tools':
         specifier: workspace:*
         version: link:plugins/features/web-tools
@@ -203,6 +206,9 @@ importers:
       '@antarestra/plugin-storage-s3':
         specifier: workspace:*
         version: link:../../plugins/implementations/storage-s3
+      '@antarestra/plugin-wake-tasks':
+        specifier: workspace:*
+        version: link:../../plugins/features/wake-tasks
       '@antarestra/plugin-web-tools':
         specifier: workspace:*
         version: link:../../plugins/features/web-tools
@@ -707,6 +713,18 @@ importers:
       kysely:
         specifier: ^0.29.5
         version: 0.29.5
+
+  plugins/features/wake-tasks:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../../definitions/database
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
 
   plugins/features/web-tools:
     dependencies:
