@@ -9,6 +9,7 @@
     "tests/**/*.ts",
     "vitest.config.ts",
     "scripts/smoke-storage.ts",
-    "scripts/smoke-puppeteer.ts"
+    "scripts/smoke-puppeteer.ts",
+    "scripts/smoke-web-tools.ts"
   ]
 }

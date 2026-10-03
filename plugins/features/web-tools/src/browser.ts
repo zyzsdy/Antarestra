@@ -37,17 +37,20 @@ export class BrowserTools {
         () =>
           new Promise<void>((resolve) => {
             let quiet: ReturnType<typeof setTimeout>
+            // 对象方法可独立序列化，不依赖 tsx 在宿主环境注入的函数命名辅助代码。
+            const { done } = {
+              done() {
+                clearTimeout(deadline)
+                clearTimeout(quiet)
+                observer.disconnect()
+                resolve()
+              },
+            }
             const observer = new MutationObserver(() => {
               clearTimeout(quiet)
               quiet = setTimeout(done, 150)
             })
             const deadline = setTimeout(done, 500)
-            function done() {
-              clearTimeout(deadline)
-              clearTimeout(quiet)
-              observer.disconnect()
-              resolve()
-            }
             observer.observe(document.documentElement, {
               childList: true,
               subtree: true,

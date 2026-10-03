@@ -32,6 +32,8 @@ plugins:
 
 快照通过语义 DOM 和浏览器可访问名称保留正文、层级、控件名称与状态，精简输出和完整文本索引分开。查找覆盖已加载页面、可读取 iframe、开放 Shadow DOM，以及视口外内容；隐藏文本可显式加入。不包含尚未加载的无限滚动内容、其他分页、封闭 Shadow DOM 或图片文字。PDF 最多 32 MiB、500 页，支持文本层读取及逐页截图，扫描文档不进行 OCR。
 
+主页面正文采集失败会返回 `page_read_failed` 及具体原因，不作为成功的空正文返回；子框架读取失败时保留其他区域的内容，并在 `warnings` 中报告原因。浏览器内执行的函数必须能独立序列化；局部辅助函数使用对象方法，避免 `tsx` 注入仅存在于宿主环境的 `__name` 辅助函数。
+
 ## 交互
 
 支持 `click/double_click/fill/type/select/check/hover/scroll/drag/move/mouse_down/mouse_up/press/key_down/key_up/wait/dialog`。
@@ -63,7 +65,9 @@ plugins:
 pnpm exec vitest run tests/integration/web-tools.test.ts tests/integration/ai.test.ts tests/integration/ai-provider.test.ts tests/integration/workspace-file.test.ts tests/integration/chat-tool-details.test.ts --maxWorkers=1
 # 安装有系统 Chrome 时启用；截图存储使用测试替身，不等同于 S3 验证。
 $env:WEB_BROWSER_TEST = '1'
-pnpm exec vitest run tests/integration/web-tools.test.ts --maxWorkers=1
+pnpm exec vitest run tests/integration/web-tools.test.ts tests/integration/web-tools-dom.test.ts --maxWorkers=1
+# 单独验证真实开发运行器的函数序列化、正文读取及交互，不访问外网。
+pnpm exec tsx --conditions=development scripts/smoke-web-tools.ts
 # 访问 /tests/fixtures/web-tools-preview.html 检查实际聊天组件。
 pnpm exec vite --config tests/fixtures/web-tools-preview.config.ts --host 127.0.0.1
 ```
