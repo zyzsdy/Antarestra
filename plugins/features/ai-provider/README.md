@@ -1,6 +1,6 @@
 # AI 提供商接入
 
-`@antarestra/plugin-ai-provider` 通过 pi-ai 注册提供商、模型及模型驱动到 `ctx.ai`。控制台的“AI 设置 → 提供商接入”管理连接和模型，默认配置已启用本插件。依赖 `database`、`ai`、`rbac`、`server`、`webui`，页面挂载在管理控制台。
+`@antarestra/plugin-ai-provider` 通过 pi-ai 注册提供商、模型及模型驱动到 `ctx.ai`。控制台的“AI 设置 → 提供商接入”管理连接和模型，默认配置已启用本插件。后台依赖 `database`、`ai`、`rbac`；HTTP 管理接口通过局部注入 `server` 注册，控制台页面通过局部注入 `webui` 注册。未加载、卸载或重载 WebUI 不影响后台服务及已有模型注册。AI 与 RBAC 核心目前仍依赖 Server，这一拆分不代表整个 AI 栈已支持无 HTTP 部署。
 
 ## 配置与权限
 

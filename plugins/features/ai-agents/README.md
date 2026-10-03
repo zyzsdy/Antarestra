@@ -1,6 +1,6 @@
 # Agents 管理
 
-`@antarestra/plugin-ai-agents` 在管理控制台的“AI 设置 → Agents”提供助理管理，依赖 `ai`、`database`、`rbac`、`server`、`webui`。插件从 `pnpm create:webui ai-agents` 生成，沿用统一 WebUI 构建入口。
+`@antarestra/plugin-ai-agents` 在管理控制台的“AI 设置 → Agents”提供助理管理，后台依赖 `ai`、`database`、`rbac`。HTTP 管理接口通过局部注入 `server` 注册，页面通过局部注入 `webui` 注册；未加载、卸载或重载 WebUI 不影响默认助理初始化、持久化配置恢复及后台运行。AI 与 RBAC 核心目前仍依赖 Server，这一拆分不代表整个 AI 栈已支持无 HTTP 部署。插件从 `pnpm create:webui ai-agents` 生成，沿用统一 WebUI 构建入口。
 
 ## 数据与默认行为
 
