@@ -8,8 +8,7 @@ const model = defineModel<ChatPolicy>({ required: true })
 const template = computed({
   get: () => model.value.userInputTemplate ?? '',
   set: (value: string) => {
-    if (value.trim()) model.value.userInputTemplate = value
-    else delete model.value.userInputTemplate
+    model.value.userInputTemplate = value
   },
 })
 const fields = [

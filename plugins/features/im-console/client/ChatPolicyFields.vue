@@ -42,11 +42,6 @@ function customActivation(value: boolean) {
     }
   else delete model.value.activation
 }
-const lines = (value: string) =>
-  value
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean)
 function setDynamic(enabled: boolean) {
   if (!model.value.activation) return
   if (enabled) model.value.activation.dynamic = { ...dynamicReplyDefaults }
@@ -132,7 +127,11 @@ function setDynamic(enabled: boolean) {
             :value="model.activation.prefixes?.join('\n') ?? ''"
             rows="2"
             :disabled="busy"
-            @input="model.activation.prefixes = lines(($event.target as HTMLTextAreaElement).value)"
+            @input="
+              model.activation.prefixes = ($event.target as HTMLTextAreaElement).value.split(
+                /\r?\n/,
+              )
+            "
           />
         </label>
         <label :for="`${id}-keywords`"
@@ -141,7 +140,11 @@ function setDynamic(enabled: boolean) {
             :value="model.activation.keywords?.join('\n') ?? ''"
             rows="2"
             :disabled="busy"
-            @input="model.activation.keywords = lines(($event.target as HTMLTextAreaElement).value)"
+            @input="
+              model.activation.keywords = ($event.target as HTMLTextAreaElement).value.split(
+                /\r?\n/,
+              )
+            "
           />
         </label>
         <label :for="`${id}-cooldown`"

@@ -45,14 +45,23 @@ function add() {
   targetId.value = ''
   error.value = ''
 }
+const cleanLines = (lines: string[]) => lines.map((line) => line.trim()).filter(Boolean)
 async function save() {
   error.value = ''
+  // 编辑时保留空行和空格；仅规范化提交副本，避免回车被吞掉或失败后草稿被改写。
+  const policy = JSON.parse(JSON.stringify(draft)) as ConnectionPolicy
+  for (const { key } of groups) {
+    policy[key]!.ids = [...new Set(cleanLines(policy[key]!.ids))]
+  }
   for (const scope of [
-    draft.defaults,
-    draft.group?.defaults,
-    draft.private?.defaults,
-    ...Object.values(draft.chats ?? {}),
+    policy.defaults,
+    policy.group?.defaults,
+    policy.private?.defaults,
+    ...Object.values(policy.chats ?? {}),
   ]) {
+    if (scope?.userInputTemplate !== undefined && !scope.userInputTemplate.trim()) {
+      delete scope.userInputTemplate
+    }
     if (scope && invalidHistoryField(scope)) {
       error.value = '请修正消息与媒体参数后保存。'
       await nextTick()
@@ -61,6 +70,8 @@ async function save() {
     }
     if (!scope?.activation) continue
     const activation = scope.activation
+    if (activation.prefixes) activation.prefixes = cleanLines(activation.prefixes)
+    if (activation.keywords) activation.keywords = cleanLines(activation.keywords)
     if (activation.dynamic && invalidDynamicReplyField(activation.dynamic)) {
       error.value = '请修正动态回复参数后保存。'
       await nextTick()
@@ -79,7 +90,7 @@ async function save() {
       return
     }
   }
-  emit('save', JSON.parse(JSON.stringify(draft)) as ConnectionPolicy)
+  emit('save', policy)
 }
 function updateDefaults(type: 'private' | 'group', value: ChatPolicy) {
   draft[type]!.defaults = value
@@ -127,14 +138,7 @@ function updateDefaults(type: 'private' | 'group', value: ChatPolicy) {
             rows="3"
             :disabled="busy"
             @input="
-              draft[scope.key]!.ids = [
-                ...new Set(
-                  ($event.target as HTMLTextAreaElement).value
-                    .split(/\r?\n/)
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                ),
-              ]
+              draft[scope.key]!.ids = ($event.target as HTMLTextAreaElement).value.split(/\r?\n/)
             "
           />
         </label>
