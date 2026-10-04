@@ -187,6 +187,8 @@ export interface ConnectionDescriptor {
   ): Promise<{ data: Uint8Array; mimeType: string; filename: string }>
   /** 无发送副作用的消息格式检查，可用于批量投递前的完整预检。 */
   validateMessage?(segments: readonly MessageSegment[]): void
+  /** 纯文本出站转换；发送延迟、平台投递和归档使用转换结果，不得产生副作用。 */
+  transformText?(text: string): string
   /** 上传内部图片到平台；失败发生在认领消息投递之前，可安全重试。 */
   prepareImage?(image: ImageResource & { url: string }, signal: AbortSignal): Promise<MediaSegment>
   send(

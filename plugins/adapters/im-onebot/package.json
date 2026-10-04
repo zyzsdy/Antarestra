@@ -29,6 +29,7 @@
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "image-size": "^2.0.4",
+    "markdown-it": "^15.0.2",
     "ws": "^8.21.3"
   },
   "devDependencies": {

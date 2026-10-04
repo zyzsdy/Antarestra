@@ -5,6 +5,7 @@ import type { Config, MessageSegment } from '@antarestra/im'
 import imAi from '@antarestra/plugin-im-ai'
 import { messageSendDelay, waitForSend } from '../../plugins/definitions/im/src/send-delay.js'
 import { parseReply } from '../../plugins/features/im-ai/src/reply.js'
+import { filterCitationLinks } from '../../plugins/adapters/im-onebot/src/citation-links.js'
 import { cleanup, setup } from './im-features-fixture.js'
 
 afterEach(async () => {
@@ -87,6 +88,33 @@ it('两条七字消息分别等待 700 毫秒，同群并发发送不会同时�
     text('这是第二条消息'),
   ])
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('出站文本转换后的字数决定延迟，不计入被移除的引用链接', async () => {
+  const app = await setup({ imConfig: { sendDelayPerCharMs: 100 } })
+  const send = vi.fn(async () => ({ messageId: 'filtered' }))
+  const connection = app.ctx.im.registerConnection(app.ctx, {
+    id: 'filtered',
+    platform: 'onebot11',
+    accountId: '06',
+    policy: app.defaultPolicy,
+    transformText: filterCitationLinks,
+    send,
+  })
+  await connection.receive({
+    id: 'incoming',
+    chat: { type: 'group', id: '40894918' },
+    sender: { id: '79338528' },
+    segments: text('建立空间'),
+  })
+  const target = await app.ctx.im.resolveTarget(app.messages[0]!.workspaceId)
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  const work = app.ctx.im.send(target, text('你好 ([来源](https://example.com/a?x=1&y=2))'))
+  await vi.advanceTimersByTimeAsync(199)
+  expect(send).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1)
+  await work
+  expect(send).toHaveBeenCalledExactlyOnceWith(target.chat, text('你好'), expect.any(Object))
 })
 
 it.each([

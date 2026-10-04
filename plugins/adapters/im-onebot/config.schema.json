@@ -51,6 +51,12 @@
       "default": 15000,
       "type": "integer"
     },
+    "filterCitationLinks": {
+      "type": "boolean",
+      "default": false,
+      "title": "过滤引用链接",
+      "description": "发送时移除括号内的 Markdown 引用链接，其他 Markdown 网页链接保留标题；保留裸链接、代码和图片。仅影响当前 OneBot 接入。"
+    },
     "tokenEnv": {
       "type": "string",
       "minLength": 1

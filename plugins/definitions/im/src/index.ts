@@ -675,6 +675,21 @@ export class ImService extends Service<ServiceOptions> {
     } = {},
   ): Promise<{ messageId?: string }> {
     const entry = this.entry(target.connectionId)
+    let suppressed = false
+    const transformText = entry.descriptor.transformText
+    if (transformText) {
+      let changed = false
+      const transformed = segments.map((segment) => {
+        if (segment.type !== 'text') return segment
+        const text = transformText(segment.text)
+        if (text !== segment.text) changed = true
+        return { ...segment, text }
+      })
+      if (changed) {
+        segments = transformed.filter((segment) => segment.type !== 'text' || segment.text.trim())
+        suppressed = !segments.some((segment) => segment.type !== 'reply')
+      }
+    }
     const signal = options.signal
       ? AbortSignal.any([entry.controller.signal, options.signal])
       : entry.controller.signal
@@ -683,6 +698,8 @@ export class ImService extends Service<ServiceOptions> {
       signal.throwIfAborted()
       if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
         throw new Error('IM 聊天已禁用')
+      // 转换后只剩空白或引用时正常完成；幂等结果仍保存，但不发送或归档空消息。
+      if (suppressed) return {}
       const result = await entry.descriptor.send(target.chat, prepared.segments, {
         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
         signal,

@@ -9,6 +9,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
 import { encodeMessage, id, normalizeMessage, normalizeSegments, record } from './message.js'
 import { emojiIds, registerTools } from './tools.js'
+import { filterCitationLinks } from './citation-links.js'
 
 export const name = 'im-onebot'
 export const inject = ['server', 'im']
@@ -22,6 +23,7 @@ export interface Config {
   label?: string
   rpcTimeoutMs?: number
   ignoredUserIds?: string[]
+  filterCitationLinks?: boolean
   policy?: ConnectionPolicy
 }
 
@@ -113,6 +115,7 @@ export function apply(ctx: Context, input: Config) {
     accountId: config.selfId,
     ...(config.label ? { label: config.label } : {}),
     ...(config.policy ? { policy: config.policy } : {}),
+    ...(config.filterCitationLinks ? { transformText: filterCitationLinks } : {}),
     capabilities: [
       'text',
       'mention',
