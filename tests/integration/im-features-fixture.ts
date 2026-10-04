@@ -38,13 +38,14 @@ export async function setup(
     contextWindow?: number
     userTemplate?: string
     systemTemplate?: string
+    databaseFilename?: string
     toolIds?: string[]
   } = {},
 ) {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
+  await ctx.plugin(database, { filename: options.databaseFilename ?? ':memory:' })
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
   await ctx.plugin(rbac)
   // 无关延迟的功能测试立即投递；延迟专项测试显式传入配置（空对象使用默认值）。

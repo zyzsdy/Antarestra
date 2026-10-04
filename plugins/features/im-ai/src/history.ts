@@ -7,6 +7,7 @@ export interface InputSnapshot {
   history_message: string
   last_message: string
   active_reason: string
+  im_status?: string
   attachments: NonNullable<UserInput['attachments']>
   replyFormat?: { append: boolean; guide: string }
 }
@@ -99,8 +100,9 @@ export function prepareInput(
 }
 export function renderInput(snapshot: InputSnapshot) {
   return snapshot.template.replace(
-    /\{\{\s*(history_message|last_message|active_reason)\s*\}\}/g,
-    (_match, key: 'history_message' | 'last_message' | 'active_reason') => snapshot[key],
+    /\{\{\s*(history_message|last_message|active_reason|im_status)\s*\}\}/g,
+    (_match, key: 'history_message' | 'last_message' | 'active_reason' | 'im_status') =>
+      snapshot[key] ?? '',
   )
 }
 export async function refreshAttachments(

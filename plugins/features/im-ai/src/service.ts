@@ -6,7 +6,7 @@ import type { Access, RunCommand } from '@antarestra/ai'
 import type { MessageContext, MessageSegment } from '@antarestra/im'
 import '@antarestra/plugin-im-commands'
 import { activationReason, finalText } from './messages.js'
-import { parseReply } from './reply.js'
+import { parseReplyWithStatus } from './reply.js'
 import {
   prepareInput,
   renderInput,
@@ -58,6 +58,11 @@ export class ImAiService extends Service<Config> {
     super(ctx, 'imAi')
     this.ai = ctx.ai
     registerInspection(ctx)
+    ctx.ai.registerTemplateVariable(ctx, {
+      id: 'im_status',
+      description: '当前工作空间最近保存的 IM 状态原文；由模型自由书写，无状态时为空。',
+      resolve: (context) => this.readStatus(context.workspaceId),
+    })
     registerHistoryTools(ctx, async (context) => {
       const run = this.ai.running.get(context.runId)
       const jobId = run?.record.input.variables?.imJobId
@@ -122,6 +127,14 @@ export class ImAiService extends Service<Config> {
   }
   private get db() {
     return this.ctx.database.scope<Tables>(this.ctx, pluginId)
+  }
+  private async readStatus(workspaceId: string) {
+    const status = await this.db
+      .selectFrom('statuses')
+      .select('content')
+      .where('workspace_id', '=', workspaceId)
+      .executeTakeFirst()
+    return status?.content ?? ''
   }
   private serial<T>(workspace: string, operation: () => Promise<T>): Promise<T> {
     const task = (this.admission.get(workspace) ?? Promise.resolve()).then(operation)
@@ -359,6 +372,8 @@ export class ImAiService extends Service<Config> {
               )
             : undefined
           if (snapshot) {
+            // 在执行而非入队时读取，排队请求才能看到上一轮刚保存的状态。
+            snapshot.im_status = await this.readStatus(row.workspace_id)
             row.snapshot = JSON.stringify(snapshot)
             row.input = renderInput(snapshot)
           }
@@ -440,15 +455,18 @@ export class ImAiService extends Service<Config> {
         await this.ai.verify(access)
         if (!row.reply_plan) {
           let messages: MessageSegment[][]
+          let status: string | undefined
           try {
-            messages =
+            const reply =
               row.status === 'completed'
-                ? parseReply(
+                ? parseReplyWithStatus(
                     row.answer ?? '',
                     this.ctx.im.listConnections().find((item) => item.id === row.connection_id)
                       ?.capabilities,
                   )
-                : [[{ type: 'text', text: row.answer ?? '' }]]
+                : { messages: [[{ type: 'text' as const, text: row.answer ?? '' }]] }
+            messages = reply.messages
+            status = 'status' in reply ? reply.status : undefined
             // 完整预检后才发送第一条；引用必须属于当前空间。
             for (const segments of messages) await this.ctx.im.validateSend(target, segments)
           } catch {
@@ -458,12 +476,26 @@ export class ImAiService extends Service<Config> {
             ]
             this.ctx.logger.warn('IM AI 回复预检失败，未发送回复内容')
           }
-          row.reply_plan = JSON.stringify(messages)
-          await this.db
-            .updateTable('jobs')
-            .set({ reply_plan: row.reply_plan, status: row.status })
-            .where('id', '=', row.id)
-            .execute()
+          live()
+          const replyPlan = JSON.stringify(messages)
+          // 状态与回复计划一起提交，恢复和投递重试不会重复写入旧状态。
+          await this.db.transaction(async (db) => {
+            live()
+            if (row.status === 'completed' && status !== undefined) {
+              await db.deleteFrom('statuses').where('workspace_id', '=', row.workspace_id).execute()
+              await db
+                .insertInto('statuses')
+                .values({ workspace_id: row.workspace_id, content: status })
+                .execute()
+            }
+            await db
+              .updateTable('jobs')
+              .set({ reply_plan: replyPlan, status: row.status })
+              .where('id', '=', row.id)
+              .execute()
+            live()
+          })
+          row.reply_plan = replyPlan
           // 只在首次固化有效回复时更新热度，投递重试不再次改变动态状态。
           const dynamic = row.chat_type === 'group' ? live().activation?.dynamic : undefined
           const state = this.dynamicReplies.get(row.workspace_id)

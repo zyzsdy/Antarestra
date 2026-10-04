@@ -26,6 +26,7 @@ export interface JobRow {
   created_at: number
 }
 export interface Tables {
+  statuses: { workspace_id: string; content: string }
   cursors: { workspace_id: string; sequence: number }
   sessions: SessionRow
   jobs: JobRow
@@ -104,5 +105,18 @@ export const migrations = [
   defineMigration({
     id: '003_reply_plan',
     steps: [{ kind: 'addColumn', table: 'jobs', column: { name: 'reply_plan', type: 'text' } }],
+  }),
+  defineMigration({
+    id: '004_workspace_status',
+    steps: [
+      {
+        kind: 'createTable',
+        table: 'statuses',
+        columns: [
+          { name: 'workspace_id', type: 'string', length: 200, primaryKey: true },
+          { name: 'content', type: 'text', notNull: true },
+        ],
+      },
+    ],
   }),
 ]
