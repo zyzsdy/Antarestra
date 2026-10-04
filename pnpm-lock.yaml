@@ -934,6 +934,9 @@ importers:
       '@antarestra/webui':
         specifier: workspace:*
         version: link:../../definitions/webui
+      image-size:
+        specifier: ^2.0.4
+        version: 2.0.4
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
@@ -2881,6 +2884,11 @@ packages:
   ignore@7.0.8:
     resolution: {integrity: sha512-YYNsSlXBjMk92SKnkwvB5LOVSa6OznlFUGcsvrFgNJbJCd0M1XKeFVRc8ZByeCqz32FivYNHJVooLmdqrmvp/Q==}
     engines: {node: '>= 4'}
+
+  image-size@2.0.4:
+    resolution: {integrity: sha512-QRUkFFsRV/6fuESxb9Vkq+a0LkSrgKXuc2NEqfikiXxxN/G3tjWt5EVUlMaImRBZRZK/jRBEbYvpPYZL8t08Zw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   import-meta-resolve@4.2.0:
     resolution: {integrity: sha512-Iqv2fzaTQN28s/FwZAoFq0ZSs/7hMAHJVX+w8PZl3cY19Pxk6jFFalxQoIfW2826i/fDLXv8IiEZRIT0lDuWcg==}
@@ -5878,6 +5886,8 @@ snapshots:
   ieee754@1.2.1: {}
 
   ignore@7.0.8: {}
+
+  image-size@2.0.4: {}
 
   import-meta-resolve@4.2.0: {}
 

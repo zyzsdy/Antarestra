@@ -183,16 +183,51 @@ it('媒体保存到空间文件，7 天清理及容量淘汰只删除群媒体�
   ).rejects.toMatchObject({ status: 410 })
 })
 
-it('按时间选最后五张图片和最后一个文件，标签附件编号与实际请求一致', async () => {
-  let request: RequestSnapshot | undefined
+it('按时间自动附带最后五张图片和最后一个文件，超限图片可按标签 ID 用文件工具读取', async () => {
+  const requests: RequestSnapshot[] = []
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII='
+  let omittedId = ''
   const app = await setup({
     ai: true,
     contextWindow: 100000,
     modelInput: ['text', 'image', 'file'],
+    toolIds: ['workspace_file_read'],
     driver: {
       id: 'driver',
-      async generate(input) {
-        request = input
+      async generate(input, connection) {
+        requests.push(input)
+        if (requests.length === 1) {
+          const text = input.messages
+            .flatMap((message) => message.content)
+            .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+            .join('\n')
+          omittedId = text.match(/\[图片,([^\]]+)\]/)![1]!
+          expect(connection.resources?.has(omittedId)).toBe(false)
+          return {
+            content: [
+              {
+                type: 'tool-call',
+                id: 'read-omitted-image',
+                name: 'workspace_file_read',
+                arguments: { resourceId: omittedId },
+              },
+            ],
+          }
+        }
+        expect(connection.resources?.get(omittedId)).toEqual({
+          filename: '0.png',
+          mimeType: 'image/png',
+          data: png,
+        })
+        expect(input.messages.flatMap((message) => message.content)).toContainEqual(
+          expect.objectContaining({
+            type: 'tool-result',
+            id: 'read-omitted-image',
+            isError: false,
+            images: [expect.objectContaining({ resourceId: omittedId, width: 1, height: 1 })],
+          }),
+        )
         return { content: [{ type: 'text', text: '完成' }] }
       },
     },
@@ -202,7 +237,10 @@ it('按时间选最后五张图片和最后一个文件，标签附件编号与�
     'images',
     '07',
     { ...app.defaultPolicy, defaults: { maxImages: 5, maxFiles: 1, historyLimit: 20 } },
-    download,
+    async (message, media) => ({
+      ...(await download(message, media)),
+      data: media.type === 'image' ? Buffer.from(png, 'base64') : new Uint8Array([1, 2, 3]),
+    }),
   )
   for (let index = 0; index < 7; index++)
     await connection.receive('', {
@@ -218,7 +256,7 @@ it('按时间选最后五张图片和最后一个文件，标签附件编号与�
     })
   await connection.receive('/ai 总结')
   await poll(() => app.sent.length).toBe(1)
-  expect(request).toBeDefined()
+  expect(requests).toHaveLength(2)
   const input = (await app.jobs())[0]!
   const snapshot = JSON.parse(input.snapshot!)
   expect(snapshot.attachments.map((file: { filename: string }) => file.filename)).toEqual([
@@ -232,7 +270,13 @@ it('按时间选最后五张图片和最后一个文件，标签附件编号与�
   expect(snapshot.history_message).toContain('[图片（附件1）,')
   expect(snapshot.history_message).toContain('[文件（附件6）,')
   expect(snapshot.history_message.match(/\[图片,/g)).toHaveLength(2)
-  expect(request!.messages.at(-1)!.content.filter((part) => part.type === 'image')).toHaveLength(5)
+  expect(
+    requests[0]!.messages.at(-1)!.content.filter((part) => part.type === 'image'),
+  ).toHaveLength(5)
+  const access = await app.ctx.ai.authorize('im', app.messages.at(-1)!.request)
+  const run = await app.ctx.ai.getRun(access, input.run_id!)
+  expect(run.status).toBe('completed')
+  expect(JSON.stringify(run)).not.toContain(png)
 })
 
 it('媒体失败保留记录并重试；卸载文件扩展取消并等待下载', async () => {

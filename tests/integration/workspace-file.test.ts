@@ -60,7 +60,7 @@ class MemoryStorage implements StorageBackend {
     return this.blobs.has(key)
   }
 }
-async function setup() {
+async function setup(maxFileSize = 20) {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(DatabaseProvider)
@@ -85,8 +85,8 @@ async function setup() {
   })
   const fiber = await ctx.plugin(files, {
     backendId: 'test',
-    defaultQuota: 20,
-    maxFileSize: 20,
+    defaultQuota: maxFileSize,
+    maxFileSize,
     uploadMinutes: 1,
   })
   let enabled = true
@@ -114,9 +114,12 @@ async function setup() {
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
-  async function upload(access: FileAccess, path: string, content = 'hello') {
+  async function upload(access: FileAccess, path: string, content: string | Uint8Array = 'hello') {
     const ticket = await ctx.workspaceFile.begin(access, { path, size: Buffer.byteLength(content) })
-    backend.blobs.set(ticket.plan.parts[0]!.url, Buffer.from(content))
+    backend.blobs.set(
+      ticket.plan.parts[0]!.url,
+      typeof content === 'string' ? Buffer.from(content) : content,
+    )
     await ctx.workspaceFile.complete(access, ticket.token, [])
     return ticket
   }
@@ -414,9 +417,50 @@ it('第三方正常身份解析自动登记空间，刷新名称保留配额和�
   })
 })
 it('Agent 文件工具只接受核心当前运行上下文，不能通过工具参数越过空间', async () => {
-  const app = await setup()
-  await app.upload(app.a, '/note.txt', 'hello')
-  const photo = await app.upload(app.a, '/photo.png', 'hello')
+  const app = await setup(32 * 1024 ** 2)
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII='
+  const note = await app.upload(app.a, '/note.txt', 'hello')
+  const photo = await app.upload(app.a, '/photo.png', Buffer.from(png, 'base64'))
+  const invalidCases = [
+    {
+      id: 'foreign',
+      file: await app.upload(app.b, '/foreign.png', Buffer.from(png, 'base64')),
+      error: '文件已过期',
+    },
+    {
+      id: 'expired',
+      file: await app.upload(app.a, '/expired.png', Buffer.from(png, 'base64')),
+      error: '文件已过期',
+    },
+    { id: 'broken', file: await app.upload(app.a, '/broken.png', 'hello'), error: '无法识别图片' },
+    {
+      id: 'unsupported',
+      file: await app.upload(app.a, '/image.svg', '<svg/>'),
+      error: '图片只支持',
+    },
+    {
+      id: 'mismatch',
+      file: await app.upload(app.a, '/wrong.jpg', Buffer.from(png, 'base64')),
+      error: '图片内容与声明格式不符',
+    },
+    {
+      id: 'large-image',
+      file: await app.upload(app.a, '/large.png', Buffer.alloc(8 * 1024 ** 2 + 1)),
+      error: '图片超过 8 MiB',
+    },
+    {
+      id: 'large-text',
+      file: await app.upload(app.a, '/large.txt', Buffer.alloc(1024 ** 2 + 1)),
+      error: '文本超过 1 MiB',
+    },
+    {
+      id: 'binary',
+      file: await app.upload(app.a, '/binary.bin', Buffer.from([0, 1, 2])),
+      error: '不支持读取二进制文件',
+    },
+  ]
+  await app.ctx.workspaceFile.removeResource(app.a, invalidCases[1]!.file.token)
   const attachment = await app.ctx.workspaceFile.resource(app.a, photo.token)
   await app.ctx.plugin(ai, {})
   const access = await app.ctx.ai.authorize('test', 'a')
@@ -432,6 +476,36 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
       if (!calls.length) return
       const result = await runtime.executeTools(calls)
       expect(JSON.stringify(result)).toContain('hello')
+      const blocks = result.flatMap((message) => message.content)
+      expect(blocks).toContainEqual(
+        expect.objectContaining({
+          id: 'file-call',
+          content: { path: '/note.txt', text: 'hello' },
+          isError: false,
+        }),
+      )
+      expect(blocks).toContainEqual(
+        expect.objectContaining({
+          id: 'text-id',
+          content: { path: '/note.txt', resourceId: note.token, text: 'hello' },
+          isError: false,
+        }),
+      )
+      expect(blocks).toContainEqual(
+        expect.objectContaining({
+          id: 'image-id',
+          isError: false,
+          images: [expect.objectContaining({ resourceId: photo.token, width: 1, height: 1 })],
+        }),
+      )
+      for (const entry of invalidCases) {
+        const block = blocks.find((block) => block.type === 'tool-result' && block.id === entry.id)
+        expect(block).toMatchObject({
+          isError: true,
+          content: { error: expect.stringContaining(entry.error) },
+        })
+        expect(block).not.toHaveProperty('images')
+      }
       await runtime.request()
     },
   })
@@ -462,7 +536,7 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
         expect(connection.resources?.get(photo.token)).toEqual({
           filename: 'photo.png',
           mimeType: 'image/png',
-          data: 'aGVsbG8=',
+          data: png,
         })
       return {
         content: request.messages.some((message) => message.role === 'tool')
@@ -474,6 +548,16 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
                 name: 'workspace_file_read',
                 arguments: { path: '/note.txt' },
               },
+              ...[
+                { id: 'text-id', resourceId: note.token },
+                { id: 'image-id', resourceId: photo.token },
+                ...invalidCases.map(({ id, file }) => ({ id, resourceId: file.token })),
+              ].map(({ id, resourceId }) => ({
+                type: 'tool-call' as const,
+                id,
+                name: 'workspace_file_read',
+                arguments: { resourceId },
+              })),
             ],
       }
     },
@@ -514,7 +598,7 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
     const record = await app.ctx.ai.getRun(access, run.id)
     if (record.status !== 'running') {
       expect(record.status, JSON.stringify(record.error)).toBe('completed')
-      expect(JSON.stringify(record.requests)).not.toContain('aGVsbG8=')
+      expect(JSON.stringify(record)).not.toContain(png)
       expect(record.input.attachments?.[0]?.resourceId).toBe(photo.token)
       break
     }

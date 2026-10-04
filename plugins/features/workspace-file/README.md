@@ -31,7 +31,9 @@ plugins:
 - `/files/`：当前空间文件，目录逐层浏览、50 项分页、上传、下载、移动 / 重命名、建目录、删除空目录和文件。
 - `/admin/storage/`：20 项服务端分页，按中文标签或 ID 查询、查看已用和上传预占、以字节修改配额。需要 `admin.console.view` 与 `admin.storage.manage`。
 - 聊天的“添加内容”菜单与图片粘贴调用 `uploadAttachment`，使用配置 `attachmentDirectory`（默认 `/chat-attachments`）与随机子目录，保存正式附件 ID 和访问地址；AI 资源解析器在当前运行的空间内读取附件。
-- AI 就绪后注册 `workspace_file_list` 与 `workspace_file_read`。后者只读取最多 1 MiB 的 UTF-8 文本。Agent 配置仍须允许这些工具；只有文件工具执行期间签发的临时凭证可获得空间授权，同时核对 AI 核心的当前运行、主体和空间。
+- AI 就绪后注册 `workspace_file_list` 与 `workspace_file_read`。后者通过 `path` 读取最多 1 MiB 的 UTF-8 文本，也可通过 `resourceId` 读取文本或最多 8 MiB 的 PNG、JPEG、GIF、WebP 图片；两个参数只填一个。图片复用结构化工具结果，视觉模型会收到实际图像内容，历史仅保存资源引用。Agent 配置仍须允许这些工具；只有文件工具执行期间签发的临时凭证可获得空间授权，同时核对 AI 核心的当前运行、主体和空间。
+
+IM 历史中超过自动附图数量上限的 `[图片,ID]`，可调用 `workspace_file_read({ "resourceId": "ID" })` 按需查看。ID 必须对应当前空间仍然存在的已存储文件；下载失败、已过期或其他空间的资源不能读取。此功能不改变自动附图数量限制，仍受工具单图 8 MiB、模型上下文附件总量 32 MiB 和模型图片输入能力限制。
 
 文件操作需要 `workspace.file.use`，默认开放给 user/admin。每次操作重新解析可信入口的空间，拒绝伪造授权对象，客户端传入其他 workspaceId 会返回 403。管理员的 system 权限不用于越权下载其他空间文件。
 

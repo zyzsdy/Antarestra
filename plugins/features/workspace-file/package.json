@@ -33,6 +33,7 @@
     "@antarestra/rbac": "workspace:*",
     "@antarestra/storage": "workspace:*",
     "@antarestra/webui": "workspace:*",
+    "image-size": "^2.0.4",
     "mime-types": "^3.0.2"
   },
   "devDependencies": {
