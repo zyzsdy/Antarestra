@@ -66,9 +66,15 @@ it('OneBot 保留视频音频、CQ 文本结构和群文件通知，未知内容
   expect(
     onebot({ ...base, message: [{ type: 'forward', data: { id: 'ref' } }] }, '1'),
   ).toMatchObject({
-    segments: [{ type: 'unsupported', name: 'forward' }],
+    segments: [{ type: 'forward', id: 'ref' }],
     raw: { message: [{ type: 'forward' }] },
   })
+  expect(onebot({ ...base, message: [{ type: 'json', data: { data: '{}' } }] }, '1')).toMatchObject(
+    {
+      segments: [{ type: 'unsupported', name: 'json' }],
+      raw: { message: [{ type: 'json' }] },
+    },
+  )
 })
 
 it('飞书富文本中的文字、图片、视频和提及按原始顺序保留', () => {

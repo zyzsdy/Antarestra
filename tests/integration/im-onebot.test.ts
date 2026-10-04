@@ -11,7 +11,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-async function setup() {
+async function setup(privateIds: string[] = []) {
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
   let descriptor!: ConnectionDescriptor
@@ -40,7 +40,7 @@ async function setup() {
     token: 'test-secret',
     rpcTimeoutMs: 100,
     policy: {
-      private: { mode: 'whitelist', ids: [] },
+      private: { mode: 'whitelist', ids: privateIds },
       group: { mode: 'whitelist', ids: ['40894918'] },
     },
   })
@@ -77,6 +77,74 @@ const event = (changes: Record<string, unknown> = {}) => ({
 })
 
 describe('OneBot 11 反向 WebSocket', () => {
+  it('合并转发保留数组与 CQ 资源 ID，并禁止作为普通出站消息发送', async () => {
+    const app = await setup()
+    for (const message of [[{ type: 'forward', data: { id: 'res-1' } }], '[CQ:forward,id=res-1]']) {
+      expect(normalizeMessage(event({ message }), '152408856')?.segments).toEqual([
+        { type: 'forward', id: 'res-1' },
+      ])
+    }
+    expect(() => app.descriptor.validateMessage?.([{ type: 'forward', id: 'res-1' }])).toThrow(
+      '不支持',
+    )
+  })
+
+  it('私聊转发读取、非法表情拒绝、调用取消和卸载清理', async () => {
+    const app = await setup(['79338528'])
+    const socket = await app.connect()
+    const actions: string[] = []
+    let respond = true
+    socket.on('message', (raw) => {
+      const request = JSON.parse(raw.toString()) as {
+        echo: string
+        action: string
+        params: Record<string, unknown>
+      }
+      actions.push(request.action)
+      if (!respond) return
+      const data =
+        request.action === 'get_msg'
+          ? {
+              message_id: 1,
+              message_type: 'private',
+              user_id: '79338528',
+              message: '[CQ:forward,id=res-1]',
+            }
+          : { messages: [{ content: '私聊合并转发' }] }
+      if (request.action === 'get_forward_msg') expect(request.params).toEqual({ id: 'res-1' })
+      socket.send(JSON.stringify({ echo: request.echo, status: 'ok', retcode: 0, data }))
+    })
+    const target = { type: 'private', id: '79338528' } as const
+    expect(await app.descriptor.invoke!('message.forward', target, { message_id: '1' })).toEqual({
+      messages: [{ content: '私聊合并转发' }],
+    })
+    await expect(
+      app.descriptor.invoke!('message.emoji-like', target, {
+        message_id: '1',
+        emoji_id: 'invalid',
+      }),
+    ).rejects.toThrow('表情 ID')
+    respond = false
+    const abort = new AbortController()
+    const pending = app.descriptor.invoke!(
+      'message.forward',
+      target,
+      { message_id: '1' },
+      abort.signal,
+    )
+    const cancelled = expect(pending).rejects.toThrow('取消')
+    abort.abort()
+    await cancelled
+    const unloading = app.descriptor.invoke!('message.emoji-like', target, {
+      message_id: '1',
+      emoji_id: '66',
+    })
+    const unloaded = expect(unloading).rejects.toThrow('卸载')
+    await app.adapter.dispose()
+    await unloaded
+    expect(actions).not.toContain('set_msg_emoji_like')
+  })
+
   it('校验令牌、账号、角色，在入口排除未准入聊天与错误账号，自身消息交给核心归档', async () => {
     const app = await setup()
     await expect(app.connect({ Authorization: 'Bearer wrong' })).rejects.toThrow('401')

@@ -1,0 +1,246 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { WebSocket } from 'ws'
+import type { JsonObject, RequestSnapshot, RunContext } from '@antarestra/ai'
+import * as OneBot from '../../plugins/adapters/im-onebot/src/index.js'
+import { cleanup, setup } from './im-features-fixture.js'
+
+afterEach(cleanup)
+const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
+const toolIds = ['onebot_get_forward_msg', 'onebot_set_msg_emoji_like']
+type Call = { name: string; arguments: JsonObject }
+async function createApp(calls: Call[]) {
+  const requests: RequestSnapshot[] = []
+  const steps = new Map<string, number>()
+  const app = await setup({
+    ai: true,
+    toolIds,
+    driver: {
+      id: 'driver',
+      async generate(request, _connection, context) {
+        requests.push(request)
+        const step = steps.get(context.runId) ?? 0
+        steps.set(context.runId, step + 1)
+        const call = calls[step]
+        return {
+          content: call
+            ? [{ type: 'tool-call', id: `call-${step}`, ...call }]
+            : [{ type: 'text', text: '完成' }],
+        }
+      },
+    },
+  })
+  const registered = vi.spyOn(app.ctx.ai, 'registerTool')
+  async function connect(connectionId: string, selfId: string) {
+    const fiber = await app.ctx.plugin(OneBot, {
+      id: connectionId,
+      selfId,
+      token: 'test-secret',
+      rpcTimeoutMs: 1000,
+      policy: {
+        group: {
+          mode: 'whitelist',
+          ids: ['40894918'],
+          defaults: { ai: true, agentId: 'assistant' },
+        },
+      },
+    })
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${app.ctx.server.address!.port}/im/onebot/${connectionId}`,
+      {
+        headers: {
+          Authorization: 'Bearer test-secret',
+          'X-Self-ID': selfId,
+          'X-Client-Role': 'Universal',
+        },
+      },
+    )
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', resolve)
+      socket.once('error', reject)
+    })
+    const actions: { action: string; params: JsonObject }[] = []
+    let messageGroup = '40894918'
+    let failure: string | undefined
+    socket.on('message', (raw) => {
+      const request = JSON.parse(raw.toString()) as {
+        action: string
+        params: JsonObject
+        echo: string
+      }
+      actions.push(request)
+      const data =
+        request.action === 'get_group_member_info'
+          ? { user_id: request.params.user_id, role: 'member' }
+          : request.action === 'get_msg'
+            ? {
+                message_id: Number(request.params.message_id),
+                message_type: 'group',
+                group_id: messageGroup,
+                message: [{ type: 'forward', data: { id: 'resource-1' } }],
+              }
+            : request.action === 'get_forward_msg'
+              ? {
+                  messages: [
+                    {
+                      sender: { user_id: 42, nickname: '转发者' },
+                      time: 1720000000,
+                      content: [{ type: 'text', data: { text: '转发内部内容' } }],
+                    },
+                  ],
+                }
+              : request.action === 'send_group_msg'
+                ? { message_id: 100 }
+                : { result: true }
+      socket.send(
+        JSON.stringify({
+          echo: request.echo,
+          status: request.action === failure ? 'failed' : 'ok',
+          retcode: request.action === failure ? 1200 : 0,
+          data,
+        }),
+      )
+    })
+    const receive = (messageId = 1) =>
+      socket.send(
+        JSON.stringify({
+          post_type: 'message',
+          self_id: selfId,
+          message_type: 'group',
+          group_id: '40894918',
+          message_id: messageId,
+          user_id: '79338528',
+          sender: { nickname: '测试用户' },
+          message: [
+            { type: 'text', data: { text: '/ai 请处理' } },
+            { type: 'forward', data: { id: 'resource-1' } },
+          ],
+        }),
+      )
+    return {
+      fiber,
+      socket,
+      actions,
+      receive,
+      setGroup: (group: string) => {
+        messageGroup = group
+      },
+      fail: (action: string) => {
+        failure = action
+      },
+    }
+  }
+  return { ...app, requests, registered, connectOneBot: connect }
+}
+
+it('模型实际调用两个工具，保留转发内容并发送指定表情，描述包含全部指定表情', async () => {
+  const app = await createApp([
+    { name: toolIds[0]!, arguments: { message_id: '1', id: 'resource-1' } },
+    { name: toolIds[1]!, arguments: { message_id: '1', emoji_id: '424' } },
+  ])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  bot.receive()
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(
+    bot.actions.filter((entry) => toolIds.some((id) => id === `onebot_${entry.action}`)),
+  ).toEqual([
+    expect.objectContaining({ action: 'get_forward_msg', params: { id: 'resource-1' } }),
+    expect.objectContaining({
+      action: 'set_msg_emoji_like',
+      params: { message_id: '1', emoji_id: '424', set: true },
+    }),
+  ])
+  expect(JSON.stringify(app.requests.at(-1))).toContain('转发内部内容')
+  expect(JSON.stringify(app.requests[0])).toContain('[合并转发,resource-1]')
+  const tool = app.registered.mock.calls.find(([, tool]) => tool.id === toolIds[1])![1]
+  for (const value of [
+    '424',
+    '10068',
+    '264',
+    '128560',
+    '265',
+    '76',
+    '123',
+    '128557',
+    '49',
+    '66',
+    '不知道回复什么',
+    '地铁老人手机.jpg',
+  ])
+    expect(tool.description).toContain(value)
+  await expect(
+    tool.execute({ message_id: '1', emoji_id: '66' }, { runId: 'fake' } as RunContext),
+  ).resolves.toMatchObject({ isError: true, content: { error: 'OneBot 工具需要有效工具上下文' } })
+})
+
+it.each([
+  { name: toolIds[1]!, arguments: { message_id: '999', emoji_id: '66' } },
+  { name: toolIds[0]!, arguments: { message_id: '1', id: 'foreign-resource' } },
+  { name: toolIds[1]!, arguments: { message_id: '1', emoji_id: '999' } },
+  { name: toolIds[0]!, arguments: { message_id: '1', workspaceId: 'foreign' } },
+])('拒绝越界参数 %j，不执行目标 RPC', async (call) => {
+  const app = await createApp([call])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  bot.receive()
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(
+    bot.actions.filter((entry) => ['set_msg_emoji_like', 'get_forward_msg'].includes(entry.action)),
+  ).toEqual([])
+  expect(bot.actions.filter((entry) => entry.action === 'get_msg')).toHaveLength(
+    call.arguments.id ? 1 : 0,
+  )
+  if (call.arguments.emoji_id === '999' || call.arguments.workspaceId) {
+    expect((await app.jobs())[0]?.status).toBe('failed')
+    expect(app.requests).toHaveLength(1)
+  } else {
+    expect(app.requests.at(-1)?.messages.flatMap((message) => message.content)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'tool-result', isError: true })]),
+    )
+  }
+})
+
+it('同号消息按空间选择实际账号，多实例覆盖后卸载恢复可用实现', async () => {
+  const app = await createApp([
+    { name: toolIds[1]!, arguments: { message_id: '1', emoji_id: '76' } },
+  ])
+  const first = await app.connectOneBot('onebot-a', '05')
+  const second = await app.connectOneBot('onebot-b', '06')
+  first.receive()
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(1)
+  second.receive()
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(2)
+  expect(first.actions.filter((entry) => entry.action === 'set_msg_emoji_like')).toHaveLength(1)
+  expect(second.actions.filter((entry) => entry.action === 'set_msg_emoji_like')).toHaveLength(1)
+  await second.fiber.dispose()
+  first.receive(2)
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(3)
+  expect(first.actions.filter((entry) => entry.action === 'set_msg_emoji_like')).toHaveLength(2)
+  await first.fiber.dispose()
+  expect(JSON.stringify(app.ctx.ai.capabilities())).not.toContain('onebot_get_forward_msg')
+  expect(JSON.stringify(app.ctx.ai.capabilities())).not.toContain('onebot_set_msg_emoji_like')
+})
+
+it('平台返回消息归属不符时禁止表态，平台失败反馈到模型', async () => {
+  const app = await createApp([
+    { name: toolIds[1]!, arguments: { message_id: '1', emoji_id: '66' } },
+  ])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  bot.setGroup('other-group')
+  bot.receive()
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(bot.actions.some((entry) => entry.action === 'set_msg_emoji_like')).toBe(false)
+  expect(JSON.stringify(app.requests.at(-1))).toContain('消息不属于当前聊天')
+  bot.setGroup('40894918')
+  bot.fail('set_msg_emoji_like')
+  bot.receive(2)
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(2)
+  expect(JSON.stringify(app.requests.at(-1))).toContain('OneBot 操作失败（1200）')
+})
+
+it('非 OneBot 空间不可借用已注册的 OneBot 工具', async () => {
+  const app = await createApp([{ name: toolIds[0]!, arguments: { message_id: '1' } }])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  await app.connection.receive('/ai 读取转发', { id: '1' })
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(bot.actions).toEqual([])
+  expect(JSON.stringify(app.requests.at(-1))).toContain('当前空间不是 OneBot 聊天')
+})

@@ -45,6 +45,50 @@ async function setup() {
   return { ctx, fiber }
 }
 
+it('按持久化空间解析连接，禁用与卸载后拒绝访问，卸载取消并等待操作', async () => {
+  const { ctx } = await setup()
+  const owner = await ctx.plugin(() => {})
+  let operationSignal: AbortSignal | undefined
+  const descriptor = {
+    id: 'onebot',
+    platform: 'onebot11',
+    accountId: '05',
+    policy,
+    capabilities: ['test.wait'],
+    send: async () => ({}),
+    invoke: async (
+      _action: string,
+      _target: unknown,
+      _parameters: unknown,
+      signal?: AbortSignal,
+    ) => {
+      operationSignal = signal
+      await new Promise<void>((resolve) =>
+        signal!.addEventListener('abort', () => resolve(), { once: true }),
+      )
+      return '已清理'
+    },
+  }
+  const connection = ctx.im.registerConnection(owner.ctx, descriptor)
+  await connection.receive(message())
+  const workspaceId = identity({
+    connection: { ...descriptor, status: 'online' },
+    message: message(),
+  }).workspaceId
+  const target = await ctx.im.resolveTarget(workspaceId)
+  expect(target).toEqual({ workspaceId, connectionId: 'onebot', chat: message().chat })
+  await expect(ctx.im.resolveTarget('foreign')).rejects.toThrow('没有可用')
+  await ctx.im.setPolicy('onebot', { ...policy, enabled: false })
+  await expect(ctx.im.resolveTarget(workspaceId)).rejects.toThrow('禁用')
+  await ctx.im.setPolicy('onebot', policy)
+  const pending = ctx.im.invoke(target, 'test.wait', {})
+  await expect.poll(() => operationSignal).toBeDefined()
+  await owner.dispose()
+  expect(operationSignal!.aborted).toBe(true)
+  expect(await pending).toBe('已清理')
+  await expect(ctx.im.resolveTarget(workspaceId)).rejects.toThrow('没有可用')
+})
+
 it('群成员共享空间，不同账号、接入实例和私聊分别隔离', async () => {
   const { ctx } = await setup(),
     received: MessageContext[] = []

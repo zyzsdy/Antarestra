@@ -79,40 +79,9 @@ export function normalizeMessage(value: unknown, selfId: string): IncomingMessag
   const chatId = type === 'group' ? id(event.group_id) : senderId
   if (!senderId || !messageId || !chatId) return
   if (type !== 'group' && type !== 'private') return
-  const parts = Array.isArray(event.message)
-    ? event.message
-    : typeof event.message === 'string'
-      ? parseCq(event.message)
-      : undefined
-  if (!parts) return
+  const segments = normalizeSegments(event.message)
+  if (!segments) return
   const sender = record(event.sender)
-  const segments: MessageSegment[] = []
-  for (const item of parts) {
-    const segment = record(item)
-    const data = record(segment.data)
-    if (segment.type === 'text' && typeof data.text === 'string')
-      segments.push({ type: 'text', text: data.text })
-    if (segment.type === 'at' && id(data.qq))
-      segments.push({ type: 'mention', userId: id(data.qq)! })
-    if (segment.type === 'reply' && id(data.id))
-      segments.push({ type: 'reply', messageId: id(data.id)! })
-    if (
-      ['image', 'file', 'video', 'record'].includes(String(segment.type)) &&
-      (typeof data.url === 'string' || typeof data.file === 'string' || id(data.file_id))
-    )
-      segments.push({
-        type: segment.type === 'record' ? 'audio' : (segment.type as 'image' | 'file' | 'video'),
-        url:
-          typeof data.url === 'string' && data.url
-            ? data.url
-            : typeof data.file === 'string' && /^https?:\/\//i.test(data.file)
-              ? data.file
-              : `onebot://file/${encodeURIComponent(id(data.file_id) ?? String(data.file))}`,
-        ...(typeof data.name === 'string' ? { name: data.name } : {}),
-      })
-    if (!['text', 'at', 'reply', 'image', 'file', 'video', 'record'].includes(String(segment.type)))
-      segments.push({ type: 'unsupported', name: String(segment.type) })
-  }
   return {
     id: messageId,
     chat: { type, id: chatId },
@@ -134,6 +103,49 @@ export function normalizeMessage(value: unknown, selfId: string): IncomingMessag
   }
 }
 
+export function normalizeSegments(message: unknown): MessageSegment[] | undefined {
+  const parts = Array.isArray(message)
+    ? message
+    : typeof message === 'string'
+      ? parseCq(message)
+      : undefined
+  if (!parts) return
+  const segments: MessageSegment[] = []
+  for (const item of parts) {
+    const segment = record(item)
+    const data = record(segment.data)
+    if (segment.type === 'text' && typeof data.text === 'string')
+      segments.push({ type: 'text', text: data.text })
+    if (segment.type === 'at' && id(data.qq))
+      segments.push({ type: 'mention', userId: id(data.qq)! })
+    if (segment.type === 'reply' && id(data.id))
+      segments.push({ type: 'reply', messageId: id(data.id)! })
+    if (segment.type === 'forward' && id(data.id))
+      segments.push({ type: 'forward', id: id(data.id)! })
+    if (
+      ['image', 'file', 'video', 'record'].includes(String(segment.type)) &&
+      (typeof data.url === 'string' || typeof data.file === 'string' || id(data.file_id))
+    )
+      segments.push({
+        type: segment.type === 'record' ? 'audio' : (segment.type as 'image' | 'file' | 'video'),
+        url:
+          typeof data.url === 'string' && data.url
+            ? data.url
+            : typeof data.file === 'string' && /^https?:\/\//i.test(data.file)
+              ? data.file
+              : `onebot://file/${encodeURIComponent(id(data.file_id) ?? String(data.file))}`,
+        ...(typeof data.name === 'string' ? { name: data.name } : {}),
+      })
+    if (
+      !['text', 'at', 'reply', 'forward', 'image', 'file', 'video', 'record'].includes(
+        String(segment.type),
+      )
+    )
+      segments.push({ type: 'unsupported', name: String(segment.type) })
+  }
+  return segments
+}
+
 export function encodeMessage(segments: readonly MessageSegment[]) {
   return segments.map((segment) => {
     switch (segment.type) {
@@ -150,6 +162,7 @@ export function encodeMessage(segments: readonly MessageSegment[]) {
       case 'audio':
         return { type: 'record', data: { file: segment.url } }
       case 'unsupported':
+      case 'forward':
         throw new Error('不支持发送此消息类型')
       case 'file':
         throw new Error('OneBot 11 通用消息接口不支持文件发送')

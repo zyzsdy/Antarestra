@@ -359,6 +359,9 @@ importers:
 
   plugins/adapters/im-onebot:
     dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
       '@antarestra/im':
         specifier: workspace:*
         version: link:../../definitions/im

@@ -132,7 +132,10 @@ export function encodeMessage(segments: readonly MessageSegment[]): {
   if (
     payload.some(
       (segment) =>
-        segment.type === 'audio' || segment.type === 'video' || segment.type === 'unsupported',
+        segment.type === 'audio' ||
+        segment.type === 'video' ||
+        segment.type === 'unsupported' ||
+        segment.type === 'forward',
     )
   )
     throw new Error('当前飞书发送接口不支持该消息类型')

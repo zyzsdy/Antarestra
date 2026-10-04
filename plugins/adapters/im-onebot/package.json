@@ -24,6 +24,7 @@
     "title": "OneBot 接入"
   },
   "dependencies": {
+    "@antarestra/ai": "workspace:*",
     "@antarestra/im": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",

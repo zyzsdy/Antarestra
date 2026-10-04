@@ -43,6 +43,7 @@ export type MessageSegment =
   | { type: 'text'; text: string }
   | { type: 'mention'; userId: string }
   | { type: 'reply'; messageId: string }
+  | { type: 'forward'; id: string }
   | MediaSegment
   | { type: 'unsupported'; name: string }
 export interface MediaSegment {
@@ -179,6 +180,7 @@ export interface ConnectionDescriptor {
     action: string,
     target: ChatTarget,
     parameters: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
   ): Promise<unknown>
 }
 export interface ConnectionSnapshot {

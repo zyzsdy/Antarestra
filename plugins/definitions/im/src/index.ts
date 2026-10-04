@@ -944,10 +944,32 @@ export class ImService extends Service<ServiceOptions> {
         .execute()
     })
   }
+  /** 从持久化空间路由解析目标，不接受模型指定连接或聊天。 */
+  async resolveTarget(workspaceId: string): Promise<ScopedTarget> {
+    const route = await this.db()
+      .selectFrom('route')
+      .selectAll()
+      .where('workspace_id', '=', workspaceId)
+      .executeTakeFirst()
+    const entry =
+      route &&
+      [...this.connections.values()].find(
+        (entry) => connectionKey(entry.descriptor) === route.connection_key,
+      )
+    if (!route || !entry) throw new ImError(404, 'not_found', '当前空间没有可用的 IM 接入')
+    this.assertEntry(entry)
+    if (route.chat_type !== 'group' && route.chat_type !== 'private')
+      throw new ImError(400, 'invalid_route', 'IM 聊天类型无效')
+    const chat: ChatTarget = { type: route.chat_type, id: route.chat_id }
+    if (!this.getChatPolicy(entry.descriptor.id, chat).enabled)
+      throw new ImError(403, 'forbidden', 'IM 聊天已禁用')
+    return { workspaceId, connectionId: entry.descriptor.id, chat }
+  }
   async invoke(
     target: ScopedTarget,
     action: string,
     parameters: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const entry = this.entry(target.connectionId)
     const route = await this.db()
@@ -967,7 +989,17 @@ export class ImService extends Service<ServiceOptions> {
     this.assertEntry(entry)
     if (!entry.descriptor.capabilities?.includes(action) || !entry.descriptor.invoke)
       throw new Error('IM 接入不支持该操作')
-    return entry.descriptor.invoke(action, target.chat, parameters)
+    const combined = signal
+      ? AbortSignal.any([signal, entry.controller.signal])
+      : entry.controller.signal
+    combined.throwIfAborted()
+    const work = entry.descriptor.invoke(action, target.chat, parameters, combined)
+    entry.pending.add(work)
+    try {
+      return await work
+    } finally {
+      entry.pending.delete(work)
+    }
   }
 }
 export default defineDatabasePlugin({

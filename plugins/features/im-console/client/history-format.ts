@@ -19,6 +19,7 @@ export function segmentText(segment: MessageSegment) {
   if (segment.type === 'text') return segment.text
   if (segment.type === 'mention') return `@${segment.userId}`
   if (segment.type === 'reply') return `[引用消息 ${segment.messageId}]`
+  if (segment.type === 'forward') return `[合并转发 ${segment.id}]`
   if (segment.type === 'unsupported') return `[${segment.name}]`
   const labels = { image: '图片', video: '视频', audio: '音频', file: '文件' }
   return `[${labels[segment.type]}${segment.name ? `：${segment.name}` : ''}]`

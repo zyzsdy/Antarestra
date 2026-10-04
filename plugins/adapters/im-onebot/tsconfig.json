@@ -7,6 +7,7 @@
   },
   "extends": "../../../tsconfig.base.json",
   "references": [
+    { "path": "../../definitions/ai" },
     {
       "path": "../../../packages/plugin-sdk"
     },

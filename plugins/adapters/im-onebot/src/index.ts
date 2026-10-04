@@ -1,4 +1,5 @@
 import type { Context } from '@antarestra/plugin-sdk'
+import { AiError } from '@antarestra/ai'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import '@antarestra/plugin-server'
 import type { ChatTarget, ConnectionPolicy } from '@antarestra/im'
@@ -6,7 +7,8 @@ import '@antarestra/im'
 import { downloadMedia } from './media.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
-import { encodeMessage, id, normalizeMessage, record } from './message.js'
+import { encodeMessage, id, normalizeMessage, normalizeSegments, record } from './message.js'
+import { emojiIds, registerTools } from './tools.js'
 
 export const name = 'im-onebot'
 export const inject = ['server', 'im']
@@ -111,7 +113,17 @@ export function apply(ctx: Context, input: Config) {
     accountId: config.selfId,
     ...(config.label ? { label: config.label } : {}),
     ...(config.policy ? { policy: config.policy } : {}),
-    capabilities: ['text', 'mention', 'reply', 'image', 'member', 'group.ban', 'group.kick'],
+    capabilities: [
+      'text',
+      'mention',
+      'reply',
+      'image',
+      'member',
+      'group.ban',
+      'group.kick',
+      'message.forward',
+      'message.emoji-like',
+    ],
     validateMessage: (segments) => {
       encodeMessage(segments)
     },
@@ -153,7 +165,49 @@ export function apply(ctx: Context, input: Config) {
         role: member.role === 'admin' || member.role === 'owner' ? member.role : 'member',
       }
     },
-    async invoke(action, target, parameters) {
+    async invoke(action, target, parameters, signal) {
+      if (!allowed(config.policy, target)) throw new Error('目标聊天未获准接入')
+      if (action === 'message.forward' || action === 'message.emoji-like') {
+        const messageId = id(parameters.message_id)
+        if (!messageId || !/^-?\d+$/.test(messageId)) throw new Error('必须指定有效的原始消息 ID')
+        const emojiId = id(parameters.emoji_id)
+        if (action === 'message.emoji-like' && (!emojiId || !emojiIds.includes(emojiId)))
+          throw new Error('不支持的表情 ID')
+        if (action === 'message.forward' && parameters.id !== undefined && !id(parameters.id))
+          throw new Error('合并转发资源 ID 无效')
+        const call = async (action: string, params: Record<string, unknown>) => {
+          try {
+            return await rpc(action, params, signal)
+          } catch (error) {
+            throw new AiError(
+              'onebot_error',
+              error instanceof Error ? error.message : 'OneBot 调用失败',
+            )
+          }
+        }
+        const message = record(await call('get_msg', { message_id: messageId }))
+        const chatId = message.message_type === 'group' ? id(message.group_id) : id(message.user_id)
+        if (
+          id(message.message_id) !== messageId ||
+          message.message_type !== target.type ||
+          chatId !== target.id
+        )
+          throw new AiError('foreign_message', '消息不属于当前聊天', 403)
+        if (action === 'message.emoji-like') {
+          const result = await call('set_msg_emoji_like', {
+            message_id: messageId,
+            emoji_id: emojiId,
+            set: true,
+          })
+          return { message_id: messageId, emoji_id: emojiId, result }
+        }
+        const forwards =
+          normalizeSegments(message.message)?.filter((segment) => segment.type === 'forward') ?? []
+        const forwardId = parameters.id === undefined ? forwards[0]?.id : id(parameters.id)
+        if (!forwardId || !forwards.some((segment) => segment.id === forwardId))
+          throw new AiError('invalid_forward', '消息中不存在指定的合并转发')
+        return call('get_forward_msg', { id: forwardId })
+      }
       if (!allowed(config.policy, target) || target.type !== 'group')
         throw new Error('目标群未获准接入')
       if (action !== 'group.ban' && action !== 'group.kick') throw new Error('不支持的平台操作')
@@ -168,15 +222,20 @@ export function apply(ctx: Context, input: Config) {
           duration > 2592000
         )
           throw new Error('禁言时长必须为 0 至 2592000 秒的整数')
-        return rpc('set_group_ban', { group_id: target.id, user_id: userId, duration })
+        return rpc('set_group_ban', { group_id: target.id, user_id: userId, duration }, signal)
       }
-      return rpc('set_group_kick', {
-        group_id: target.id,
-        user_id: userId,
-        reject_add_request: false,
-      })
+      return rpc(
+        'set_group_kick',
+        {
+          group_id: target.id,
+          user_id: userId,
+          reject_add_request: false,
+        },
+        signal,
+      )
     },
   })
+  ctx.inject(['ai'], (owner) => registerTools(owner))
   ctx.effect(() => async () => {
     active = false
     current = undefined
