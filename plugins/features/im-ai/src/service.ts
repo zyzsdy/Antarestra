@@ -41,6 +41,7 @@ export class ImAiService extends Service<Config> {
   private readonly workers = new Map<string, Promise<void>>()
   private readonly requests = new Map<string, MessageContext>()
   private readonly activeRuns = new Map<string, string>()
+  private readonly deliveries = new Map<string, AbortController>()
   private readonly activatedAt = new Map<string, number[]>()
   private readonly lastActivatedAt = new Map<string, number>()
   private readonly dynamicReplies = new Map<string, DynamicReplyState>()
@@ -309,13 +310,16 @@ export class ImAiService extends Service<Config> {
   }
   private async execute(row: JobRow) {
     const epoch = this.epochs.get(row.workspace_id) ?? 0
+    const delivery = new AbortController()
+    this.deliveries.set(row.workspace_id, delivery)
+    const signal = AbortSignal.any([this.abort.signal, delivery.signal])
     const target = {
       connectionId: row.connection_id,
       chat: { type: row.chat_type, id: row.chat_id },
       workspaceId: row.workspace_id,
     }
     const live = () => {
-      this.abort.signal.throwIfAborted()
+      signal.throwIfAborted()
       if (epoch !== (this.epochs.get(row.workspace_id) ?? 0)) throw new Error('运行已停止')
       const policy = this.ctx.im.getChatPolicy(row.connection_id, target.chat)
       if (!policy.enabled || policy.ai === false) throw new Error('聊天 AI 已禁用')
@@ -475,11 +479,7 @@ export class ImAiService extends Service<Config> {
             .execute()
           return
         }
-        await this.db
-          .updateTable('jobs')
-          .set({ attempts: row.attempts + 1 })
-          .where('id', '=', row.id)
-          .execute()
+        let attemptStarted = false
         try {
           for (const [index, segments] of messages.entries()) {
             live()
@@ -487,7 +487,20 @@ export class ImAiService extends Service<Config> {
             await this.ctx.im.send(target, segments, {
               // 首条沿用旧键，恢复旧任务时也不会重复发送。
               idempotencyKey: `im-ai-${row.id}${index ? `-${index}` : ''}`,
-              signal: this.abort.signal,
+              signal,
+              beforeSend: async () => {
+                live()
+                await this.ai.verify(access!)
+                // 等待可被卸载取消，直到实际投递前才记录本轮尝试。
+                if (!attemptStarted) {
+                  await this.db
+                    .updateTable('jobs')
+                    .set({ attempts: row.attempts + 1 })
+                    .where('id', '=', row.id)
+                    .execute()
+                  attemptStarted = true
+                }
+              },
             })
           }
           await this.db
@@ -502,14 +515,17 @@ export class ImAiService extends Service<Config> {
             typeof error === 'object' &&
             'code' in error &&
             (error.code === 'delivery_unknown' || error.code === 'timeout')
+          const interrupted = signal.aborted && !unknown
           await this.db
             .updateTable('jobs')
             .set({
               delivery: unknown
                 ? 'unknown'
-                : row.attempts + 1 >= this.config.deliveryAttempts
+                : !interrupted && row.attempts + 1 >= this.config.deliveryAttempts
                   ? 'failed'
                   : 'pending',
+              // 未开始投递就取消不消耗次数；明确失败仍计数，避免无限重试。
+              attempts: row.attempts + (interrupted && !attemptStarted ? 0 : 1),
             })
             .where('id', '=', row.id)
             .execute()
@@ -553,6 +569,8 @@ export class ImAiService extends Service<Config> {
         .execute()
       this.ctx.logger.warn('IM AI 消息未完成：身份、策略或运行状态不可用')
     } finally {
+      if (this.deliveries.get(row.workspace_id) === delivery)
+        this.deliveries.delete(row.workspace_id)
       this.activeRuns.delete(row.workspace_id)
       this.requests.delete(row.id)
     }
@@ -562,6 +580,7 @@ export class ImAiService extends Service<Config> {
     this.stopping.add(message.workspaceId)
     try {
       this.epochs.set(message.workspaceId, (this.epochs.get(message.workspaceId) ?? 0) + 1)
+      this.deliveries.get(message.workspaceId)?.abort()
       const runId = this.activeRuns.get(message.workspaceId)
       if (runId) await this.ai.running.get(runId)?.cancel()
       await this.workers.get(message.workspaceId)

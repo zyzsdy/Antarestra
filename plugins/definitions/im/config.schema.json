@@ -3,6 +3,30 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "sendDelayPerCharMs": {
+      "type": "integer",
+      "title": "群聊每个字延迟（毫秒）",
+      "description": "群聊每条消息发送前按文本字符数等待；0 表示关闭所有发送延迟。",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "default": 100
+    },
+    "longMessageThreshold": {
+      "type": "integer",
+      "title": "长消息字符阈值",
+      "description": "文本字符数严格超过此值时，整条消息使用长消息每字延迟。",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "default": 100
+    },
+    "longMessageDelayPerCharMs": {
+      "type": "integer",
+      "title": "长消息每字延迟（毫秒）",
+      "description": "长消息的每个文本字符对应的等待时间；0 表示长消息不等待。",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "default": 20
+    },
     "mediaMaxRetries": {
       "type": "integer",
       "title": "群媒体保存最大重试次数",

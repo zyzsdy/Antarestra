@@ -4,6 +4,7 @@ import { defineDatabasePlugin } from '@antarestra/database'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { migrations, pluginId, type Tables } from './schema.js'
 import { describeArchiveError } from './diagnostics.js'
+import { messageSendDelay, waitForSend, type SendDelayConfig } from './send-delay.js'
 import type {
   ChatPolicy,
   ChatTarget,
@@ -29,7 +30,7 @@ import type {
 } from './types.js'
 export * from './types.js'
 export { downloadHttpMedia } from './media.js'
-export interface Config {
+export interface Config extends Partial<SendDelayConfig> {
   mediaMaxRetries?: number
 }
 export class ImError extends Error {
@@ -112,6 +113,7 @@ export class ImService extends Service<ServiceOptions> {
   private maintenance: Promise<void> | undefined
   private readonly abort = new AbortController()
   private readonly mediaMaxRetries: number
+  private readonly sendDelay: SendDelayConfig
   constructor(ctx: Context, options: ServiceOptions) {
     super(ctx, 'im')
     const config = schemaConfig<Required<Config>>(
@@ -119,6 +121,7 @@ export class ImService extends Service<ServiceOptions> {
       options.config,
     )
     this.mediaMaxRetries = config.mediaMaxRetries
+    this.sendDelay = config
     for (const row of options.policies) {
       this.saved.set(row.id, migrateSavedPolicy(row.value))
       this.revisions.set(row.id, row.revision)
@@ -609,27 +612,26 @@ export class ImService extends Service<ServiceOptions> {
   async send(
     target: ScopedTarget,
     segments: readonly MessageSegment[],
-    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
+    options: {
+      idempotencyKey?: string
+      signal?: AbortSignal
+      /** 在排队及延迟完成后、调用平台前重新检查业务授权。 */
+      beforeSend?: () => void | Promise<void>
+    } = {},
   ): Promise<{ messageId?: string }> {
     const entry = this.entry(target.connectionId)
-    await this.validateSend(target, segments)
+    const signal = options.signal
+      ? AbortSignal.any([entry.controller.signal, options.signal])
+      : entry.controller.signal
     const deliver = async () => {
       this.assertEntry(entry)
+      signal.throwIfAborted()
       if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
         throw new Error('IM 聊天已禁用')
-      const operation = entry.descriptor.send(target.chat, segments, {
-        ...options,
-        signal: options.signal
-          ? AbortSignal.any([entry.controller.signal, options.signal])
-          : entry.controller.signal,
+      const result = await entry.descriptor.send(target.chat, segments, {
+        ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+        signal,
       })
-      entry.pending.add(operation)
-      let result: { messageId?: string }
-      try {
-        result = await operation
-      } finally {
-        entry.pending.delete(operation)
-      }
       if (result.messageId) await this.rememberMessage(target.workspaceId, result.messageId)
       if (result.messageId && target.chat.type === 'group') {
         // 发送已成功，归档失败不能把平台投递变成未知并重复发送。
@@ -654,16 +656,29 @@ export class ImService extends Service<ServiceOptions> {
       }
       return result
     }
-    if (!options.idempotencyKey) return deliver()
-    const id = hash([target.workspaceId, options.idempotencyKey])
-    return this.exclusive(`outbox:${id}`, async () => {
-      const prior = await this.db()
-        .selectFrom('outbox')
-        .selectAll()
-        .where('id', '=', id)
-        .executeTakeFirst()
-      if (prior?.status === 'sent') return JSON.parse(prior.result) as { messageId?: string }
-      if (prior) throw new ImError(409, 'delivery_unknown', 'IM 消息发送结果未知，禁止自动重复发送')
+    const dispatch = async (id?: string) => {
+      this.assertEntry(entry)
+      signal.throwIfAborted()
+      await this.validateSend(target, segments)
+      if (id) {
+        const prior = await this.db()
+          .selectFrom('outbox')
+          .selectAll()
+          .where('id', '=', id)
+          .executeTakeFirst()
+        if (prior?.status === 'sent') return JSON.parse(prior.result) as { messageId?: string }
+        if (prior)
+          throw new ImError(409, 'delivery_unknown', 'IM 消息发送结果未知，禁止自动重复发送')
+      }
+      if (target.chat.type === 'group')
+        await waitForSend(messageSendDelay(segments, this.sendDelay), signal)
+      // 等待期间可能撤销聊天或业务权限，必须在真正发送前重新校验。
+      await this.validateSend(target, segments)
+      await options.beforeSend?.()
+      this.assertEntry(entry)
+      signal.throwIfAborted()
+      if (!id) return deliver()
+      // 仅在等待完成后认领投递；未调用平台的取消仍可以安全重试。
       await this.db().insertInto('outbox').values({ id, status: 'sending', result: '{}' }).execute()
       let result: { messageId?: string }
       try {
@@ -677,7 +692,23 @@ export class ImService extends Service<ServiceOptions> {
         .where('id', '=', id)
         .execute()
       return result
-    })
+    }
+    const send = () => {
+      if (!options.idempotencyKey) return dispatch()
+      const id = hash([target.workspaceId, options.idempotencyKey])
+      return this.exclusive(`outbox:${id}`, () => dispatch(id))
+    }
+    // 同一接入的同一群逐条等待并发送，不同群和接入互不阻塞。
+    const work =
+      target.chat.type === 'group'
+        ? this.exclusive(`send:${hash([connectionKey(entry.descriptor), target.chat.id])}`, send)
+        : send()
+    entry.pending.add(work)
+    try {
+      return await work
+    } finally {
+      entry.pending.delete(work)
+    }
   }
   registerMediaArchive(owner: Context, archive: MediaArchive) {
     if (this.mediaArchive) throw new Error('群消息媒体归档服务重复注册')

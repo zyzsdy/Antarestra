@@ -47,7 +47,8 @@ export async function setup(
   await ctx.plugin(database, { filename: ':memory:' })
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
   await ctx.plugin(rbac)
-  const imPlugin = await ctx.plugin(im, options.imConfig ?? {})
+  // 无关延迟的功能测试立即投递；延迟专项测试显式传入配置（空对象使用默认值）。
+  const imPlugin = await ctx.plugin(im, options.imConfig ?? { sendDelayPerCharMs: 0 })
   await ctx.plugin(identityIm)
   const commandPlugin = await ctx.plugin(commands)
   const messages: MessageContext[] = []
