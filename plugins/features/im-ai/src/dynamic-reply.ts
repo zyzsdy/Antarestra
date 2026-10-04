@@ -27,13 +27,22 @@ export function dynamicReplyProbability(
   return baseline + (1 - baseline) * pressure
 }
 
-/** 只在消息成功入队时提交激活；窗口内回复不续期，避免连续抢话。 */
-export function recordDynamicActivation(
+/** 成功入队后重新累计基础概率，不提前增加热点概率。 */
+export function recordDynamicActivation(state: DynamicReplyState) {
+  state.silentMessages = 0
+}
+
+/** 有效非空回复开启热点，窗口内不续期；自主沉默立即退回基础概率。 */
+export function recordDynamicReply(
   policy: DynamicReplyPolicy,
   state: DynamicReplyState,
   now: number,
+  replied: boolean,
 ) {
-  state.silentMessages = 0
+  if (!replied) {
+    delete state.hotStartedAt
+    return
+  }
   if (
     state.hotStartedAt === undefined ||
     now - state.hotStartedAt >= (policy.hotDurationMs ?? dynamicReplyDefaults.hotDurationMs)

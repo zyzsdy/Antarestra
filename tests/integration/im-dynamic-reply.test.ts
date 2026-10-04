@@ -5,6 +5,7 @@ import imAi from '@antarestra/plugin-im-ai'
 import {
   dynamicReplyProbability,
   recordDynamicActivation,
+  recordDynamicReply,
 } from '../../plugins/features/im-ai/src/dynamic-reply.js'
 import type { DynamicReplyState } from '../../plugins/features/im-ai/src/dynamic-reply.js'
 import { cleanup, setup } from './im-features-fixture.js'
@@ -47,18 +48,32 @@ it('默认概率前期极低、后期指数上升，在第 150 条精确达到 1
   for (let n = 1; n <= 150; n++) expect(p(n)).toBeGreaterThan(p(n - 1))
 })
 
-it('热点随时间平滑衰减，窗口内反复激活不续期，结束后可开启新话题', () => {
+it('入队仅重置基础概率，有效回复才启动热点，窗口内回复不续期', () => {
   const state: DynamicReplyState = { silentMessages: 50 }
-  recordDynamicActivation({}, state, 1000)
+  recordDynamicActivation(state)
   expect(state.silentMessages).toBe(0)
+  expect(dynamicReplyProbability({}, state, 1000)).toBe(0.002)
+  recordDynamicReply({}, state, 1000, true)
   expect(dynamicReplyProbability({}, state, 1000)).toBeCloseTo(0.2)
   const early = dynamicReplyProbability({}, state, 31000)
-  recordDynamicActivation({}, state, 31000)
+  recordDynamicActivation(state)
+  recordDynamicReply({}, state, 31000, true)
   expect(state.hotStartedAt).toBe(1000)
   expect(dynamicReplyProbability({}, state, 61000)).toBeLessThan(early)
   expect(dynamicReplyProbability({}, state, 121000)).toBe(0.002)
-  recordDynamicActivation({}, state, 122000)
+  recordDynamicReply({}, state, 122000, true)
   expect(state.hotStartedAt).toBe(122000)
+})
+
+it('自主沉默清除已有热点，保留模型运行期间累计的基础概率', () => {
+  const state: DynamicReplyState = { silentMessages: 0, hotStartedAt: 1000 }
+  recordDynamicActivation(state)
+  state.silentMessages = 75
+  recordDynamicReply({}, state, 2000, false)
+  expect(state).toEqual({ silentMessages: 75 })
+  expect(dynamicReplyProbability({}, state, 2000)).toBe(
+    dynamicReplyProbability({}, { silentMessages: 75 }, 2000),
+  )
 })
 
 it.each([
@@ -94,7 +109,7 @@ it('动态配置可单独启用并持久化，第 N 条入队后重新计数，�
   expect(await app.jobs()).toHaveLength(1)
 })
 
-it('普通 all 组合保持语义，动态条件独立或匹配；普通激活也重置沉默并启动热点', async () => {
+it('普通 all 组合保持语义，动态条件独立或匹配；普通激活后的有效回复也启动热点', async () => {
   const app = await setup({ ai: true })
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
@@ -128,6 +143,165 @@ it('普通 all 组合保持语义，动态条件独立或匹配；普通激活�
   expect(await app.jobs()).toHaveLength(2)
   await app.connection.receive('普通文字三')
   expect(await app.jobs()).toHaveLength(3)
+})
+
+it('模型决定回复前不提前开启热点，也不清零运行期间新增的消息计数', async () => {
+  const gate = Promise.withResolvers<void>()
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    driver: {
+      id: 'driver',
+      async generate() {
+        calls++
+        await gate.promise
+        return { content: [{ type: 'text', text: '<message></message>' }] }
+      },
+    },
+  })
+  await app.ctx.im.setPolicy('qq-a', {
+    ...app.defaultPolicy,
+    defaults: {
+      activation: {
+        prefixes: ['/ai'],
+        dynamic: { baseProbability: 0, hotProbability: 1, maxSilentMessages: 4 },
+      },
+    },
+  })
+  vi.spyOn(Math, 'random').mockReturnValue(0.5)
+  try {
+    await app.connection.receive('/ai 触发')
+    await poll(() => calls).toBe(1)
+    await app.connection.receive('与 AI 无关的一')
+    await app.connection.receive('与 AI 无关的二')
+    expect(await app.jobs()).toHaveLength(1)
+  } finally {
+    gate.resolve()
+  }
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  await app.connection.receive('与 AI 无关的三')
+  expect(await app.jobs()).toHaveLength(1)
+  await app.connection.receive('基础概率达到第四条阈值')
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(2)
+  expect(app.sent).toHaveLength(0)
+})
+
+it.each(['<message></message>', '<im_reply><message> </message></im_reply>', ''])(
+  '空回复不启动热点且清除旧热点，基础概率继续递增，之后非空回复可重新升温：%s',
+  async (silence) => {
+    let answer = silence
+    const app = await setup({
+      ai: true,
+      driver: {
+        id: 'driver',
+        async generate() {
+          return { content: [{ type: 'text', text: answer }] }
+        },
+      },
+    })
+    const policy = {
+      ...app.defaultPolicy,
+      defaults: {
+        activation: {
+          prefixes: ['/ai'],
+          dynamic: { baseProbability: 0, hotProbability: 1, maxSilentMessages: 4 },
+        },
+      },
+    }
+    await app.ctx.im.setPolicy('qq-a', policy)
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    await app.connection.receive('/ai 与 AI 无关')
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    expect(app.sent).toHaveLength(0)
+    for (let n = 1; n <= 3; n++) await app.connection.receive(`普通闲聊 ${n}`)
+    expect(await app.jobs()).toHaveLength(1)
+
+    // 空白标签与非空内容混合时，非空内容仍能开启热点。
+    answer = '<im_reply><message></message><message>参与话题</message></im_reply>'
+    await app.connection.receive('基础概率到达阈值')
+    await poll(() => app.sent.length).toBe(1)
+    answer = silence
+    await app.connection.receive('热点触发，但模型选择沉默')
+    await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(
+      3,
+    )
+    expect(app.sent).toHaveLength(1)
+
+    for (let n = 1; n <= 3; n++) await app.connection.receive(`退回基础概率 ${n}`)
+    expect(await app.jobs()).toHaveLength(3)
+    answer = '重新参与'
+    await app.connection.receive('再次到达基础阈值')
+    await poll(() => app.sent.length).toBe(2)
+    await app.connection.receive('重新开启热点后接话')
+    await poll(() => app.sent.length).toBe(3)
+  },
+)
+
+it.each(['模型失败', '格式错误'] as const)('%s 的错误提示不会开启热点', async (failure) => {
+  const app = await setup({
+    ai: true,
+    driver: {
+      id: 'driver',
+      async generate() {
+        if (failure === '模型失败') throw new Error('测试模型失败')
+        return { content: [{ type: 'text', text: '<im_reply><image></image></im_reply>' }] }
+      },
+    },
+  })
+  await app.ctx.im.setPolicy('qq-a', {
+    ...app.defaultPolicy,
+    defaults: {
+      activation: {
+        prefixes: ['/ai'],
+        dynamic: { baseProbability: 0, hotProbability: 1 },
+      },
+    },
+  })
+  vi.spyOn(Math, 'random').mockReturnValue(0.5)
+  await app.connection.receive('/ai 触发失败')
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect((await app.jobs())[0]?.status).toBe('failed')
+  expect(app.sent).toHaveLength(1)
+  await app.connection.receive('普通闲聊不因错误提示升温')
+  expect(await app.jobs()).toHaveLength(1)
+})
+
+it('一个账号自主沉默时，不清除另一个账号的热点', async () => {
+  let answer = '参与话题'
+  const app = await setup({
+    ai: true,
+    driver: {
+      id: 'driver',
+      async generate() {
+        return { content: [{ type: 'text', text: answer }] }
+      },
+    },
+  })
+  const policy = {
+    ...app.defaultPolicy,
+    defaults: {
+      activation: {
+        prefixes: ['/ai'],
+        dynamic: { baseProbability: 0, hotProbability: 1 },
+      },
+    },
+  }
+  await app.ctx.im.setPolicy('qq-a', policy)
+  const other = app.connect('qq-b', '06', policy)
+  vi.spyOn(Math, 'random').mockReturnValue(0.5)
+  await app.connection.receive('/ai 第一个账号')
+  await poll(() => app.sent.length).toBe(1)
+  await other.receive('/ai 第二个账号')
+  await poll(() => app.sent.length).toBe(2)
+  answer = '<message></message>'
+  await app.connection.receive('第一个账号选择沉默')
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(3)
+  await app.connection.receive('第一个账号已无热点')
+  expect(await app.jobs()).toHaveLength(3)
+  answer = '第二个账号仍在接话'
+  await other.receive('第二个账号仍有热点')
+  await poll(() => app.sent.length).toBe(3)
+  expect(app.sent[2]?.connection).toBe('qq-b')
 })
 
 it('主动发送不被激活条件拦截、不清零沉默、不开启热点，双账号状态独立', async () => {

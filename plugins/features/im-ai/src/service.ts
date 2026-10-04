@@ -17,7 +17,11 @@ import {
 import { registerHistoryTools } from './tools.js'
 import { registerInspection } from './inspection.js'
 import { dynamicReplyDefaults } from '@antarestra/im/activation'
-import { dynamicReplyProbability, recordDynamicActivation } from './dynamic-reply.js'
+import {
+  dynamicReplyProbability,
+  recordDynamicActivation,
+  recordDynamicReply,
+} from './dynamic-reply.js'
 import type { DynamicReplyState } from './dynamic-reply.js'
 import { pluginId } from './store.js'
 import type { JobRow, Tables } from './store.js'
@@ -244,7 +248,7 @@ export class ImAiService extends Service<Config> {
         }
       })
       this.requests.set(id, message)
-      if (dynamic && dynamicState) recordDynamicActivation(dynamic, dynamicState, now)
+      if (dynamicState) recordDynamicActivation(dynamicState)
       this.activatedAt.set(message.workspaceId, [...times, now])
       this.lastActivatedAt.set(message.workspaceId, now)
       void this.pump()
@@ -422,12 +426,12 @@ export class ImAiService extends Service<Config> {
           .set({
             status: row.status,
             answer: row.answer,
-            ...(!row.answer ? { delivery: 'sent' as const } : {}),
+            ...(!row.answer && row.status !== 'completed' ? { delivery: 'sent' as const } : {}),
           })
           .where('id', '=', row.id)
           .execute()
       }
-      if (row.answer) {
+      if (row.answer || row.status === 'completed') {
         live()
         await this.ai.verify(access)
         if (!row.reply_plan) {
@@ -436,11 +440,11 @@ export class ImAiService extends Service<Config> {
             messages =
               row.status === 'completed'
                 ? parseReply(
-                    row.answer,
+                    row.answer ?? '',
                     this.ctx.im.listConnections().find((item) => item.id === row.connection_id)
                       ?.capabilities,
                   )
-                : [[{ type: 'text', text: row.answer }]]
+                : [[{ type: 'text', text: row.answer ?? '' }]]
             // 完整预检后才发送第一条；引用必须属于当前空间。
             for (const segments of messages) await this.ctx.im.validateSend(target, segments)
           } catch {
@@ -456,8 +460,21 @@ export class ImAiService extends Service<Config> {
             .set({ reply_plan: row.reply_plan, status: row.status })
             .where('id', '=', row.id)
             .execute()
+          // 只在首次固化有效回复时更新热度，投递重试不再次改变动态状态。
+          const dynamic = row.chat_type === 'group' ? live().activation?.dynamic : undefined
+          const state = this.dynamicReplies.get(row.workspace_id)
+          if (row.status === 'completed' && dynamic && state)
+            recordDynamicReply(dynamic, state, Date.now(), messages.length > 0)
         }
         const messages = JSON.parse(row.reply_plan) as MessageSegment[][]
+        if (!messages.length) {
+          await this.db
+            .updateTable('jobs')
+            .set({ delivery: 'sent' })
+            .where('id', '=', row.id)
+            .execute()
+          return
+        }
         await this.db
           .updateTable('jobs')
           .set({ attempts: row.attempts + 1 })

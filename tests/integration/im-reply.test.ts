@@ -48,7 +48,9 @@ it.each([
   '<im_reply x="1"><message>好</message></im_reply>',
   '<im_reply><message>好</message>额外文字</im_reply>',
   '<im_reply><message>好</message></im_reply>额外文字',
-  '<im_reply><message> </message></im_reply>',
+  '<im_reply><image> </image></im_reply>',
+  '<im_reply><sticker></sticker></im_reply>',
+  '<im_reply><message quote=""></message></im_reply>',
   '<im_reply><message quote="">好</message></im_reply>',
   '<im_reply><message quote="1" quote="2">好</message></im_reply>',
   '<im_reply><message><image>https://example.com/a.png</image></message></im_reply>',
@@ -58,9 +60,71 @@ it.each([
   '<im_reply><image>https://user:pass@example.com/a.png</image></im_reply>',
   '<im_reply><unknown>文本</unknown></im_reply>',
   `<im_reply>${'<message>文本</message>'.repeat(21)}</im_reply>`,
+  `<im_reply>${'<message></message>'.repeat(21)}</im_reply>`,
 ])('拒绝无效的整份回复：%s', (text) => {
   expect(() => parseReply(text)).toThrow()
 })
+
+it.each([
+  '',
+  ' \n ',
+  '<message></message>',
+  ' <message> \n </message> ',
+  '<im_reply><message></message></im_reply>',
+  '<im_reply><message> \n </message><message></message></im_reply>',
+])('空回复解析为无需发送的计划：%s', (text) => {
+  expect(parseReply(text)).toEqual([])
+})
+
+it('忽略空白文本标签，保留非空文本和图片顺序，仍校验完整格式', () => {
+  expect(
+    parseReply(
+      '<im_reply><message></message><message>正文</message><message> </message><image>https://example.com/a.png</image></im_reply>',
+    ),
+  ).toEqual([
+    [{ type: 'text', text: '正文' }],
+    [{ type: 'image', url: 'https://example.com/a.png' }],
+  ])
+  expect(() => parseReply('<im_reply><message></message><message>未闭合</im_reply>')).toThrow()
+  expect(replyFormatGuide()).toContain('<message></message>')
+  expect(replyFormatGuide()).toContain('IM 侧不会发送任何消息')
+})
+
+it.each(['<message></message>', '<im_reply><message> \n </message></im_reply>', ''])(
+  '自主空回复正常完成，不发送消息或错误提示，恢复空计划也不重跑模型：%s',
+  async (text) => {
+    const generate = vi.fn(driver(text).generate)
+    const app = await setup({ ai: true, driver: { id: 'driver', generate } })
+    await app.connection.receive('/ai 看一下聊天')
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    const job = (await app.jobs())[0]!
+    expect(job).toMatchObject({
+      status: 'completed',
+      answer: text.trim(),
+      reply_plan: '[]',
+      attempts: 0,
+    })
+    expect(app.sent).toHaveLength(0)
+    expect(
+      (await app.ctx.im.history(job.workspace_id, { limit: 20 })).filter(
+        (entry) => entry.message.sender.bot,
+      ),
+    ).toHaveLength(0)
+
+    await app.aiPlugin!.dispose()
+    await app.ctx.database
+      .scope<Tables>(app.ctx, pluginId)
+      .updateTable('jobs')
+      .set({ delivery: 'pending' })
+      .where('id', '=', job.id)
+      .execute()
+    await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    expect(generate).toHaveBeenCalledTimes(1)
+    expect(app.sent).toHaveLength(0)
+    expect((await app.jobs())[0]?.attempts).toBe(0)
+  },
+)
 
 it('飞书图片使用平台资源键，指引明确平台差异', () => {
   const capabilities = ['text', 'reply', 'image.key']
@@ -145,7 +209,7 @@ it.each([
   await poll(() => app.sent.length).toBe(1)
   if (expected === 'none') expect(prompt).toBe('系统')
   else {
-    expect(prompt.split('IM 回复格式：')).toHaveLength(2)
+    expect(prompt.split('回复格式：')).toHaveLength(2)
     expect(prompt).toBe(
       expected === 'tail' ? `系统\n\n${replyFormatGuide([])}` : `前文${replyFormatGuide([])}后文`,
     )
