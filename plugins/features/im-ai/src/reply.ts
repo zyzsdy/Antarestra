@@ -16,6 +16,12 @@ export function replyFormatGuide(capabilities?: readonly string[]) {
   return `回复格式：
 一次最终回复可以按顺序发送多条独立消息。需要分条、引用、@用户、发送图片或保持沉默时，严格使用以下受限标签格式：
 <im_reply>
+<status>
+心情: ""
+状态: ""
+记忆: ""
+动作: ""
+</status>
 <message>第一条文本</message>
 <image>图片地址</image>
 <message quote="原始消息ID">针对该发言的回复</message>
@@ -23,7 +29,7 @@ export function replyFormatGuide(capabilities?: readonly string[]) {
 <sticker>表情包图片地址</sticker>
 </im_reply>
 只输出一个 im_reply 外层，不加 Markdown 代码围栏或标签外说明。每个 message、image、sticker 都会单独发送，最多 ${maxReplyMessages} 条；按需要选择内容，不必包含全部类型。
-可以使用一个 <status>自由文本</status> 保存当前聊天的状态，放在 im_reply 内与 message 同级，也可放在回复前后或单独输出。status 内部完全由你自由书写，不要求字段或格式，不解析内部标签或转义字符；内容原样保存到当前工作空间，不发送到聊天。最新状态整体替换旧值；省略 status 保留旧值，<status></status> 清空状态。后续提示词可通过 {{ im_status }} 读取，不同群聊和私聊互相独立。只有 status 时保持沉默。
+可以使用一个 <status>自由文本</status> 保存当前聊天的状态，放在 im_reply 内与 message 同级，也可放在回复前后或单独输出。status 内部内容只保存为当前状态，不发送到聊天。
 message 内可写多行文本，并可插入 <at id="用户ID"></at> 主动@用户；可与文本混排、连续@多个用户，也可仅包含 at。id 使用当前聊天上下文或 im_history_query 中真实发言者的 id（QQ 用户号或飞书用户 open_id），不要使用昵称、消息ID或猜测ID；at 必须为空且只能带一个非空 id 属性。image 和 sticker 内只能写图片地址。sticker 按图片发送，不代表平台原生表情或专属贴纸。${media}
 message、image 和 sticker 均可带唯一的 quote="消息ID" 属性，引用当前聊天中上下文或 im_history_query 返回的真实原始 messageId；不要使用用户ID、归档ID或猜测ID。
 如果当前聊天与你无关或你不想回复，可以输出 <im_reply><message></message></im_reply>（也可简写为 <message></message>），表示保持沉默，IM 侧不会发送任何消息，也不会发送提示。空白 message 会被忽略；与其他非空内容混用时，仍发送非空内容。image 和 sticker 不允许为空。

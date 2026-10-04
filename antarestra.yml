@@ -15,7 +15,7 @@ plugins:
       isMobile: false
       hasTouch: false
   puppeteer:
-    args: ['--proxy-server=socks5://127.0.0.1:7890']
+    args: [ '--proxy-server=socks5://127.0.0.1:7890' ]
     acceptInsecureCerts: true
     defaultViewport:
       width: 1920
@@ -24,7 +24,7 @@ plugins:
       isMobile: false
       hasTouch: false
   hmr:
-    include: [plugins]
+    include: [ plugins ]
     exclude: []
   database: {}
   database-kysely:
@@ -48,13 +48,15 @@ plugins:
         ids: []
       group:
         mode: whitelist
-        ids: ['40894918']
+        ids:
+          - "40894918"
+          - "839236997"
       defaults:
         commands: true
         ai: true
         activation:
           mention: true
-          prefixes: ['/ai']
+          prefixes: [ '/ai' ]
           cooldownMs: 3000
           maxPerMinute: 10
   storage: {}
