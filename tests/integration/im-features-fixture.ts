@@ -16,6 +16,7 @@ import type {
 } from '@antarestra/im'
 import identityIm from '@antarestra/plugin-identity-im'
 import commands from '@antarestra/plugin-im-commands'
+import type { Config as CommandsConfig } from '@antarestra/plugin-im-commands'
 import ai from '@antarestra/ai'
 import type { AgentPreset, ModelDriver } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
@@ -30,6 +31,7 @@ export async function cleanup() {
 export async function setup(
   options: {
     ai?: boolean
+    commands?: Partial<CommandsConfig>
     imConfig?: ImConfig
     driver?: ModelDriver
     queueLimit?: number
@@ -51,7 +53,7 @@ export async function setup(
   // 无关延迟的功能测试立即投递；延迟专项测试显式传入配置（空对象使用默认值）。
   const imPlugin = await ctx.plugin(im, options.imConfig ?? { sendDelayPerCharMs: 0 })
   await ctx.plugin(identityIm)
-  const commandPlugin = await ctx.plugin(commands)
+  const commandPlugin = await ctx.plugin(commands, options.commands ?? {})
   const messages: MessageContext[] = []
   ctx.im.registerHandler(ctx, {
     id: 'capture',
@@ -71,6 +73,7 @@ export async function setup(
     accountId = '05',
     policy = defaultPolicy,
     downloadMedia?: ConnectionDescriptor['downloadMedia'],
+    getMember: NonNullable<ConnectionDescriptor['getMember']> = async () => ({ active: true }),
   ) {
     const handle = ctx.im.registerConnection(ctx, {
       id,
@@ -78,7 +81,7 @@ export async function setup(
       platform: 'qq',
       policy,
       ...(downloadMedia ? { downloadMedia } : {}),
-      getMember: async () => ({ active: true }),
+      getMember,
       async send(target, segments) {
         if (sendError) throw sendError
         sent.push({ connection: id, target, segments })

@@ -1,7 +1,7 @@
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
-import type { MessageContext } from '@antarestra/im'
+import type { ChatAccessPolicy, MessageContext } from '@antarestra/im'
 import '@antarestra/rbac'
 import { AuthError } from '@antarestra/rbac'
 import { defineDatabasePlugin } from '@antarestra/database'
@@ -10,6 +10,12 @@ import { GroupAdmins, migrations, pluginId } from './admins.js'
 export interface Config {
   prefix: string
   builtins: boolean
+  commands: Record<string, CommandPolicy>
+}
+export interface CommandPolicy {
+  access?: 'user' | 'bot-admin'
+  group?: Pick<ChatAccessPolicy, 'mode' | 'ids'>
+  private?: Pick<ChatAccessPolicy, 'mode' | 'ids'>
 }
 export interface CommandContext extends MessageContext {
   readonly args: readonly string[]
@@ -17,7 +23,7 @@ export interface CommandContext extends MessageContext {
 }
 export interface Command {
   name: string
-  /** 默认普通用户；bot-admin 仅允许当前群的群主或显式指定的 bot 管理员。 */
+  /** 默认授权级别，可由集中配置覆盖；bot-admin 仅在群聊中检查身份。 */
   access?: 'user' | 'bot-admin'
   description: string
   usage?: string
@@ -81,7 +87,10 @@ export class ImCommandsService extends Service<Config> {
     readonly config: Config,
   ) {
     super(ctx, 'imCommands')
-    this.admins = new GroupAdmins(ctx)
+    this.admins = new GroupAdmins(
+      ctx,
+      async (message) => !(await this.denial({ name: 'admin', access: 'bot-admin' }, message)),
+    )
     ctx.im.registerHandler(ctx, {
       id: 'im-commands',
       stage: 'command',
@@ -95,6 +104,7 @@ export class ImCommandsService extends Service<Config> {
       minArgs: 2,
       maxArgs: 2,
       execute: async (message) => {
+        if (message.message.chat.type !== 'group') return '管理当前群的管理员仅可在群聊中使用。'
         if (message.args[0] !== 'add') return `用法：${config.prefix}admin add <id>`
         try {
           await this.admins.add(message, message.args[1]!)
@@ -118,21 +128,18 @@ export class ImCommandsService extends Service<Config> {
         maxArgs: 0,
         execute: async (message) => {
           const lines: string[] = []
-          let administrator: boolean | undefined
+          let administrator: Promise<boolean> | undefined
           for (const { command } of this.entries.values()) {
-            if (command.access === 'bot-admin') {
-              administrator ??= await this.admins.allowed(message)
-              if (!administrator) continue
-            }
-            if (command.permission) {
-              try {
-                await ctx.rbac.authorizeRequest('im', message.request, command.permission)
-              } catch {
-                continue
-              }
-            }
+            if (
+              await this.denial(
+                command,
+                message,
+                () => (administrator ??= this.admins.allowed(message)),
+              )
+            )
+              continue
             lines.push(
-              `${config.prefix}${command.name}${command.usage ? ` ${command.usage}` : ''}：${command.description}${command.access === 'bot-admin' ? '（bot 管理）' : ''}`,
+              `${config.prefix}${command.name}${command.usage ? ` ${command.usage}` : ''}：${command.description}${this.access(command) === 'bot-admin' ? '（bot 管理）' : ''}`,
             )
           }
           return lines.join('\n')
@@ -161,6 +168,37 @@ export class ImCommandsService extends Service<Config> {
       }
     })
   }
+  private policy(name: string) {
+    return Object.hasOwn(this.config.commands, name) ? this.config.commands[name] : undefined
+  }
+  private access(command: Pick<Command, 'name' | 'access'>) {
+    return this.policy(command.name)?.access ?? command.access ?? 'user'
+  }
+  private async denial(
+    command: Pick<Command, 'name' | 'access' | 'permission'>,
+    message: MessageContext,
+    administrator = () => this.admins.allowed(message),
+  ) {
+    const chat = message.message.chat
+    const current = this.ctx.im.getChatPolicy(message.connection.id, chat)
+    const list = this.policy(command.name)?.[chat.type]
+    if (
+      !current.enabled ||
+      current.commands === false ||
+      (list &&
+        (list.mode === 'whitelist' ? !list.ids.includes(chat.id) : list.ids.includes(chat.id)))
+    )
+      return 'chat' as const
+    if (chat.type === 'group' && this.access(command) === 'bot-admin' && !(await administrator()))
+      return 'access' as const
+    if (command.permission) {
+      try {
+        await this.ctx.rbac.authorizeRequest('im', message.request, command.permission)
+      } catch {
+        return 'permission' as const
+      }
+    }
+  }
   private async handle(message: MessageContext) {
     const text = message.message.segments
       .filter((part) => part.type === 'text')
@@ -169,40 +207,39 @@ export class ImCommandsService extends Service<Config> {
       .trim()
     if (!text.startsWith(this.config.prefix)) return 'continue' as const
     const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(text.slice(this.config.prefix.length))
-    const entry = match?.[1] ? this.entries.get(match[1]) : undefined
-    if (!entry) return 'continue' as const
-    const current = this.ctx.im.getChatPolicy(message.connection.id, message.message.chat)
-    if (!current.enabled || current.commands === false) return 'consumed' as const
-    const run = this.execute(entry, message, match?.[2] ?? '')
-    entry.pending.add(run)
+    const name = match?.[1]
+    if (!name) return 'continue' as const
+    const entry = this.entries.get(name)
+    if (!entry && !this.policy(name)) return 'continue' as const
+    const run = this.execute(name, entry, message, match?.[2] ?? '')
+    entry?.pending.add(run)
     try {
-      await run
+      return await run
     } finally {
-      entry.pending.delete(run)
+      entry?.pending.delete(run)
     }
-    return 'consumed' as const
   }
-  private async execute(entry: Entry, message: MessageContext, rawArgs: string) {
-    const signal = AbortSignal.any([message.signal, entry.abort.signal])
-    const { command } = entry
+  private async execute(
+    name: string,
+    entry: Entry | undefined,
+    message: MessageContext,
+    rawArgs: string,
+  ) {
+    const signal = entry ? AbortSignal.any([message.signal, entry.abort.signal]) : message.signal
+    const command = entry?.command
     let answer: string | void = undefined
     try {
       signal.throwIfAborted()
-      entry.owner.fiber.assertActive()
-      if (!(await this.ctx.im.authenticate(message.request))) return
-      if (command.access === 'bot-admin' && !(await this.admins.allowed({ ...message, signal })))
-        answer =
-          message.message.chat.type === 'group'
-            ? '仅当前群的 bot 管理员可执行此命令；群主自动拥有该权限。'
-            : 'bot 管理指令仅可在群聊中使用。'
-      if (!answer && command.permission) {
-        try {
-          await this.ctx.rbac.authorizeRequest('im', message.request, command.permission)
-        } catch {
-          answer = '没有执行此命令的权限。'
-        }
-      }
+      entry?.owner.fiber.assertActive()
+      if (!(await this.ctx.im.authenticate(message.request))) return 'consumed' as const
+      const denied = await this.denial(command ?? { name }, { ...message, signal })
+      if (denied === 'chat') return 'consumed' as const
+      if (denied === 'access') answer = '仅当前群的 bot 管理员可执行此命令；群主自动拥有该权限。'
+      if (denied === 'permission') answer = '没有执行此命令的权限。'
       if (!answer) {
+        signal.throwIfAborted()
+        // 已集中配置但由其他处理器执行的入口（例如 /ai）通过检查后继续分发。
+        if (!command || !entry) return 'continue' as const
         let args: string[] | undefined
         try {
           args = parseArguments(rawArgs)
@@ -223,6 +260,7 @@ export class ImCommandsService extends Service<Config> {
       if (!signal.aborted) answer = '命令执行失败，请稍后重试。'
     }
     if (answer && !signal.aborted) await message.reply([{ type: 'text', text: answer }])
+    return 'consumed' as const
   }
 }
 

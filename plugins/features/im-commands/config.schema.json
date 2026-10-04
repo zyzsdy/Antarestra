@@ -9,7 +9,53 @@
       "default": "/",
       "description": "固定命令前缀。"
     },
-    "builtins": { "type": "boolean", "default": true, "description": "启用 ping 与 help 命令。" }
+    "builtins": { "type": "boolean", "default": true, "description": "启用 ping 与 help 命令。" },
+    "commands": {
+      "type": "object",
+      "default": {},
+      "description": "按去掉前缀后的首个单词配置指令，例如 sticker、admin、ai；同一指令的所有子命令共用规则。",
+      "propertyNames": { "pattern": "^[a-z][\\w-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/command" }
+    }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "command": {
+      "type": "object",
+      "properties": {
+        "access": {
+          "type": "string",
+          "enum": ["user", "bot-admin"],
+          "description": "群聊授权级别：user 为普通群友，bot-admin 为当前群的 bot 管理员或群主。私聊忽略此级别；未设置时使用插件声明的级别。"
+        },
+        "group": {
+          "$ref": "#/$defs/access",
+          "description": "群聊名单，填写群 ID；未设置则不增加限制。群主和 bot 管理员也必须通过名单。"
+        },
+        "private": {
+          "$ref": "#/$defs/access",
+          "description": "私聊名单，填写私聊用户 ID；未设置则不增加限制，私聊不检查指令授权级别。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "access": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["whitelist", "blacklist"],
+          "description": "whitelist 仅允许名单内聊天；blacklist 允许名单外聊天。"
+        },
+        "ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "pattern": "^\\S+$" },
+          "uniqueItems": true,
+          "description": "聊天 ID 列表。空白名单全部拒绝，空黑名单全部允许；始终受接入层准入范围限制。"
+        }
+      },
+      "required": ["mode", "ids"],
+      "additionalProperties": false
+    }
+  }
 }

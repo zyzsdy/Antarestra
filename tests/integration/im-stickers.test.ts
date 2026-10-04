@@ -128,6 +128,45 @@ it('表情包添加、删除只对当前群 bot 管理员开放，图片独立�
   expect(await ctx.imStickers.list()).toHaveLength(0)
 })
 
+it('表情包命令统一遵循配置覆盖和名单，私聊获准后可以操作共享库', async () => {
+  const { ctx, commandPlugin, receive, sent } = await setupStickers()
+  await commandPlugin.dispose()
+  await ctx.plugin(commands, {
+    commands: {
+      sticker: {
+        access: 'user',
+        group: { mode: 'whitelist', ids: ['g2'] },
+        private: { mode: 'blacklist', ids: [] },
+      },
+    },
+  })
+  await receive('/sticker add 被拒绝', 'owner', 'g1', [{ type: 'image', url: 'test://image' }])
+  expect(await ctx.imStickers.list()).toEqual([])
+  expect(sent).toEqual([])
+  await receive('/sticker add 普通群友添加', 'member', 'g2', [
+    { type: 'image', url: 'test://image' },
+  ])
+  expect((await ctx.imStickers.list())[0]?.title).toBe('普通群友添加')
+  await receive('/sticker delete 普通群友添加', 'owner', 'g1', [], {
+    chat: { type: 'private', id: 'owner' },
+  })
+  expect(await ctx.imStickers.list()).toEqual([])
+  expect(JSON.stringify(sent.at(-1))).toContain('已删除')
+})
+
+it('默认高级表情包指令在私聊中不检查群身份', async () => {
+  const { ctx, receive, sent } = await setupStickers()
+  const allowed = vi
+    .spyOn(ctx.imCommands.admins, 'allowed')
+    .mockRejectedValue(new Error('不应查询'))
+  await receive('/sticker add 私聊图片', 'owner', 'g1', [{ type: 'image', url: 'test://image' }], {
+    chat: { type: 'private', id: 'owner' },
+  })
+  expect((await ctx.imStickers.list())[0]?.title).toBe('私聊图片')
+  expect(JSON.stringify(sent.at(-1))).toContain('已添加')
+  expect(allowed).not.toHaveBeenCalled()
+})
+
 it('群主自动授权、平台管理员不自动授权，管理员按群持久化且群主转移立即生效', async () => {
   const { ctx, commandPlugin, receive, sent, owners, workspace } = await setupStickers()
   await receive('/admin add delegate', 'platform-admin')

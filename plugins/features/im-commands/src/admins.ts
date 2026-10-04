@@ -24,7 +24,10 @@ export const migrations = [
   }),
 ]
 export class GroupAdmins {
-  constructor(private readonly ctx: Context) {}
+  constructor(
+    private readonly ctx: Context,
+    private readonly authorizeAdd: (message: MessageContext) => Promise<boolean>,
+  ) {}
   private db() {
     this.ctx.fiber.assertActive()
     return this.ctx.database.scope<Tables>(this.ctx, pluginId)
@@ -104,8 +107,8 @@ export class GroupAdmins {
       )
         throw new AuthError(403, '无效的群命令上下文')
       const state = await this.get(message.workspaceId)
-      if (!(await this.allowedState(message, state.users)))
-        throw new AuthError(403, '仅当前群的 bot 管理员可以添加管理员')
+      if (!(await this.authorizeAdd(message)))
+        throw new AuthError(403, '没有执行添加管理员命令的权限')
       if (state.users.includes(userId)) return
       try {
         message.signal.throwIfAborted()
