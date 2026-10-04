@@ -25,34 +25,9 @@ export function apply(ctx: Context) {
 
 ## 集中配置指令权限
 
-在 `im-commands.commands` 中按去掉前缀后的**完整首个单词**配置，例如 `/sticker add 标题` 和 `/sticker delete 标题` 共用 `sticker` 规则，`/sticker-other` 不会命中。修改前缀后配置键不变。可在插件配置面板的“IM 命令”中编辑 `commands` JSON 对象，或切换 YAML；也可修改主配置：
+在控制台“机器人 → 命令权限管理”中配置，需要 `admin.console.view` 和 `admin.im.commands.manage` 权限。页面自动列出本服务及其他插件已注册的指令，支持按名称或说明搜索、每页 20 项分页。每条指令可编辑授权级别、群聊名单模式与群 ID 列表、私聊名单模式与用户 ID 列表。
 
-```yaml
-plugins:
-  im-commands:
-    prefix: /
-    commands:
-      sticker:
-        access: bot-admin
-        group:
-          mode: whitelist
-          ids: ['群号一', '群号二']
-        private:
-          mode: whitelist
-          ids: ['允许管理表情包的用户号']
-      ping:
-        access: user
-        group:
-          mode: blacklist
-          ids: ['禁用此指令的群号']
-        private:
-          mode: blacklist
-          ids: ['禁用此指令的用户号']
-      ai:
-        group:
-          mode: whitelist
-          ids: ['允许命令唤起 AI 的群号']
-```
+配置按去掉前缀后的**完整首个单词**保存到数据库，例如 `/sticker add 标题` 和 `/sticker delete 标题` 共用 `sticker` 规则，`/sticker-other` 不会命中。修改前缀后规则不变。保存立即生效，并使用修订号拒绝并发覆盖；插件卸载后从目录消失，数据库配置保留，重新注册同名指令时恢复。主配置只保留 `prefix`、`builtins`，不再支持 `commands`，也不导入旧配置。
 
 群聊与私聊分别选择名单模式：`whitelist` 只允许 `ids` 内的聊天，`blacklist` 允许名单外的聊天。群聊填写群 ID，私聊填写用户 ID；空白名单全部拒绝，空黑名单全部允许。名单按聊天 ID 匹配，对本命令服务管理的各接入生效；每个接入原有的准入范围仍是上限。
 
@@ -62,9 +37,9 @@ plugins:
 | 群聊 `bot-admin` | 仅当前群 bot 管理员和群主可执行，平台群管理员不自动授权 |
 | 私聊，任一级别   | 不检查指令级别，也不查询群管理员身份                    |
 
-名单先于授权级别检查；群主和 bot 管理员也不能绕过名单。未配置某条指令或某个聊天类型的名单时，不增加指令名单限制，沿用接入层准入范围和命令开关。**高级命令在私聊中也遵循此规则**，需要限定私聊使用者时应显式配置私聊白名单。名单拒绝会静默消费消息，不报参数错误，也不继续落入 AI。
+名单先于授权级别检查；群主和 bot 管理员也不能绕过名单。**新指令的群聊和私聊均默认为空白名单，禁止所有聊天使用**，启用前须在控制台配置。接入层准入范围和聊天命令开关仍然有效。名单拒绝会静默消费消息，不报参数错误，也不继续落入 AI。
 
-`commands.<名称>.access` 可覆盖插件注册时声明的 `access`。未配置则沿用插件声明，插件也未声明则为 `user`。`permission` 可额外指定业务 RBAC 权限，群聊和私聊均保留这项校验；指令级别不会赋予网站/系统管理权限。`/help` 按相同的名单、有效级别和 RBAC 权限过滤已注册命令。
+控制台的授权级别可覆盖插件注册时声明的 `access`。首次保存前沿用插件声明，插件也未声明则为 `user`。`permission` 可额外指定业务 RBAC 权限，群聊和私聊均保留这项校验；指令级别不会赋予网站/系统管理权限。`/help` 按相同的名单、有效级别和 RBAC 权限过滤已注册命令。
 
 ## 群管理员与插件接入
 
@@ -74,9 +49,9 @@ plugins:
 
 现有 `/ping`、`/help`、`/stop`、`/reset` 默认是普通用户命令，`/admin` 和 `/sticker` 默认是 bot 管理命令。新增管理指令应声明 `access: 'bot-admin'`，由集中配置决定最终级别。
 
-命令按整个首个单词精确匹配。命中后无论参数错误、权限不足还是执行失败均消费消息，不继续进入 AI；聊天关闭命令时也消费已注册命令。未注册但存在集中配置的命令（例如 `commands.ai`）会先检查名单和级别，通过后才交给其他处理器，拒绝则消费；关闭聊天命令开关同样会拒绝。未注册且未配置的首词继续传给其他消息处理器。
+命令按整个首个单词精确匹配。命中后无论参数错误、权限不足还是执行失败均消费消息，不继续进入 AI；聊天关闭命令时也消费已注册命令。未注册的首词继续传给其他消息处理器。
 
-`/ai` 等由 AI 激活规则处理的入口可用上述方式配置；仍须匹配 `im-commands.prefix`，配置本身不会注册命令，也不会修改 AI 激活条件。`@`、关键词等非命令激活方式继续由 AI 聊天策略控制。帮助列表只列出实际注册并提供描述的命令。
+由其他消息处理器执行的入口使用 `ctx.imCommands.registerTrigger(owner, { name, description, usage?, access?, permission? })` 注册。IM AI 已注册 `ai`，通过中央权限校验后继续交给 AI 激活流程，被拒绝则消费；同样须匹配 `im-commands.prefix`，注册不会修改 AI 激活条件。`@`、关键词等非命令激活方式继续由 AI 聊天策略控制。帮助列表只列出实际注册并提供描述的命令。
 
 `execute` 收到 `CommandContext`，含 `args`、`rawArgs`、可信 `request`、`actorId`、`workspaceId`、`message`、`connection`、`reply` 与 `signal`。返回字符串会自动回复，也可以调用 `reply` 自行发送消息。耗时操作必须响应 `signal`；卸载所属插件会撤销命令、取消信号并等待活动命令清理。
 

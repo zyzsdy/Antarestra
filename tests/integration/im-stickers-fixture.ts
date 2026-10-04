@@ -8,7 +8,7 @@ import * as adminConsole from '@antarestra/plugin-admin-console'
 import * as imConsole from '@antarestra/plugin-im-console'
 import type { IncomingMessage, MessageSegment } from '@antarestra/im'
 import type { ModelDriver } from '@antarestra/ai'
-import { setup as setupIm } from './im-features-fixture.js'
+import { allowCommand, setup as setupIm } from './im-features-fixture.js'
 
 export const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=',
@@ -77,6 +77,7 @@ export async function setupStickers(ai = false, driver?: ModelDriver) {
   ctx.storage.register(ctx, 'test', storage)
   const filePlugin = await ctx.plugin(files, { backendId: 'test', defaultQuota: 32 * 1024 ** 2 })
   const plugin = await ctx.plugin(stickers)
+  await allowCommand(ctx, 'sticker')
   const base = `http://127.0.0.1:${ctx.server.address!.port}`
   storage.base = base + '/api'
   ctx.server.route(ctx, 'GET', '/test-blobs/:key', (http) => {

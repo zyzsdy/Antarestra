@@ -131,15 +131,17 @@ it('表情包添加、删除只对当前群 bot 管理员开放，图片独立�
 it('表情包命令统一遵循配置覆盖和名单，私聊获准后可以操作共享库', async () => {
   const { ctx, commandPlugin, receive, sent } = await setupStickers()
   await commandPlugin.dispose()
-  await ctx.plugin(commands, {
-    commands: {
-      sticker: {
-        access: 'user',
-        group: { mode: 'whitelist', ids: ['g2'] },
-        private: { mode: 'blacklist', ids: [] },
-      },
+  await ctx.plugin(commands)
+  const current = await ctx.imCommands.getPolicy('sticker')
+  await ctx.imCommands.setPolicy(
+    'sticker',
+    {
+      access: 'user',
+      group: { mode: 'whitelist', ids: ['g2'] },
+      private: { mode: 'blacklist', ids: [] },
     },
-  })
+    current.revision,
+  )
   await receive('/sticker add 被拒绝', 'owner', 'g1', [{ type: 'image', url: 'test://image' }])
   expect(await ctx.imStickers.list()).toEqual([])
   expect(sent).toEqual([])

@@ -17,6 +17,7 @@ import type {
 import identityIm from '@antarestra/plugin-identity-im'
 import commands from '@antarestra/plugin-im-commands'
 import type { Config as CommandsConfig } from '@antarestra/plugin-im-commands'
+import type { CommandPolicy } from '@antarestra/plugin-im-commands'
 import ai from '@antarestra/ai'
 import type { AgentPreset, ModelDriver } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
@@ -25,6 +26,19 @@ import { pluginId } from '../../plugins/features/im-ai/src/store.js'
 import type { Tables } from '../../plugins/features/im-ai/src/store.js'
 
 const contexts: Context[] = []
+export async function allowCommand(ctx: Context, name: string, patch: Partial<CommandPolicy> = {}) {
+  const current = await ctx.imCommands.getPolicy(name)
+  await ctx.imCommands.setPolicy(
+    name,
+    {
+      ...current.policy,
+      group: { mode: 'blacklist', ids: [] },
+      private: { mode: 'blacklist', ids: [] },
+      ...patch,
+    },
+    current.revision,
+  )
+}
 export async function cleanup() {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
 }
@@ -32,6 +46,8 @@ export async function setup(
   options: {
     ai?: boolean
     commands?: Partial<CommandsConfig>
+    /** 其他功能测试显式放行测试指令；权限专项关闭后验证生产默认值。 */
+    allowCommands?: boolean
     imConfig?: ImConfig
     driver?: ModelDriver
     queueLimit?: number
@@ -171,6 +187,11 @@ export async function setup(
       queueLimit: options.queueLimit ?? 5,
       deliveryAttempts: options.deliveryAttempts ?? 2,
     })
+  }
+  if (options.allowCommands !== false) {
+    for (const command of (await ctx.imCommands.listCommands()).commands) {
+      if (command.revision === 0) await allowCommand(ctx, command.name)
+    }
   }
   return {
     ctx,

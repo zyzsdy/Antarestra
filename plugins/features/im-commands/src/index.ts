@@ -1,21 +1,18 @@
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
-import type { ChatAccessPolicy, MessageContext } from '@antarestra/im'
+import type { MessageContext } from '@antarestra/im'
 import '@antarestra/rbac'
 import { AuthError } from '@antarestra/rbac'
 import { defineDatabasePlugin } from '@antarestra/database'
 import { GroupAdmins, migrations, pluginId } from './admins.js'
+import { CommandPolicies, policyMigration } from './policies.js'
+import type { CommandPolicy, CommandSummary } from './policies.js'
+export type { CommandPolicy, CommandPolicyState, CommandSummary } from './policies.js'
 
 export interface Config {
   prefix: string
   builtins: boolean
-  commands: Record<string, CommandPolicy>
-}
-export interface CommandPolicy {
-  access?: 'user' | 'bot-admin'
-  group?: Pick<ChatAccessPolicy, 'mode' | 'ids'>
-  private?: Pick<ChatAccessPolicy, 'mode' | 'ids'>
 }
 export interface CommandContext extends MessageContext {
   readonly args: readonly string[]
@@ -33,7 +30,7 @@ export interface Command {
   execute(context: CommandContext): Promise<string | void> | string | void
 }
 interface Entry {
-  command: Command
+  command: Omit<Command, 'execute'> & { execute?: Command['execute'] }
   owner: Context
   abort: AbortController
   pending: Set<Promise<unknown>>
@@ -82,11 +79,13 @@ export function parseArguments(input: string): string[] {
 export class ImCommandsService extends Service<Config> {
   private readonly entries = new Map<string, Entry>()
   readonly admins: GroupAdmins
+  private readonly policies: CommandPolicies
   constructor(
     ctx: Context,
     readonly config: Config,
   ) {
     super(ctx, 'imCommands')
+    this.policies = new CommandPolicies(ctx)
     this.admins = new GroupAdmins(
       ctx,
       async (message) => !(await this.denial({ name: 'admin', access: 'bot-admin' }, message)),
@@ -130,16 +129,18 @@ export class ImCommandsService extends Service<Config> {
           const lines: string[] = []
           let administrator: Promise<boolean> | undefined
           for (const { command } of this.entries.values()) {
+            const { policy } = await this.policies.get(command.name, command.access)
             if (
               await this.denial(
                 command,
                 message,
                 () => (administrator ??= this.admins.allowed(message)),
+                policy,
               )
             )
               continue
             lines.push(
-              `${config.prefix}${command.name}${command.usage ? ` ${command.usage}` : ''}：${command.description}${this.access(command) === 'bot-admin' ? '（bot 管理）' : ''}`,
+              `${config.prefix}${command.name}${command.usage ? ` ${command.usage}` : ''}：${command.description}${policy.access === 'bot-admin' ? '（bot 管理）' : ''}`,
             )
           }
           return lines.join('\n')
@@ -148,8 +149,16 @@ export class ImCommandsService extends Service<Config> {
     }
   }
   register(owner: Context, command: Command) {
+    return this.registerEntry(owner, command)
+  }
+  /** 注册由后续消息处理器执行的命令入口，仍统一校验权限并展示在控制台。 */
+  registerTrigger(owner: Context, command: Omit<Command, 'execute' | 'minArgs' | 'maxArgs'>) {
+    return this.registerEntry(owner, command)
+  }
+  private registerEntry(owner: Context, command: Entry['command']) {
     this.ctx.fiber.assertActive()
-    if (!/^[a-z][\w-]*$/.test(command.name)) throw new Error('命令名称无效')
+    if (!/^[a-z][\w-]*$/.test(command.name) || command.name.length > 200)
+      throw new Error('命令名称无效')
     if (this.entries.has(command.name)) throw new Error(`命令重复：${command.name}`)
     if ((command.minArgs ?? 0) < 0 || (command.maxArgs ?? Infinity) < (command.minArgs ?? 0))
       throw new Error('命令参数数量无效')
@@ -168,28 +177,55 @@ export class ImCommandsService extends Service<Config> {
       }
     })
   }
-  private policy(name: string) {
-    return Object.hasOwn(this.config.commands, name) ? this.config.commands[name] : undefined
+  private command(name: string) {
+    this.ctx.fiber.assertActive()
+    const entry = this.entries.get(name)
+    if (!entry) throw new AuthError(404, '命令不存在或所属插件已卸载，请刷新列表')
+    return entry.command
   }
-  private access(command: Pick<Command, 'name' | 'access'>) {
-    return this.policy(command.name)?.access ?? command.access ?? 'user'
+  async getPolicy(name: string) {
+    return this.policies.get(name, this.command(name).access)
+  }
+  async setPolicy(name: string, input: unknown, expected: unknown) {
+    this.command(name)
+    return this.policies.set(name, input, expected)
+  }
+  async listCommands(offset = 0, search = '') {
+    this.ctx.fiber.assertActive()
+    const all = [...this.entries.values()]
+      .map(({ command }) => command)
+      .filter((command) =>
+        `${command.name} ${command.description}`.toLowerCase().includes(search.toLowerCase()),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const start = Math.min(offset, Math.max(0, Math.ceil(all.length / 20) - 1) * 20)
+    const commands: CommandSummary[] = await Promise.all(
+      all.slice(start, start + 20).map(async (command) => ({
+        name: command.name,
+        description: command.description,
+        ...(command.usage ? { usage: command.usage } : {}),
+        ...(await this.policies.get(command.name, command.access)),
+      })),
+    )
+    return { commands, total: all.length, offset: start, prefix: this.config.prefix }
   }
   private async denial(
     command: Pick<Command, 'name' | 'access' | 'permission'>,
     message: MessageContext,
     administrator = () => this.admins.allowed(message),
+    policy?: CommandPolicy,
   ) {
     const chat = message.message.chat
     const current = this.ctx.im.getChatPolicy(message.connection.id, chat)
-    const list = this.policy(command.name)?.[chat.type]
+    policy ??= (await this.policies.get(command.name, command.access)).policy
+    const list = policy[chat.type]
     if (
       !current.enabled ||
       current.commands === false ||
-      (list &&
-        (list.mode === 'whitelist' ? !list.ids.includes(chat.id) : list.ids.includes(chat.id)))
+      (list.mode === 'whitelist' ? !list.ids.includes(chat.id) : list.ids.includes(chat.id))
     )
       return 'chat' as const
-    if (chat.type === 'group' && this.access(command) === 'bot-admin' && !(await administrator()))
+    if (chat.type === 'group' && policy.access === 'bot-admin' && !(await administrator()))
       return 'access' as const
     if (command.permission) {
       try {
@@ -210,36 +246,31 @@ export class ImCommandsService extends Service<Config> {
     const name = match?.[1]
     if (!name) return 'continue' as const
     const entry = this.entries.get(name)
-    if (!entry && !this.policy(name)) return 'continue' as const
-    const run = this.execute(name, entry, message, match?.[2] ?? '')
-    entry?.pending.add(run)
+    if (!entry) return 'continue' as const
+    const run = this.execute(entry, message, match?.[2] ?? '')
+    entry.pending.add(run)
     try {
       return await run
     } finally {
-      entry?.pending.delete(run)
+      entry.pending.delete(run)
     }
   }
-  private async execute(
-    name: string,
-    entry: Entry | undefined,
-    message: MessageContext,
-    rawArgs: string,
-  ) {
-    const signal = entry ? AbortSignal.any([message.signal, entry.abort.signal]) : message.signal
-    const command = entry?.command
+  private async execute(entry: Entry, message: MessageContext, rawArgs: string) {
+    const signal = AbortSignal.any([message.signal, entry.abort.signal])
+    const command = entry.command
     let answer: string | void = undefined
     try {
       signal.throwIfAborted()
-      entry?.owner.fiber.assertActive()
+      entry.owner.fiber.assertActive()
       if (!(await this.ctx.im.authenticate(message.request))) return 'consumed' as const
-      const denied = await this.denial(command ?? { name }, { ...message, signal })
+      const denied = await this.denial(command, { ...message, signal })
       if (denied === 'chat') return 'consumed' as const
       if (denied === 'access') answer = '仅当前群的 bot 管理员可执行此命令；群主自动拥有该权限。'
       if (denied === 'permission') answer = '没有执行此命令的权限。'
       if (!answer) {
         signal.throwIfAborted()
-        // 已集中配置但由其他处理器执行的入口（例如 /ai）通过检查后继续分发。
-        if (!command || !entry) return 'continue' as const
+        // 由其他处理器执行的入口（例如 /ai）通过检查后继续分发。
+        if (!command.execute) return 'continue' as const
         let args: string[] | undefined
         try {
           args = parseArguments(rawArgs)
@@ -266,7 +297,7 @@ export class ImCommandsService extends Service<Config> {
 
 export default defineDatabasePlugin({
   name: pluginId,
-  migrations,
+  migrations: [...migrations, policyMigration],
   inject: ['im', 'rbac'],
   async apply(ctx: Context, input: Partial<Config> = {}) {
     const config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)

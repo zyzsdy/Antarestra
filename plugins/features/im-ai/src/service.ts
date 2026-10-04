@@ -82,6 +82,12 @@ export class ImAiService extends Service<Config> {
       stage: 'ai',
       handle: (message) => this.handle(message),
     })
+    ctx.imCommands.registerTrigger(ctx, {
+      name: 'ai',
+      description: '唤起当前空间 AI',
+      usage: '<消息>',
+      permission: 'ai.chat.use',
+    })
     ctx.imCommands.register(ctx, {
       name: 'stop',
       description: '停止当前空间 AI 并清空等待消息',

@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@antarestra/plugin-sdk'
 import { parseArguments } from '@antarestra/plugin-im-commands'
-import { cleanup, setup } from './im-features-fixture.js'
+import { allowCommand, cleanup, setup } from './im-features-fixture.js'
 
 afterEach(cleanup)
 it('没有 AI 插件仍可 ping/help，且只在白名单群响应', async () => {
@@ -36,6 +36,8 @@ it('固定命令解析参数并检查权限，所有命中包括错误都消费�
     maxArgs: 2,
     execute: ({ args }) => args.join('|'),
   })
+  await allowCommand(app.ctx, 'restricted')
+  await allowCommand(app.ctx, 'echo')
   await app.connection.receive('/restricted set 000000')
   await app.connection.receive('/echo "two words" x')
   await app.connection.receive('/echo "broken')
@@ -64,6 +66,7 @@ it('业务插件卸载后回收命令，命令关闭时不会落入 AI', async (
       })
     },
   })
+  await allowCommand(app.ctx, 'owned')
   await app.connection.receive('/owned')
   await plugin.dispose()
   await app.connection.receive('/owned')
@@ -96,6 +99,7 @@ it('所属业务插件卸载会取消正在执行的命令并等待清理', asyn
       })
     },
   })
+  await allowCommand(app.ctx, 'waiting')
   const received = app.connection.receive('/waiting')
   await expect.poll(() => started).toBe(true)
   await plugin.dispose()

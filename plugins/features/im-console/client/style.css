@@ -31,6 +31,9 @@
 .im-table {
   overflow-x: auto;
 }
+.im-command-results {
+  min-height: 180px;
+}
 .im-table table {
   width: 100%;
   border-collapse: collapse;

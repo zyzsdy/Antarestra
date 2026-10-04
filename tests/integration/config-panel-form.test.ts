@@ -15,16 +15,11 @@ async function pluginSchema(directory: string): Promise<Schema> {
   return JSON.parse(await readFile(`${directory}/${pkg.antarestra.configSchema}`, 'utf8')) as Schema
 }
 
-it('IM 命令集中规则可由自动表单读取，动态命令键保留群聊和私聊规则', async () => {
+it('IM 命令启动表单只保留前缀和内置开关，不再配置权限', async () => {
   const schema = await pluginSchema('plugins/features/im-commands')
   expect(supportsForm(schema)).toBe(true)
-  const dynamic = resolveFormSchema(schema)!.properties!.commands!.additionalProperties as Schema
-  const rule = resolveFormSchema(dynamic, schema)!
-  expect(rule.properties!.access!.enum).toEqual(['user', 'bot-admin'])
-  for (const type of ['group', 'private']) {
-    expect(rule.properties![type]!.properties!.mode!.enum).toEqual(['whitelist', 'blacklist'])
-    expect(rule.properties![type]!.required).toEqual(['mode', 'ids'])
-  }
+  expect(Object.keys(resolveFormSchema(schema)!.properties!)).toEqual(['prefix', 'builtins'])
+  expect(() => validateConfig(schema, { commands: {} })).toThrow()
 })
 
 it('OneBot 自动表单展开聊天策略引用，服务端仍强制令牌二选一', async () => {

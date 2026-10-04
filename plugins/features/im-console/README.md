@@ -12,6 +12,14 @@
 
 HTTP 接口：`GET /api/im/connections`、`GET /api/im/connections/:id/policy`、`PUT /api/im/connections/:id/policy`。写入格式为 `{ policy, revision }`，返回保存后的策略与修订号。服务端每次检查管理权限，写入沿用 RBAC 的同源 JSON 校验。
 
+## 命令权限管理
+
+“机器人 → 命令权限管理”自动列出 im-commands 中所有已注册的指令，需要 `admin.console.view` 与 `admin.im.commands.manage`，默认授予 admin。指令按首个单词区分，可设置普通群友或 bot 管理员级别，以及各自独立的群聊、私聊黑白名单。新指令均默认空白名单；空白名单禁止所有，空黑名单允许所有。群主和 bot 管理员仍须通过名单；私聊不检查指令级别。
+
+列表支持名称/说明搜索、每页 20 项分页，搜索与页码保存在 URL。编辑前读取最新配置，名单每行一个 ID，编辑过程中保留换行，保存时去除空行、首尾空白和重复项。保存立即生效；校验、网络或修订冲突均保留草稿，支持重新读取。关闭、跳转和刷新保护未保存修改。
+
+配置由 im-commands 保存到数据库；插件卸载后指令从目录消失，同名指令重新注册时恢复已有配置，不需要主配置中的 `commands`。接口为 `GET /api/im/commands?offset=0&search=关键词`、`GET /api/im/commands/:name` 和 `PUT /api/im/commands/:name`。写入使用 `{ policy, revision }`，冲突返回 409，未注册指令返回 404，命令服务不可用返回 503；响应禁止缓存，写入沿用同源 JSON 校验。服务变化只影响相关入口，不影响 IM 接入与群历史功能。
+
 ## 群消息与 AI 会话
 
 “机器人 → 群消息与 AI 会话”是只读管理入口，要求 `admin.console.view` 和 `admin.im.history.view`，默认授予 admin。该权限允许查看全部已记录群的内容，独立于 `admin.im.manage`；服务端每次校验，不借用管理员个人聊天空间或伪造群成员身份。
