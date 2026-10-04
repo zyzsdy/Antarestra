@@ -15,6 +15,56 @@ const driver = (text: string): ModelDriver => ({
     return { content: [{ type: 'text', text }] }
   },
 })
+const webSearchAnswer = `我会先推《摇曳百合》，日常搞笑，很适合放松看 ([yuruyuri.com](https://yuruyuri.com/3hai/story/introduction.php?utm_source=openai))
+再来《黄金拼图》，偏温馨的校园日常 ([kinmosa.com](https://kinmosa.com/?utm_source=openai))
+想沿着《摇曳百合》接着看，也可以补《大室家》 ([prtimes.jp](https://prtimes.jp/a/?c=2734&f=d2734-1914-2cf413d19e804c57ec7ca4023158b213.pdf&r=1914&utm_source=openai))`
+
+it.each(['原始链接', '已转义链接'])('网页搜索回复保留链接并完成投递和归档：%s', async (format) => {
+  const body = format === '原始链接' ? webSearchAnswer : webSearchAnswer.replaceAll('&', '&amp;')
+  const answer = `<im_reply><message>${body}</message></im_reply>`
+  const segments = [{ type: 'text' as const, text: webSearchAnswer }]
+  expect(parseReply(answer)).toEqual([segments])
+  const app = await setup({ ai: true, driver: driver(answer) })
+  await app.connection.receive('/ai 推荐日常动画')
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  const job = (await app.jobs())[0]!
+  expect(job.status).toBe('completed')
+  expect(JSON.parse(job.reply_plan!)).toEqual([segments])
+  expect(app.sent.map((entry) => entry.segments)).toEqual([segments])
+  const history = await app.ctx.im.history(job.workspace_id, { limit: 20 })
+  expect(
+    history.filter((entry) => entry.message.sender.bot).map((entry) => entry.message.segments),
+  ).toEqual([segments])
+  expect(encodeOneBot(app.sent[0]!.segments)).toEqual([
+    { type: 'text', data: { text: webSearchAnswer } },
+  ])
+  expect(encodeFeishu(app.sent[0]!.segments)).toEqual({
+    msg_type: 'text',
+    content: JSON.stringify({ text: webSearchAnswer.replaceAll('&', '&amp;') }),
+  })
+})
+
+it('正文原始符号和未知实体保留为文本，已知实体只解码一次且不生成标签', () => {
+  expect(
+    parseReply(
+      `<im_reply><message>A & B "双引号" '单引号' &unknown; &#38; &amp;lt; <at id="00123"></at> &lt;at id=&quot;456&quot;&gt;&lt;/at&gt; &</message></im_reply>`,
+    ),
+  ).toEqual([
+    [
+      { type: 'text', text: `A & B "双引号" '单引号' &unknown; &#38; &lt; ` },
+      { type: 'mention', userId: '00123' },
+      { type: 'text', text: ' <at id="456"></at> &' },
+    ],
+  ])
+})
+
+it.each(['image', 'sticker'])('%s 地址支持原始与转义的参数分隔符混用', (tag) => {
+  expect(
+    parseReply(
+      `<im_reply><${tag}>https://example.com/a.png?a=1&b=2&amp;c=%26&amp;amp;d=4&unknown;</${tag}></im_reply>`,
+    ),
+  ).toEqual([[{ type: 'image', url: 'https://example.com/a.png?a=1&b=2&c=%26&amp;d=4&unknown;' }]])
+})
 
 it('按顺序解析文本、图片、表情包和引用，实体仅解码一次', () => {
   expect(
@@ -95,6 +145,7 @@ it.each([
   '<at id="123"/>',
   '<at id="123">',
   '<at id="&unknown;"></at>',
+  '<at id="a&b"></at>',
 ])('拒绝无效的提及标签：%s', (at) => {
   expect(() => parseReply(`<im_reply><message>你好${at}</message></im_reply>`)).toThrow()
 })
@@ -111,7 +162,8 @@ it.each([
   '<im_reply><message quote="">好</message></im_reply>',
   '<im_reply><message quote="1" quote="2">好</message></im_reply>',
   '<im_reply><message><image>https://example.com/a.png</image></message></im_reply>',
-  '<im_reply><message>&unknown;</message></im_reply>',
+  '<im_reply><message quote="&unknown;">无效属性实体</message></im_reply>',
+  '<im_reply><message quote="a&b">未转义属性</message></im_reply>',
   '<im_reply><image>file:///C:/secret.png</image></im_reply>',
   '<im_reply><sticker>base64://xxx</sticker></im_reply>',
   '<im_reply><image>https://user:pass@example.com/a.png</image></im_reply>',
