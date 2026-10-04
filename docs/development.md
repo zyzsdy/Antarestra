@@ -84,6 +84,7 @@ database-kysely:
 | 空间记忆   | 启用 `memory`；主库为 PostgreSQL 时复用，否则另配 `postgresUrl`。[配置说明](../plugins/features/memory/README.md)                                                                                                     |
 | 文件与附件 | 启用 `storage`、`storage-s3`、`workspace-file`，配置 S3 兼容后端。开发环境依次运行 `pnpm startdevstorage`、`pnpm initdevstorage`、`pnpm test:storage`。[S3 / RustFS](../plugins/implementations/storage-s3/README.md) |
 | 网页工具   | 启用 `http`、`playwright`、`web-tools`，安装可用的系统浏览器；搜索另需 Serper Key，截图持久化需要文件服务。[网页工具](../plugins/features/web-tools/README.md)                                                        |
+| 远端终端   | 启用 `http`、`open-terminal`，配置连接 URL 和 API 密钥。四个工具共享同一远端，不按工作空间隔离。[远端终端工具](../plugins/features/open-terminal/README.md)                                                           |
 | IM         | 启用 `im`、`identity-im`、`im-commands`、所选适配器与 `im-ai`；管理页面由 `im-console` 提供。[IM 概览](../plugins/definitions/im/README.md)、[飞书接入](飞书机器人接入.md)                                            |
 | 源码热更新 | 启用 `hmr`，使用开发入口及对应前端构建监听。[HMR](../plugins/features/hmr/README.md)                                                                                                                                  |
 

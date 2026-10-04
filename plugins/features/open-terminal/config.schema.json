@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "apiKey"],
+  "properties": {
+    "url": {
+      "type": "string",
+      "minLength": 1,
+      "title": "连接 URL",
+      "description": "Open Terminal 服务的 HTTP(S) 根地址，可以包含反向代理路径前缀。"
+    },
+    "apiKey": { "type": "string", "minLength": 1, "title": "API 密钥", "format": "password" }
+  }
+}

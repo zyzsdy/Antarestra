@@ -1,0 +1,32 @@
+{
+  "name": "@antarestra/plugin-open-terminal",
+  "description": "通过同一个 Open Terminal 服务为 AI 提供远端命令和文件工具。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "antarestra": {
+    "title": "远端终端工具",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/http": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "image-size": "^2.0.4"
+  }
+}

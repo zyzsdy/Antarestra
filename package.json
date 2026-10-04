@@ -52,6 +52,7 @@
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-memory": "workspace:*",
+    "@antarestra/plugin-open-terminal": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/plugin-storage-s3": "workspace:*",

@@ -92,6 +92,9 @@ importers:
       '@antarestra/plugin-memory':
         specifier: workspace:*
         version: link:plugins/features/memory
+      '@antarestra/plugin-open-terminal':
+        specifier: workspace:*
+        version: link:plugins/features/open-terminal
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:packages/plugin-sdk
@@ -245,6 +248,9 @@ importers:
       '@antarestra/plugin-memory':
         specifier: workspace:*
         version: link:../../plugins/features/memory
+      '@antarestra/plugin-open-terminal':
+        specifier: workspace:*
+        version: link:../../plugins/features/open-terminal
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -935,6 +941,21 @@ importers:
       kysely:
         specifier: ^0.29.5
         version: 0.29.5
+
+  plugins/features/open-terminal:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
+      '@antarestra/http':
+        specifier: workspace:*
+        version: link:../../definitions/http
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      image-size:
+        specifier: ^2.0.4
+        version: 2.0.4
 
   plugins/features/wake-tasks:
     dependencies:
