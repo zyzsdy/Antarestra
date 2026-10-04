@@ -3,6 +3,7 @@
   "compilerOptions": { "composite": true, "rootDir": "src", "outDir": "dist" },
   "include": ["src/**/*.ts"],
   "references": [
+    { "path": "../../definitions/database" },
     { "path": "../../../packages/plugin-sdk" },
     { "path": "../../definitions/im" },
     { "path": "../../definitions/rbac" }

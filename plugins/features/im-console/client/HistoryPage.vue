@@ -5,10 +5,15 @@ import { PaginationField } from '@antarestra/webui/components'
 import { ArrowPathIcon } from '@antarestra/webui/icons'
 import type { GroupSummary } from '@antarestra/im'
 import GroupHistory from './GroupHistory.vue'
+import GroupAdmins from './GroupAdmins.vue'
 import { formatTime } from './history-format'
 import './style.css'
 
-const { api, run, busy, message, router } = useApi()
+const { api, run, busy, message, router, session } = useApi()
+const adminGroup = ref<GroupSummary>()
+const canManageAdmins = computed(() =>
+  session.snapshot.value?.permissions.includes('admin.im.bot.manage'),
+)
 const groups = ref<GroupSummary[]>([])
 const total = ref(0)
 const loaded = ref(false)
@@ -89,7 +94,12 @@ watch(
                   {{ item.connectionId || '已卸载的接入' }}<small>{{ item.platform }}</small>
                 </td>
                 <td>{{ formatTime(item.lastMessageAt) }}</td>
-                <td><button @click="navigate(item.workspaceId)">查看记录</button></td>
+                <td>
+                  <div class="im-toolbar">
+                    <button @click="navigate(item.workspaceId)">查看记录</button
+                    ><button v-if="canManageAdmins" @click="adminGroup = item">bot 管理员</button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -105,5 +115,12 @@ watch(
         />
       </section>
     </template>
+    <GroupAdmins
+      v-if="adminGroup"
+      :key="adminGroup.workspaceId"
+      :workspace-id="adminGroup.workspaceId"
+      :name="adminGroup.name"
+      @close="adminGroup = undefined"
+    />
   </div>
 </template>

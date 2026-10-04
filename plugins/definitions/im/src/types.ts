@@ -199,6 +199,7 @@ export interface ConnectionDescriptor {
   getMember?(
     target: ChatTarget,
     userId: string,
+    options?: { includeRole?: boolean },
   ): Promise<{ active: boolean; role?: 'owner' | 'admin' | 'member' }>
   invoke?(
     action: string,

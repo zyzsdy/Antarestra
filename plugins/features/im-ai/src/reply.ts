@@ -29,7 +29,7 @@ export function replyFormatGuide(capabilities?: readonly string[]) {
 <sticker>resource://表情包资源ID</sticker>
 </im_reply>
 只输出一个 im_reply 外层，不加 Markdown 代码围栏或标签外说明。每个 message、image、sticker 都会单独发送，最多 ${maxReplyMessages} 条；按需要选择内容，不必包含全部类型。
-发送工作空间图片时，优先调用 im_prepare_image（resourceId 或 path 只填一个），把返回的 src 原样放入 image 或 sticker。统一格式为 resource://图片资源ID，QQ 和飞书均支持；ID 必须来自当前空间的文件、图片工具结果或历史消息，不得编造。此工具只准备资源，最终回复才发送图片。
+发送工作空间或共享表情包图片时，优先调用 im_prepare_image（resourceId 或 path 只填一个），把返回的 src 原样放入 image 或 sticker。统一格式为 resource://图片资源ID，QQ 和飞书均支持；ID 必须来自当前空间的文件、图片工具结果、历史消息或服务端提供的全局表情包列表，不得编造。共享表情包必须按 resourceId 使用，不能按其他空间的文件路径访问。此工具只准备资源，最终回复才发送图片。
 可以使用一个 <status>自由文本</status> 保存当前聊天的状态，放在 im_reply 内与 message 同级，也可放在回复前后或单独输出。status 内部内容只保存为当前状态，不发送到聊天。
 message 内可写多行文本，并可插入 <at id="用户ID"></at> 主动@用户；可与文本混排、连续@多个用户，也可仅包含 at。id 使用当前聊天上下文或 im_history_query 中真实发言者的 id（QQ 用户号或飞书用户 open_id），不要使用昵称、消息ID或猜测ID；at 必须为空且只能带一个非空 id 属性。image 和 sticker 内只能写图片地址。sticker 按图片发送，不代表平台原生表情或专属贴纸。${media}
 message、image 和 sticker 均可带唯一的 quote="消息ID" 属性，引用当前聊天中上下文或 im_history_query 返回的真实原始 messageId；不要使用用户ID、归档ID或猜测ID。

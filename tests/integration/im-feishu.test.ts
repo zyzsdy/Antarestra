@@ -330,4 +330,40 @@ describe('飞书适配器（官方 SDK 边界模拟）', () => {
     expect(sdk.request).toHaveBeenCalledTimes(calls)
     app.release()
   })
+  it('管理指令显式查询当前群主 open_id，平台失败或不同 ID 类型不提升权限', async () => {
+    const app = await setup()
+    const members = {
+      code: 0,
+      data: { items: [{ member_id: 'ou_user', tenant_key: 'tenant_test' }], has_more: false },
+    }
+    sdk.request
+      .mockResolvedValueOnce(members)
+      .mockResolvedValueOnce({ code: 0, data: { owner_id: 'ou_user', owner_id_type: 'open_id' } })
+    expect(
+      await app.descriptor.getMember?.({ type: 'group', id: 'oc_allowed' }, 'ou_user', {
+        includeRole: true,
+      }),
+    ).toEqual({ active: true, role: 'owner' })
+    expect(sdk.request).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        url: '/open-apis/im/v1/chats/oc_allowed',
+        params: { user_id_type: 'open_id' },
+      }),
+    )
+    sdk.request.mockResolvedValueOnce(members).mockRejectedValueOnce(new Error('平台失败'))
+    expect(
+      await app.descriptor.getMember?.({ type: 'group', id: 'oc_allowed' }, 'ou_user', {
+        includeRole: true,
+      }),
+    ).toEqual({ active: true, role: 'member' })
+    sdk.request
+      .mockResolvedValueOnce(members)
+      .mockResolvedValueOnce({ code: 0, data: { owner_id: 'ou_user', owner_id_type: 'user_id' } })
+    expect(
+      await app.descriptor.getMember?.({ type: 'group', id: 'oc_allowed' }, 'ou_user', {
+        includeRole: true,
+      }),
+    ).toEqual({ active: true, role: 'member' })
+    app.release()
+  })
 })

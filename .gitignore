@@ -28,3 +28,4 @@ log/
 /plugins/features/workspace-file/public/
 /plugins/implementations/storage-s3/public/
 /plugins/features/im-console/public/
+/plugins/features/im-stickers-lib/public/

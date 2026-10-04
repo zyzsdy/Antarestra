@@ -141,7 +141,7 @@ export const agentFiles = {
     ctx.ai.registerTool(ctx, {
       id: 'im_prepare_image',
       description:
-        '准备当前工作空间图片供 IM 回复使用。resourceId 或 path 只填一个。返回的 src 可直接写入 <image>src</image> 或 <sticker>src</sticker>；本工具不发送消息。支持 PNG、JPEG、GIF、WebP，最多 8 MiB。',
+        '准备当前工作空间图片或已登记的共享图片供 IM 回复使用。resourceId 或 path 只填一个，共享图片只支持 resourceId。返回的 src 可直接写入 <image>src</image> 或 <sticker>src</sticker>；本工具不发送消息。支持 PNG、JPEG、GIF、WebP，最多 8 MiB。',
       parameters: {
         type: 'object',
         properties: {

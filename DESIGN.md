@@ -30,6 +30,8 @@ components:
 
 ## IM 接入管理
 
+全局表情包库沿用蓝白控制台，以固定比例图片预览的自适应网格展示内容，保留图片原始比例；标题、分类、描述和完整文件 ID 自然换行。添加与编辑复用 EditorDialog，查询、错误、确认和通知复用既有反馈机制。群 bot 管理员入口位于“群消息与 AI 会话”列表各群操作区，名单弹窗复用相同控件。局部样式分别由 im-stickers-lib/client/style.css 与 im-console/client/style.css 维护，不改变全局主题。
+
 IM 接入页沿用控制台蓝白表格、系统字体和自然滚动；连接状态始终带中文文字。聊天规则使用共享 EditorDialog、SelectField、CheckboxField、NumberField 和 FeedbackHost，不建立新的表单或弹层基础组件。表格局部横向滚动，760px 以下规则表单双列变单列，底部保存操作保留在弹窗固定操作区。样式由 im-console/client/style.css 维护。
 
 ## 产品与视觉方向

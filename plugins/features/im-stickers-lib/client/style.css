@@ -1,0 +1,194 @@
+.stickers-page {
+  color: #263047;
+}
+.stickers-page button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #ccd4e1;
+  border-radius: 7px;
+  background: #fff;
+  color: inherit;
+  padding: 9px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.stickers-page button:hover:not(:disabled) {
+  background: #edf2ff;
+}
+.stickers-page button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.stickers-page button.primary {
+  background: #315ed1;
+  color: #fff;
+  border-color: #315ed1;
+}
+.stickers-page button.primary:hover:not(:disabled) {
+  background: #244aa9;
+}
+.stickers-page button.danger,
+.stickers-error {
+  color: #a32b24;
+}
+.stickers-page input,
+.stickers-page textarea {
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #ccd4e1;
+  border-radius: 7px;
+  padding: 9px 12px;
+  font: inherit;
+  background: white;
+  color: inherit;
+}
+.stickers-page [aria-invalid='true'] {
+  border-color: #a32b24;
+}
+.stickers-toolbar,
+.stickers-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.stickers-toolbar > div {
+  flex: 1;
+  min-width: 200px;
+}
+.stickers-toolbar p {
+  margin: 0 0 5px;
+}
+.stickers-toolbar small,
+.stickers-search span {
+  color: #657087;
+}
+.stickers-search input {
+  flex: 1;
+  min-width: 140px;
+}
+.stickers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sticker-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e0e5ed;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sticker-image {
+  aspect-ratio: 4 / 3;
+  background: #f4f6fa;
+  padding: 16px;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+.sticker-image img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+.sticker-image span {
+  display: grid;
+  gap: 12px;
+  text-align: center;
+}
+.sticker-info {
+  flex: 1;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+.sticker-category {
+  display: inline-block;
+  color: #315ed1;
+  font-size: 12px;
+}
+.sticker-info h2 {
+  font-size: 17px;
+  margin: 8px 0;
+}
+.sticker-info p {
+  color: #657087;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+.sticker-info code {
+  font-size: 12px;
+  color: #657087;
+  user-select: all;
+}
+.sticker-card footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 16px 16px;
+  gap: 12px;
+}
+.stickers-empty {
+  padding: 36px;
+  border: 1px solid #e0e5ed;
+  border-radius: 10px;
+  background: white;
+  text-align: center;
+}
+.stickers-empty h2 {
+  font-size: 20px;
+}
+.stickers-empty p {
+  line-height: 1.7;
+  color: #657087;
+}
+.sticker-form {
+  display: grid;
+  padding-top: 16px;
+  gap: 8px;
+}
+.sticker-form input,
+.sticker-form textarea {
+  width: 100%;
+}
+.sticker-form small {
+  color: #657087;
+}
+.sticker-form .stickers-error {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.sticker-preview {
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  background: #f4f6fa;
+  border-radius: 7px;
+}
+.sticker-id {
+  overflow-wrap: anywhere;
+  color: #657087;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .stickers-toolbar > div {
+    flex-basis: 100%;
+  }
+  .stickers-search label {
+    flex-basis: 100%;
+  }
+  .stickers-grid {
+    gap: 16px;
+  }
+  .stickers-empty {
+    padding: 24px 16px;
+  }
+}

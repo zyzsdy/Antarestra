@@ -13,6 +13,7 @@ import { agentFiles } from './agent.js'
 import { imFiles } from './im.js'
 export { WorkspaceFileService } from './service.js'
 export type { Config, FileAccess } from './service.js'
+export { imageDimensions } from './validation.js'
 export default defineDatabasePlugin({
   name,
   migrations,

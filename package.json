@@ -48,6 +48,7 @@
     "@antarestra/plugin-im-console": "workspace:*",
     "@antarestra/plugin-im-feishu": "workspace:*",
     "@antarestra/plugin-im-onebot": "workspace:*",
+    "@antarestra/plugin-im-stickers-lib": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-memory": "workspace:*",

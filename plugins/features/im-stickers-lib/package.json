@@ -1,6 +1,6 @@
 {
-  "name": "@antarestra/plugin-im-console",
-  "description": "管理 IM 连接、群聊与私聊准入规则和 AI 激活条件。",
+  "name": "@antarestra/plugin-im-stickers-lib",
+  "description": "全局共享表情包库，支持控制台管理、模板列表和 IM 命令。",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,12 +20,14 @@
     }
   },
   "dependencies": {
-    "@antarestra/contracts": "workspace:*",
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/database": "workspace:*",
     "@antarestra/im": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-im-commands": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/plugin-workspace-file": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*"
   },
@@ -36,7 +38,8 @@
     "vue-tsc": "^3.3.11"
   },
   "antarestra": {
-    "title": "IM 接入管理",
+    "title": "全局表情包库",
+    "multipleInstances": false,
     "configSchema": "./config.schema.json"
   }
 }

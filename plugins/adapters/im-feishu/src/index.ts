@@ -186,7 +186,7 @@ export function apply(ctx: Context, input: Config) {
         })(),
       )
     },
-    async getMember(target, userId) {
+    async getMember(target, userId, options) {
       stopped.signal.throwIfAborted()
       if (!allowed(config.policy, target) || !userId) return { active: false }
       const tokens = new Set<string>()
@@ -219,8 +219,33 @@ export function apply(ctx: Context, input: Config) {
               member.member_id === userId &&
               (!member.tenant_key || member.tenant_key === config.tenantId),
           )
-        )
+        ) {
+          if (options?.includeRole && target.type === 'group') {
+            try {
+              const chat = await track(
+                client.request<{
+                  code?: number
+                  data?: { owner_id?: string; owner_id_type?: string }
+                }>({
+                  method: 'GET',
+                  url: `/open-apis/im/v1/chats/${encodeURIComponent(target.id)}`,
+                  params: { user_id_type: 'open_id' },
+                  timeout: 15000,
+                  signal: stopped.signal,
+                }),
+              )
+              if (
+                chat.code === 0 &&
+                chat.data?.owner_id_type === 'open_id' &&
+                chat.data.owner_id === userId
+              )
+                return { active: true, role: 'owner' }
+            } catch {
+              /* 无法验证群主时不提升权限。 */
+            }
+          }
           return { active: true, role: 'member' }
+        }
         if (!result.data.has_more) return { active: false }
         pageToken = result.data.page_token
         if (!pageToken || tokens.has(pageToken)) return { active: false }

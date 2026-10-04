@@ -1,5 +1,9 @@
 # 工作空间文件
 
+## 显式共享资源
+
+受信业务插件可通过 `accessWorkspace(owner, workspaceId, label)` 获取由所属插件生命周期约束的服务端空间能力，再通过 `registerSharedResources(owner, id, resolve)` 发布明确登记的文件 ID。回调只返回该 ID 对应的 FileAccess，不能把请求方指定的空间作为来源。该扩展仅影响按 ID 读取、下载、附件和发送准备；请求方仍需有效授权，目录、路径读取和所有写操作继续按原空间隔离。插件卸载撤销共享能力，资源登记本身不授予匿名访问权限。
+
 `@antarestra/plugin-workspace-file` 为聊天、Agent 与其他可信入口提供路径文件系统。根目录始终为 `/`。物理存储只接收随机对象键，原始名称、路径、空间归属、配额与上传状态保存在本插件的数据库命名空间中。
 
 ## 启用

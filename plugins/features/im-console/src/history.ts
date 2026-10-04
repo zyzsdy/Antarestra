@@ -1,5 +1,7 @@
 import type { Context } from '@antarestra/plugin-sdk'
-import { AuthError } from '@antarestra/rbac'
+import { AuthError, readJson } from '@antarestra/rbac'
+import '@antarestra/plugin-im-commands'
+import type { ImCommandsService } from '@antarestra/plugin-im-commands'
 import type { HistoryQuery } from '@antarestra/im'
 import { ImError } from '@antarestra/im'
 
@@ -12,6 +14,16 @@ function integer(value: unknown, fallback: number, max = Number.MAX_SAFE_INTEGER
   return number
 }
 export function historyRoutes(ctx: Context) {
+  let admins: ImCommandsService['admins'] | undefined
+  ctx.inject(['imCommands'], (owner) => {
+    const service = owner.imCommands.admins
+    owner.effect(() => {
+      admins = service
+      return () => {
+        if (admins === service) admins = undefined
+      }
+    })
+  })
   async function requireGroup(workspaceId: string) {
     try {
       await ctx.im.requireGroup(workspaceId)
@@ -24,6 +36,23 @@ export function historyRoutes(ctx: Context) {
     'admin',
   ])
   const guards = [ctx.rbac.require('admin.console.view'), ctx.rbac.require('admin.im.history.view')]
+  ctx.rbac.registerPermission(ctx, 'admin.im.bot.manage', '管理各群 bot 管理员', ['admin'])
+  const adminGuards = [...guards, ctx.rbac.require('admin.im.bot.manage')]
+  ctx.server.route(ctx, 'GET', '/im/groups/:workspaceId/admins', ...adminGuards, async (http) => {
+    const id = String(http.params.workspaceId)
+    await requireGroup(id)
+    if (!admins) throw new AuthError(503, 'IM 命令插件未启用')
+    http.set('Cache-Control', 'no-store')
+    http.body = await admins.get(id)
+  })
+  ctx.server.route(ctx, 'PUT', '/im/groups/:workspaceId/admins', ...adminGuards, async (http) => {
+    const id = String(http.params.workspaceId)
+    await requireGroup(id)
+    if (!admins) throw new AuthError(503, 'IM 命令插件未启用')
+    const input = await readJson(http, 65536)
+    http.set('Cache-Control', 'no-store')
+    http.body = await admins.set(id, input.users, input.revision)
+  })
   ctx.server.route(ctx, 'GET', '/im/groups', ...guards, async (http) => {
     http.set('Cache-Control', 'no-store')
     http.body = await ctx.im.listGroups(integer(http.query.offset, 0), 20)

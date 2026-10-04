@@ -80,6 +80,9 @@ importers:
       '@antarestra/plugin-im-onebot':
         specifier: workspace:*
         version: link:plugins/adapters/im-onebot
+      '@antarestra/plugin-im-stickers-lib':
+        specifier: workspace:*
+        version: link:plugins/features/im-stickers-lib
       '@antarestra/plugin-logger':
         specifier: workspace:*
         version: link:plugins/implementations/logger
@@ -230,6 +233,9 @@ importers:
       '@antarestra/plugin-im-onebot':
         specifier: workspace:*
         version: link:../../plugins/adapters/im-onebot
+      '@antarestra/plugin-im-stickers-lib':
+        specifier: workspace:*
+        version: link:../../plugins/features/im-stickers-lib
       '@antarestra/plugin-logger':
         specifier: workspace:*
         version: link:../../plugins/implementations/logger
@@ -785,6 +791,9 @@ importers:
 
   plugins/features/im-commands:
     dependencies:
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../../definitions/database
       '@antarestra/im':
         specifier: workspace:*
         version: link:../../definitions/im
@@ -806,12 +815,61 @@ importers:
       '@antarestra/plugin-admin-console':
         specifier: workspace:*
         version: link:../admin-console
+      '@antarestra/plugin-im-commands':
+        specifier: workspace:*
+        version: link:../im-commands
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
       '@antarestra/plugin-server':
         specifier: workspace:*
         version: link:../../adapters/server
+      '@antarestra/rbac':
+        specifier: workspace:*
+        version: link:../../definitions/rbac
+      '@antarestra/webui':
+        specifier: workspace:*
+        version: link:../../definitions/webui
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.2.2
+        version: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0)
+      vue:
+        specifier: ^3.5.42
+        version: 3.5.42(typescript@6.0.3)
+      vue-tsc:
+        specifier: ^3.3.11
+        version: 3.3.11(typescript@6.0.3)
+
+  plugins/features/im-stickers-lib:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
+      '@antarestra/database':
+        specifier: workspace:*
+        version: link:../../definitions/database
+      '@antarestra/im':
+        specifier: workspace:*
+        version: link:../../definitions/im
+      '@antarestra/plugin-admin-console':
+        specifier: workspace:*
+        version: link:../admin-console
+      '@antarestra/plugin-im-commands':
+        specifier: workspace:*
+        version: link:../im-commands
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@antarestra/plugin-server':
+        specifier: workspace:*
+        version: link:../../adapters/server
+      '@antarestra/plugin-workspace-file':
+        specifier: workspace:*
+        version: link:../workspace-file
       '@antarestra/rbac':
         specifier: workspace:*
         version: link:../../definitions/rbac

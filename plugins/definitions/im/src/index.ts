@@ -422,6 +422,24 @@ export class ImService extends Service<ServiceOptions> {
       return
     return resolved.identity
   }
+  /** 仅查询已鉴权入站消息发送者的当前平台身份，不能由命令参数指定群或发送者。 */
+  async requestMember(request: object) {
+    if (!(await this.authenticate(request))) return
+    const trusted = this.requests.get(request)!
+    const { entry, input } = trusted
+    if (!entry.descriptor.getMember) return
+    const work = entry.descriptor.getMember(input.message.chat, input.message.sender.id, {
+      includeRole: true,
+    })
+    entry.pending.add(work)
+    try {
+      const member = await work
+      if (!(await this.authenticate(request))) return
+      return member
+    } finally {
+      entry.pending.delete(work)
+    }
+  }
   private async receive(
     entry: Entry,
     original: IncomingMessage,

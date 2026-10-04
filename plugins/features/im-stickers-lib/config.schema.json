@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "全局表情包库",
+  "description": "无需启动配置；在管理控制台的机器人 → 表情包库中管理。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

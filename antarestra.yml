@@ -36,6 +36,7 @@ plugins:
   im: {}
   identity-im: {}
   im-commands: {}
+  im-stickers-lib: {}
   im-onebot:
     id: qq-qianqian
     label: 浅浅

@@ -21,7 +21,7 @@ it('固定命令解析参数并检查权限，所有命中包括错误都消费�
   let calls = 0
   app.ctx.rbac.registerPermission(app.ctx, 'im.members.manage', '管理成员', ['admin'])
   app.ctx.imCommands.register(app.ctx, {
-    name: 'admin',
+    name: 'restricted',
     description: '管理群成员',
     permission: 'im.members.manage',
     execute: () => {
@@ -36,7 +36,7 @@ it('固定命令解析参数并检查权限，所有命中包括错误都消费�
     maxArgs: 2,
     execute: ({ args }) => args.join('|'),
   })
-  await app.connection.receive('/admin set 000000')
+  await app.connection.receive('/restricted set 000000')
   await app.connection.receive('/echo "two words" x')
   await app.connection.receive('/echo "broken')
   await app.connection.receive('/echo')

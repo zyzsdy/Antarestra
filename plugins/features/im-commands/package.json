@@ -24,6 +24,7 @@
     "configSchema": "./config.schema.json"
   },
   "dependencies": {
+    "@antarestra/database": "workspace:*",
     "@antarestra/im": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/rbac": "workspace:*"

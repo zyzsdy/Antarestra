@@ -26,6 +26,10 @@ declare module '@antarestra/plugin-sdk' {
 export class WorkspaceFileService extends Service<Config> {
   private accesses = new WeakMap<FileAccess, { source: string; request: unknown }>()
   private archiveAccesses = new WeakMap<FileAccess, Context>()
+  private sharedResources = new Map<
+    string,
+    { owner: Context; resolve: (id: string) => Promise<FileAccess | undefined> }
+  >()
   private tasks = new Set<Promise<unknown>>()
   private active = true
   constructor(
@@ -424,7 +428,19 @@ export class WorkspaceFileService extends Service<Config> {
   private async resourceFile(access: FileAccess, id: string) {
     await this.verify(access)
     const { state } = await this.snapshot(access.workspaceId)
-    const file = state.files.find((f) => f.kind === 'file' && (f.id ?? f.key) === id)
+    let file = state.files.find((f) => f.kind === 'file' && (f.id ?? f.key) === id)
+    if (!file) {
+      for (const entry of this.sharedResources.values()) {
+        const shared = await entry.resolve(id)
+        entry.owner.fiber.assertActive()
+        if (!shared) continue
+        await this.verify(shared)
+        const source = await this.snapshot(shared.workspaceId)
+        file = source.state.files.find((f) => f.kind === 'file' && (f.id ?? f.key) === id)
+        if (file) break
+      }
+      await this.verify(access)
+    }
     if (!file) throw new AuthError(410, '文件已过期')
     const backend = this.ctx.storage.backend(file.backend)
     if (backend.exists && !(await backend.exists(file.key))) throw new AuthError(410, '文件已过期')
@@ -567,6 +583,29 @@ export class WorkspaceFileService extends Service<Config> {
       state.quota = value
     })
     return { ok: true }
+  }
+  /** 服务端受信插件签发的空间能力；调用方必须先验证业务权限，不能直接使用客户端传入的空间。 */
+  async accessWorkspace(owner: Context, workspaceId: string, label: string): Promise<FileAccess> {
+    return this.groupArchiveAccess(owner, workspaceId, label)
+  }
+  /**
+   * 登记显式共享的文件 ID。仅扩展按 ID 读取、下载和发送；目录与所有写操作仍限定原空间。
+   * resolve 只返回所属插件明确发布的资源空间，不接受请求方指定来源空间。
+   */
+  registerSharedResources(
+    owner: Context,
+    id: string,
+    resolve: (resourceId: string) => Promise<FileAccess | undefined>,
+  ) {
+    this.ctx.fiber.assertActive()
+    if (this.sharedResources.has(id)) throw new Error(`共享资源库重复：${id}`)
+    const entry = { owner, resolve }
+    return owner.effect(() => {
+      this.sharedResources.set(id, entry)
+      return () => {
+        if (this.sharedResources.get(id) === entry) this.sharedResources.delete(id)
+      }
+    })
   }
   /** 仅供持有所属插件 Context 的 IM 媒体扩展使用，空间须来自已验证的入站消息或出站目标。 */
   async groupArchiveAccess(
