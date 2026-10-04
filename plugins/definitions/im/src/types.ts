@@ -56,6 +56,10 @@ export interface ArchivedMedia {
   index: number
   type: MediaSegment['type']
   status: 'pending' | 'stored' | 'failed' | 'expired'
+  /** 已完成的保存尝试次数，包含首次保存；旧失败记录缺省按 1 次处理。 */
+  attempts?: number
+  /** 最近一次保存失败的原因摘要，不含下载凭据。 */
+  lastError?: string
   resource?: { resourceId: string; mimeType: string; filename: string; size: number }
 }
 export interface ArchivedMessage {

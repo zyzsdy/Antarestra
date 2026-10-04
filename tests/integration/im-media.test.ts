@@ -5,8 +5,13 @@ import { normalizeMessage as onebot } from '../../plugins/adapters/im-onebot/src
 import { normalizeMessage as feishu } from '../../plugins/adapters/im-feishu/src/message.js'
 import { downloadMedia as onebotMedia } from '../../plugins/adapters/im-onebot/src/media.js'
 
-it('HTTP 媒体下载保留二进制和类型，限制真实流大小并拒绝本地文件协议', async () => {
-  const server = createServer((_request, response) => {
+it('HTTP 媒体下载保留二进制和类型，限制流大小、拒绝本地协议并报告失败状态码', async () => {
+  const server = createServer((request, response) => {
+    if (request.url?.startsWith('/forbidden')) {
+      response.writeHead(403)
+      response.end('private-response')
+      return
+    }
     response.setHeader('content-type', 'image/png')
     response.write(Buffer.from([1, 2]))
     response.end(Buffer.from([3, 4]))
@@ -25,6 +30,13 @@ it('HTTP 媒体下载保留二进制和类型，限制真实流大小并拒绝�
     await expect(
       downloadHttpMedia({ ...segment, url: 'file:///secret' }, signal, 4),
     ).rejects.toThrow('地址无效')
+    await expect(
+      downloadHttpMedia(
+        { ...segment, url: `http://127.0.0.1:${address.port}/forbidden?token=secret` },
+        signal,
+        4,
+      ),
+    ).rejects.toThrow(/^媒体下载失败：HTTP 403 Forbidden$/)
     await expect(downloadHttpMedia(segment, AbortSignal.abort(), 4)).rejects.toThrow()
   } finally {
     server.closeAllConnections()

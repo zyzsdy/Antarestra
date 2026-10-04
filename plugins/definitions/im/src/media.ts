@@ -12,7 +12,11 @@ export async function downloadHttpMedia(
   const response = await fetch(url, {
     signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
   })
-  if (!response.ok || !response.body) throw new Error('媒体下载失败')
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {})
+    throw new Error(`媒体下载失败：HTTP ${response.status} ${response.statusText}`)
+  }
+  if (!response.body) throw new Error(`媒体下载失败：HTTP ${response.status}，响应没有正文`)
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let size = 0

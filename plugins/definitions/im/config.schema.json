@@ -2,5 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "properties": {}
+  "properties": {
+    "mediaMaxRetries": {
+      "type": "integer",
+      "title": "群媒体保存最大重试次数",
+      "description": "每个媒体首次保存失败后的最大重试次数，不含首次保存；0 表示不重试。次数持久化，重启不会重置。",
+      "minimum": 0,
+      "default": 10
+    }
+  }
 }

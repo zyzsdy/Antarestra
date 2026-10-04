@@ -3,6 +3,7 @@ import { Service, type Context } from '@antarestra/plugin-sdk'
 import { defineDatabasePlugin } from '@antarestra/database'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { migrations, pluginId, type Tables } from './schema.js'
+import { describeArchiveError } from './diagnostics.js'
 import type {
   ChatPolicy,
   ChatTarget,
@@ -19,6 +20,7 @@ import type {
   MessageSegment,
   ScopedTarget,
   ArchivedMessage,
+  ArchivedMedia,
   HistoryQuery,
   MediaArchive,
   MediaSegment,
@@ -27,7 +29,9 @@ import type {
 } from './types.js'
 export * from './types.js'
 export { downloadHttpMedia } from './media.js'
-export interface Config {}
+export interface Config {
+  mediaMaxRetries?: number
+}
 export class ImError extends Error {
   constructor(
     readonly status: number,
@@ -107,9 +111,14 @@ export class ImService extends Service<ServiceOptions> {
   private aiHistoryReader: AiHistoryReader | undefined
   private maintenance: Promise<void> | undefined
   private readonly abort = new AbortController()
+  private readonly mediaMaxRetries: number
   constructor(ctx: Context, options: ServiceOptions) {
     super(ctx, 'im')
-    schemaConfig(new URL('../config.schema.json', import.meta.url), options.config)
+    const config = schemaConfig<Required<Config>>(
+      new URL('../config.schema.json', import.meta.url),
+      options.config,
+    )
+    this.mediaMaxRetries = config.mediaMaxRetries
     for (const row of options.policies) {
       this.saved.set(row.id, migrateSavedPolicy(row.value))
       this.revisions.set(row.id, row.revision)
@@ -117,8 +126,12 @@ export class ImService extends Service<ServiceOptions> {
     const timer = setInterval(() => {
       if (!this.maintenance) {
         this.maintenance = this.maintainHistory()
-          .catch(() => {
-            if (!this.abort.signal.aborted) ctx.logger.warn('群消息媒体归档或清理暂不可用，将重试')
+          .catch((error: unknown) => {
+            if (!this.abort.signal.aborted)
+              ctx.logger.warn(
+                '群消息媒体归档或清理暂不可用，下轮维护继续：%s',
+                describeArchiveError(error),
+              )
           })
           .finally(() => {
             this.maintenance = undefined
@@ -629,8 +642,14 @@ export class ImService extends Service<ServiceOptions> {
             timestamp: Date.now(),
           })
           await this.storeMedia(entry, archived)
-        } catch {
-          this.ctx.logger.warn('已发送群消息归档失败')
+        } catch (error) {
+          this.ctx.logger.warn('已发送群消息归档失败：%o', {
+            connectionId: target.connectionId,
+            workspaceId: target.workspaceId,
+            chatId: target.chat.id,
+            messageId: result.messageId,
+            reason: describeArchiveError(error),
+          })
         }
       }
       return result
@@ -799,16 +818,19 @@ export class ImService extends Service<ServiceOptions> {
       await archive.retain(message.workspaceId, policy)
       const signal = AbortSignal.any([entry.controller.signal, this.abort.signal])
       for (const media of message.media) {
-        if (media.status === 'stored' || media.status === 'expired') continue
+        if (!this.canStoreMedia(media)) continue
         const days = policy.mediaRetentionDays ?? 7
         if (
           days > 0 &&
           Date.now() - (message.message.timestamp ?? message.receivedAt) >= days * 86400000
         ) {
           media.status = 'expired'
+          await this.saveMediaState(message)
           continue
         }
+        const attempts = media.attempts ?? (media.status === 'failed' ? 1 : 0)
         try {
+          signal.throwIfAborted()
           if (!entry.descriptor.downloadMedia) throw new Error('接入不支持媒体下载')
           media.resource = await archive.store(
             message,
@@ -823,24 +845,41 @@ export class ImService extends Service<ServiceOptions> {
             signal,
           )
           media.status = 'stored'
-        } catch {
+          delete media.lastError
+        } catch (error) {
           signal.throwIfAborted()
           media.status = 'failed'
-          this.ctx.logger.warn('群消息媒体保存失败，保留消息与资源标识并等待重试')
+          media.lastError = describeArchiveError(error)
+        }
+        media.attempts = attempts + 1
+        // 每个资源完成后立即持久化，后续资源被取消或插件重载不会重置已发生的失败。
+        await this.saveMediaState(message)
+        if (media.status === 'failed') {
+          const details = {
+            connectionId: entry.snapshot.id,
+            platform: message.platform,
+            workspaceId: message.workspaceId,
+            chatId: message.message.chat.id,
+            messageId: message.message.id,
+            mediaId: media.id,
+            mediaIndex: media.index,
+            mediaType: media.type,
+            attempts: media.attempts,
+            retries: Math.max(0, media.attempts - 1),
+            maxRetries: this.mediaMaxRetries,
+            reason: media.lastError,
+          }
+          if (this.canStoreMedia(media))
+            this.ctx.logger.warn('群消息媒体保存失败，保留消息与资源标识并等待重试：%o', details)
+          else
+            this.ctx.logger.error(
+              '群消息媒体保存失败，已达重试上限，停止自动重试并保留记录：%o',
+              details,
+            )
         }
       }
-      await this.db()
-        .updateTable('history')
-        .set({
-          payload: JSON.stringify(message),
-          media_pending: message.media.some(
-            (media) => media.status === 'pending' || media.status === 'failed',
-          )
-            ? 1
-            : 0,
-        })
-        .where('id', '=', message.id)
-        .execute()
+      // 兼容已经耗尽次数、或因配置下调而不再符合重试条件的记录。
+      await this.saveMediaState(message)
       await archive.retain(message.workspaceId, policy)
       for (const media of message.media)
         if (
@@ -849,6 +888,22 @@ export class ImService extends Service<ServiceOptions> {
         )
           media.status = 'expired'
     })
+  }
+  private canStoreMedia(media: ArchivedMedia) {
+    return (
+      media.status === 'pending' ||
+      (media.status === 'failed' && (media.attempts ?? 1) <= this.mediaMaxRetries)
+    )
+  }
+  private async saveMediaState(message: ArchivedMessage) {
+    await this.db()
+      .updateTable('history')
+      .set({
+        payload: JSON.stringify(message),
+        media_pending: message.media.some((media) => this.canStoreMedia(media)) ? 1 : 0,
+      })
+      .where('id', '=', message.id)
+      .execute()
   }
   /** 服务端接口；AI 调用方必须从可信 RunContext 取得空间，不接受模型传入空间。 */
   async history(workspaceId: string, input: HistoryQuery = {}): Promise<ArchivedMessage[]> {

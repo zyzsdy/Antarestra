@@ -12,6 +12,7 @@ import type {
   MessageContext,
   MessageSegment,
   ConnectionDescriptor,
+  Config as ImConfig,
 } from '@antarestra/im'
 import identityIm from '@antarestra/plugin-identity-im'
 import commands from '@antarestra/plugin-im-commands'
@@ -29,6 +30,7 @@ export async function cleanup() {
 export async function setup(
   options: {
     ai?: boolean
+    imConfig?: ImConfig
     driver?: ModelDriver
     queueLimit?: number
     deliveryAttempts?: number
@@ -45,7 +47,7 @@ export async function setup(
   await ctx.plugin(database, { filename: ':memory:' })
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
   await ctx.plugin(rbac)
-  await ctx.plugin(im)
+  const imPlugin = await ctx.plugin(im, options.imConfig ?? {})
   await ctx.plugin(identityIm)
   const commandPlugin = await ctx.plugin(commands)
   const messages: MessageContext[] = []
@@ -172,6 +174,7 @@ export async function setup(
     sent,
     messages,
     commandPlugin,
+    imPlugin,
     aiPlugin,
     aiState,
     defaultPolicy,
