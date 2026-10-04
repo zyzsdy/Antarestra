@@ -525,6 +525,7 @@ export class ImAiService extends Service<Config> {
             await this.ctx.im.send(target, segments, {
               // 首条沿用旧键，恢复旧任务时也不会重复发送。
               idempotencyKey: `im-ai-${row.id}${index ? `-${index}` : ''}`,
+              continuation: index > 0,
               signal,
               beforeSend: async () => {
                 live()

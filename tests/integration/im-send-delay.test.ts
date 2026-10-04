@@ -70,13 +70,13 @@ it.each(['sendDelayPerCharMs', 'longMessageThreshold', 'longMessageDelayPerCharM
   },
 )
 
-it('两条七字消息分别等待 700 毫秒，同群并发发送不会同时计时', async () => {
+it('同次回复首条立即发送，第二条和第三条分别等待且不同时计时', async () => {
   const app = await prepare()
   const first = app.ctx.im.send(app.target, text('这是第一条消息'))
-  const second = app.ctx.im.send(app.target, text('这是第二条消息'))
-  await vi.advanceTimersByTimeAsync(699)
-  expect(app.sent).toHaveLength(0)
-  await vi.advanceTimersByTimeAsync(1)
+  const second = app.ctx.im.send(app.target, text('这是第二条消息'), { continuation: true })
+  const third = app.ctx.im.send(app.target, text('这是第三条消息'), { continuation: true })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(app.sent).toHaveLength(1)
   await first
   expect(app.sent.map((entry) => entry.segments)).toEqual([text('这是第一条消息')])
   await vi.advanceTimersByTimeAsync(699)
@@ -87,7 +87,25 @@ it('两条七字消息分别等待 700 毫秒，同群并发发送不会同时�
     text('这是第一条消息'),
     text('这是第二条消息'),
   ])
+  await vi.advanceTimersByTimeAsync(699)
+  expect(app.sent).toHaveLength(2)
+  await vi.advanceTimersByTimeAsync(1)
+  await third
+  expect(app.sent.at(-1)?.segments).toEqual(text('这是第三条消息'))
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('每次独立的 ping/help 回复都不等待，重复调用不会被当作上一轮续发', async () => {
+  const app = await setup({ imConfig: {} })
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+  for (const command of ['/help', '/ping', '/help']) {
+    const count = app.sent.length
+    const work = app.connection.receive(command)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(app.sent).toHaveLength(count + 1)
+    await work
+    expect(vi.getTimerCount()).toBe(0)
+  }
 })
 
 it('出站文本转换后的字数决定延迟，不计入被移除的引用链接', async () => {
@@ -109,7 +127,9 @@ it('出站文本转换后的字数决定延迟，不计入被移除的引用链�
   })
   const target = await app.ctx.im.resolveTarget(app.messages[0]!.workspaceId)
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
-  const work = app.ctx.im.send(target, text('你好 ([来源](https://example.com/a?x=1&y=2))'))
+  const work = app.ctx.im.send(target, text('你好 ([来源](https://example.com/a?x=1&y=2))'), {
+    continuation: true,
+  })
   await vi.advanceTimersByTimeAsync(199)
   expect(send).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(1)
@@ -123,9 +143,9 @@ it.each([
   [{ sendDelayPerCharMs: 0 }, 101, 0],
   [{ longMessageDelayPerCharMs: 0 }, 101, 0],
   [{ sendDelayPerCharMs: 30, longMessageThreshold: 5, longMessageDelayPerCharMs: 10 }, 6, 60],
-])('真实发送入口应用配置 %j：%i 个字等待 %i 毫秒', async (config, length, milliseconds) => {
+])('后续消息发送入口应用配置 %j：%i 个字等待 %i 毫秒', async (config, length, milliseconds) => {
   const app = await prepare(config)
-  const work = app.ctx.im.send(app.target, text('字'.repeat(length)))
+  const work = app.ctx.im.send(app.target, text('字'.repeat(length)), { continuation: true })
   if (milliseconds) {
     await vi.advanceTimersByTimeAsync(milliseconds - 1)
     expect(app.sent).toHaveLength(0)
@@ -147,10 +167,10 @@ it('不同群、接入独立计时，私聊无需等待', async () => {
   const targets = await Promise.all(
     app.messages.map((message) => app.ctx.im.resolveTarget(message.workspaceId)),
   )
-  const first = app.ctx.im.send(targets[0]!, text('两个'))
-  const second = app.ctx.im.send(targets[1]!, text('一'))
-  const third = app.ctx.im.send(targets[2]!, text('一'))
-  await app.ctx.im.send(targets[3]!, text('私聊立即发送'))
+  const first = app.ctx.im.send(targets[0]!, text('两个'), { continuation: true })
+  const second = app.ctx.im.send(targets[1]!, text('一'), { continuation: true })
+  const third = app.ctx.im.send(targets[2]!, text('一'), { continuation: true })
+  await app.ctx.im.send(targets[3]!, text('私聊后续消息也立即发送'), { continuation: true })
   expect(app.sent).toHaveLength(1)
   expect(app.sent[0]?.target.type).toBe('private')
   await vi.advanceTimersByTimeAsync(100)
@@ -166,6 +186,7 @@ it('取消等待不占用幂等键，重试重新等待，已成功的同键不�
   const abort = new AbortController()
   const work = app.ctx.im.send(app.target, text('未发送'), {
     idempotencyKey: 'retry',
+    continuation: true,
     signal: abort.signal,
   })
   const rejected = expect(work).rejects.toMatchObject({ name: 'AbortError' })
@@ -174,22 +195,31 @@ it('取消等待不占用幂等键，重试重新等待，已成功的同键不�
   await rejected
   expect(app.sent).toHaveLength(0)
   expect(vi.getTimerCount()).toBe(0)
-  const retry = app.ctx.im.send(app.target, text('未发送'), { idempotencyKey: 'retry' })
+  const retry = app.ctx.im.send(app.target, text('未发送'), {
+    idempotencyKey: 'retry',
+    continuation: true,
+  })
   await vi.advanceTimersByTimeAsync(299)
   expect(app.sent).toHaveLength(0)
   await vi.advanceTimersByTimeAsync(1)
   const result = await retry
   expect(app.sent).toHaveLength(1)
-  expect(await app.ctx.im.send(app.target, text('未发送'), { idempotencyKey: 'retry' })).toEqual(
-    result,
-  )
+  expect(
+    await app.ctx.im.send(app.target, text('未发送'), {
+      idempotencyKey: 'retry',
+      continuation: true,
+    }),
+  ).toEqual(result)
   expect(app.sent).toHaveLength(1)
   expect(vi.getTimerCount()).toBe(0)
 })
 
 it('等待结束重查聊天策略，拒绝后不会阻塞同群后续消息', async () => {
   const app = await prepare()
-  const work = app.ctx.im.send(app.target, text('待发送'), { idempotencyKey: 'policy' })
+  const work = app.ctx.im.send(app.target, text('待发送'), {
+    idempotencyKey: 'policy',
+    continuation: true,
+  })
   const rejected = expect(work).rejects.toThrow('禁用')
   await vi.advanceTimersByTimeAsync(100)
   await app.ctx.im.setPolicy('qq-a', { ...app.defaultPolicy, enabled: false })
@@ -197,7 +227,10 @@ it('等待结束重查聊天策略，拒绝后不会阻塞同群后续消息', a
   await rejected
   expect(app.sent).toHaveLength(0)
   await app.ctx.im.setPolicy('qq-a', app.defaultPolicy)
-  const retry = app.ctx.im.send(app.target, text('待发送'), { idempotencyKey: 'policy' })
+  const retry = app.ctx.im.send(app.target, text('待发送'), {
+    idempotencyKey: 'policy',
+    continuation: true,
+  })
   await vi.advanceTimersByTimeAsync(300)
   await retry
   expect(app.sent).toHaveLength(1)
@@ -205,8 +238,11 @@ it('等待结束重查聊天策略，拒绝后不会阻塞同群后续消息', a
 
 it('IM 服务卸载会取消并等待当前及排队发送，清理所有延迟定时器', async () => {
   const app = await prepare()
-  const first = app.ctx.im.send(app.target, text('第一条'), { idempotencyKey: 'first' })
-  const second = app.ctx.im.send(app.target, text('第二条'))
+  const first = app.ctx.im.send(app.target, text('待发送'), {
+    idempotencyKey: 'first',
+    continuation: true,
+  })
+  const second = app.ctx.im.send(app.target, text('后续消息'), { continuation: true })
   const settled = Promise.allSettled([first, second])
   await vi.advanceTimersByTimeAsync(100)
   expect(vi.getTimerCount()).toBe(1)
@@ -235,10 +271,10 @@ it('独立卸载接入取消当前及排队发送，其他接入继续发送', a
   })
   const target = await app.ctx.im.resolveTarget(app.messages[1]!.workspaceId)
   const pending = Promise.allSettled([
-    app.ctx.im.send(target, text('第一条')),
-    app.ctx.im.send(target, text('第二条')),
+    app.ctx.im.send(target, text('待发送'), { continuation: true }),
+    app.ctx.im.send(target, text('后续消息'), { continuation: true }),
   ])
-  const independent = app.ctx.im.send(app.target, text('其他接入'))
+  const independent = app.ctx.im.send(app.target, text('其他接入'), { continuation: true })
   await vi.advanceTimersByTimeAsync(100)
   await owner.dispose()
   expect((await pending).every((entry) => entry.status === 'rejected')).toBe(true)
@@ -272,7 +308,7 @@ it('前一条平台发送完成后才开始下一条计时', async () => {
   })
   const target = await app.ctx.im.resolveTarget(app.messages[1]!.workspaceId)
   const first = app.ctx.im.send(target, text('一'))
-  const second = app.ctx.im.send(target, text('二'))
+  const second = app.ctx.im.send(target, text('二'), { continuation: true })
   await vi.advanceTimersByTimeAsync(1000)
   expect(send).toHaveBeenCalledTimes(1)
   expect(vi.getTimerCount()).toBe(0)
@@ -297,7 +333,7 @@ it('超出单个定时器上限时分段等待，取消会移除剩余定时器'
   expect(vi.getTimerCount()).toBe(0)
 })
 
-async function prepareAi() {
+async function prepareAi(messages = ['这是第一条消息', '这是第二条消息']) {
   const app = await setup({
     ai: true,
     deliveryAttempts: 1,
@@ -309,7 +345,7 @@ async function prepareAi() {
           content: [
             {
               type: 'text',
-              text: '<im_reply><message>这是第一条消息</message><message>这是第二条消息</message></im_reply>',
+              text: `<im_reply>${messages.map((message) => `<message>${message}</message>`).join('')}</im_reply>`,
             },
           ],
         }
@@ -324,32 +360,39 @@ async function prepareAi() {
   return app
 }
 
-it('AI 的两条 message 在生成后逐条延迟，不先等待整份回复', async () => {
-  const app = await prepareAi()
-  await vi.advanceTimersByTimeAsync(699)
-  expect(app.sent).toHaveLength(0)
-  await vi.advanceTimersByTimeAsync(1)
-  expect(app.sent.map((entry) => entry.segments)).toEqual([text('这是第一条消息')])
-  await vi.advanceTimersByTimeAsync(699)
-  expect(app.sent).toHaveLength(1)
-  await vi.advanceTimersByTimeAsync(1)
-  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
-  expect(app.sent.map((entry) => entry.segments)).toEqual([
-    text('这是第一条消息'),
-    text('这是第二条消息'),
-  ])
+it('AI 每轮首条 message 立即发送，只有后续 message 按字数等待', async () => {
+  const app = await prepareAi(['这是第一条消息', '这是第二条消息', '这是第三条消息'])
+  for (let round = 0; round < 2; round++) {
+    if (round) {
+      await app.connection.receive('/ai 下一轮回复')
+      for (let attempt = 0; attempt < 500 && !vi.getTimerCount(); attempt++) await realDelay(1)
+      expect(vi.getTimerCount()).toBe(1)
+    }
+    expect(app.sent).toHaveLength(round * 3 + 1)
+    expect(app.sent.at(-1)?.segments).toEqual(text('这是第一条消息'))
+    await vi.advanceTimersByTimeAsync(699)
+    expect(app.sent).toHaveLength(round * 3 + 1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(app.sent).toHaveLength(round * 3 + 2)
+    expect(app.sent.at(-1)?.segments).toEqual(text('这是第二条消息'))
+    await vi.advanceTimersByTimeAsync(699)
+    expect(app.sent).toHaveLength(round * 3 + 2)
+    await vi.advanceTimersByTimeAsync(1)
+    await poll(async () => (await app.jobs())[round]?.delivery).toBe('sent')
+    expect(app.sent).toHaveLength(round * 3 + 3)
+    expect(app.sent.at(-1)?.segments).toEqual(text('这是第三条消息'))
+    expect(vi.getTimerCount()).toBe(0)
+  }
 })
 
 it.each(['/stop', '/reset'])('%s 立即取消等待中的 AI 回复及其后续消息', async (command) => {
   const app = await prepareAi()
   await vi.advanceTimersByTimeAsync(100)
-  const stopping = app.connection.receive(command)
-  // 命令先取消 AI 等待；随后命令自身的回复继续遵守群聊发送延迟。
-  await poll(async () => (await app.jobs())[0]?.status).toBe('cancelled')
-  await vi.advanceTimersByTimeAsync(10000)
-  await stopping
-  expect(app.sent).toHaveLength(1)
-  expect(JSON.stringify(app.sent)).not.toContain('这是第一条消息')
+  // 首条已发出，命令取消后续等待并立即回复，不推进虚拟时间。
+  await app.connection.receive(command)
+  expect((await app.jobs())[0]?.status).toBe('cancelled')
+  expect(app.sent).toHaveLength(2)
+  expect(app.sent[0]?.segments).toEqual(text('这是第一条消息'))
   expect(JSON.stringify(app.sent)).not.toContain('这是第二条消息')
   expect((await app.jobs())[0]?.delivery).toBe('sent')
   expect(vi.getTimerCount()).toBe(0)
@@ -358,14 +401,16 @@ it.each(['/stop', '/reset'])('%s 立即取消等待中的 AI 回复及其后续�
 it('独立卸载 AI 插件会取消发送延迟，仍保留可恢复的待投递回复', async () => {
   const app = await prepareAi()
   await app.aiPlugin!.dispose()
-  expect(app.sent).toHaveLength(0)
+  expect(app.sent).toHaveLength(1)
   expect((await app.jobs())[0]?.delivery).toBe('pending')
-  expect((await app.jobs())[0]?.attempts).toBe(0)
+  expect((await app.jobs())[0]?.attempts).toBe(1)
   expect(vi.getTimerCount()).toBe(0)
   await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
   for (let attempt = 0; attempt < 1000 && !vi.getTimerCount(); attempt++) await realDelay(1)
   expect(vi.getTimerCount()).toBe(1)
-  await vi.advanceTimersByTimeAsync(1400)
+  await vi.advanceTimersByTimeAsync(699)
+  expect(app.sent).toHaveLength(1)
+  await vi.advanceTimersByTimeAsync(1)
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect(app.sent.map((entry) => entry.segments)).toEqual([
     text('这是第一条消息'),
@@ -373,7 +418,7 @@ it('独立卸载 AI 插件会取消发送延迟，仍保留可恢复的待投递
   ])
 })
 
-it('等待期间关闭 AI 后不发送已经生成的回复', async () => {
+it('首条发送后关闭 AI，不再发送等待中的后续回复', async () => {
   const app = await prepareAi()
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
@@ -381,5 +426,5 @@ it('等待期间关闭 AI 后不发送已经生成的回复', async () => {
   })
   await vi.advanceTimersByTimeAsync(700)
   await poll(async () => (await app.jobs())[0]?.delivery).not.toBe('pending')
-  expect(app.sent).toHaveLength(0)
+  expect(app.sent.map((entry) => entry.segments)).toEqual([text('这是第一条消息')])
 })

@@ -688,6 +688,8 @@ export class ImService extends Service<ServiceOptions> {
     options: {
       idempotencyKey?: string
       signal?: AbortSignal
+      /** 同一次回复的后续消息；首条或独立消息默认不按字数等待。 */
+      continuation?: boolean
       /** 在排队及延迟完成后、调用平台前重新检查业务授权。 */
       beforeSend?: () => void | Promise<void>
     } = {},
@@ -770,7 +772,7 @@ export class ImService extends Service<ServiceOptions> {
           throw new ImError(409, 'delivery_unknown', 'IM 消息发送结果未知，禁止自动重复发送')
       }
       await this.validateSend(target, segments)
-      if (target.chat.type === 'group')
+      if (target.chat.type === 'group' && options.continuation)
         await waitForSend(messageSendDelay(segments, this.sendDelay), signal)
       // 等待期间可能撤销聊天或业务权限，必须在真正发送前重新校验。
       await this.validateSend(target, segments)

@@ -6,7 +6,7 @@
     "sendDelayPerCharMs": {
       "type": "integer",
       "title": "群聊每个字延迟（毫秒）",
-      "description": "群聊每条消息发送前按文本字符数等待；0 表示关闭所有发送延迟。",
+      "description": "群聊 AI 每轮回复的第二条及后续消息按文本字符数等待；首条与普通指令回复不等待，0 表示关闭所有发送延迟。",
       "minimum": 0,
       "maximum": 2147483647,
       "default": 100
