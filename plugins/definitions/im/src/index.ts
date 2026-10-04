@@ -1020,6 +1020,37 @@ export class ImService extends Service<ServiceOptions> {
       throw new ImError(403, 'forbidden', 'IM 聊天已禁用')
     return { workspaceId, connectionId: entry.descriptor.id, chat }
   }
+  /** 可信服务端消费方下载当前空间中的媒体，沿用接入的下载与卸载生命周期。 */
+  async downloadMedia(
+    target: ScopedTarget,
+    message: IncomingMessage,
+    segment: MediaSegment,
+    signal: AbortSignal,
+    maxBytes: number,
+  ) {
+    const resolved = await this.resolveTarget(target.workspaceId)
+    if (
+      resolved.connectionId !== target.connectionId ||
+      resolved.chat.type !== target.chat.type ||
+      resolved.chat.id !== target.chat.id ||
+      message.chat.type !== target.chat.type ||
+      message.chat.id !== target.chat.id
+    )
+      throw new ImError(403, 'forbidden', '媒体下载目标不属于当前空间')
+    const entry = this.entry(target.connectionId)
+    if (!entry.descriptor.downloadMedia) throw new ImError(400, 'unsupported', '接入不支持媒体下载')
+    const combined = AbortSignal.any([signal, entry.controller.signal])
+    combined.throwIfAborted()
+    const work = entry.descriptor.downloadMedia(message, segment, combined, maxBytes)
+    entry.pending.add(work)
+    try {
+      const result = await work
+      combined.throwIfAborted()
+      return result
+    } finally {
+      entry.pending.delete(work)
+    }
+  }
   async invoke(
     target: ScopedTarget,
     action: string,

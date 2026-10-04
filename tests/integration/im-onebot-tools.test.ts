@@ -1,6 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { WebSocket } from 'ws'
-import type { JsonObject, RequestSnapshot, RunContext } from '@antarestra/ai'
+import { createServer } from 'node:http'
+import Storage, { type StorageBackend } from '@antarestra/storage'
+import files from '@antarestra/plugin-workspace-file'
+import type { Json, JsonObject, RequestSnapshot, RunContext } from '@antarestra/ai'
 import * as OneBot from '../../plugins/adapters/im-onebot/src/index.js'
 import { cleanup, setup } from './im-features-fixture.js'
 
@@ -8,19 +11,70 @@ afterEach(cleanup)
 const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
 const toolIds = ['onebot_get_forward_msg', 'onebot_set_msg_emoji_like']
 type Call = { name: string; arguments: JsonObject }
-async function createApp(calls: Call[]) {
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',
+  'base64',
+)
+async function installStorage(ctx: Awaited<ReturnType<typeof setup>>['ctx']) {
+  const blobs = new Map<string, Uint8Array>()
+  const backend: StorageBackend = {
+    async begin(upload) {
+      return upload
+    },
+    async plan(upload) {
+      return {
+        driver: 'memory',
+        headers: {},
+        parts: [{ number: 1, url: upload.stagingKey, offset: 0, size: upload.size }],
+      }
+    },
+    async write(upload, data, signal) {
+      signal.throwIfAborted()
+      blobs.set(upload.stagingKey, data)
+      return []
+    },
+    async complete(upload) {
+      blobs.set(upload.key, blobs.get(upload.stagingKey)!)
+    },
+    async discard(upload) {
+      blobs.delete(upload.stagingKey)
+    },
+    async remove(key) {
+      blobs.delete(key)
+    },
+    async read(key) {
+      return blobs.get(key)!
+    },
+    async exists(key) {
+      return blobs.has(key)
+    },
+    async download(key) {
+      return `https://example.invalid/${key}`
+    },
+  }
+  await ctx.plugin(Storage)
+  ctx.storage.register(ctx, 'test', backend)
+  await ctx.plugin(files, { backendId: 'test', defaultQuota: 1024 ** 2 })
+  return blobs
+}
+async function createApp(
+  calls: (Call | ((request: RequestSnapshot) => Call))[],
+  withFiles = false,
+) {
   const requests: RequestSnapshot[] = []
   const steps = new Map<string, number>()
   const app = await setup({
     ai: true,
-    toolIds,
+    toolIds: withFiles ? [...toolIds, 'workspace_file_read'] : toolIds,
+    modelInput: ['text', 'image'],
     driver: {
       id: 'driver',
       async generate(request, _connection, context) {
         requests.push(request)
         const step = steps.get(context.runId) ?? 0
         steps.set(context.runId, step + 1)
-        const call = calls[step]
+        const next = calls[step]
+        const call = typeof next === 'function' ? next(request) : next
         return {
           content: call
             ? [{ type: 'tool-call', id: `call-${step}`, ...call }]
@@ -29,6 +83,7 @@ async function createApp(calls: Call[]) {
       },
     },
   })
+  const blobs = withFiles ? await installStorage(app.ctx) : undefined
   const registered = vi.spyOn(app.ctx.ai, 'registerTool')
   async function connect(connectionId: string, selfId: string) {
     const fiber = await app.ctx.plugin(OneBot, {
@@ -61,6 +116,15 @@ async function createApp(calls: Call[]) {
     const actions: { action: string; params: JsonObject }[] = []
     let messageGroup = '40894918'
     let failure: string | undefined
+    let forward: Json = {
+      messages: [
+        {
+          sender: { user_id: 42, nickname: '转发者' },
+          time: 1720000000,
+          content: [{ type: 'text', data: { text: '转发内部内容' } }],
+        },
+      ],
+    }
     socket.on('message', (raw) => {
       const request = JSON.parse(raw.toString()) as {
         action: string
@@ -79,18 +143,12 @@ async function createApp(calls: Call[]) {
                 message: [{ type: 'forward', data: { id: 'resource-1' } }],
               }
             : request.action === 'get_forward_msg'
-              ? {
-                  messages: [
-                    {
-                      sender: { user_id: 42, nickname: '转发者' },
-                      time: 1720000000,
-                      content: [{ type: 'text', data: { text: '转发内部内容' } }],
-                    },
-                  ],
-                }
-              : request.action === 'send_group_msg'
-                ? { message_id: 100 }
-                : { result: true }
+              ? forward
+              : request.action === 'get_image'
+                ? { base64: png.toString('base64') }
+                : request.action === 'send_group_msg'
+                  ? { message_id: 100 }
+                  : { result: true }
       socket.send(
         JSON.stringify({
           echo: request.echo,
@@ -121,6 +179,9 @@ async function createApp(calls: Call[]) {
       socket,
       actions,
       receive,
+      setForward: (value: Json) => {
+        forward = value
+      },
       setGroup: (group: string) => {
         messageGroup = group
       },
@@ -129,8 +190,211 @@ async function createApp(calls: Call[]) {
       },
     }
   }
-  return { ...app, requests, registered, connectOneBot: connect }
+  return { ...app, blobs, requests, registered, connectOneBot: connect }
 }
+
+it('转发数组、CQ 和嵌套图片先入库去重，模型随后通过文件工具读取真实图片', async () => {
+  const downloads: string[] = []
+  const server = createServer((request, response) => {
+    downloads.push(request.url!)
+    response.setHeader('content-type', 'application/octet-stream')
+    response.end(png)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('监听失败')
+    const url = `http://127.0.0.1:${address.port}/download?appid=1407&fileid=example&rkey=example`
+    let resourceId = ''
+    const app = await createApp(
+      [
+        { name: toolIds[0]!, arguments: { message_id: '1' } },
+        (request) => {
+          const result = request.messages
+            .flatMap((message) => message.content)
+            .find((block) => block.type === 'tool-result' && block.id === 'call-0')
+          resourceId = JSON.stringify(result).match(/"resourceId":"([^"]+)"/)?.[1] ?? ''
+          expect(resourceId).not.toBe('')
+          return { name: 'workspace_file_read', arguments: { resourceId } }
+        },
+      ],
+      true,
+    )
+    const first = await app.connectOneBot('onebot-a', '05')
+    const second = await app.connectOneBot('onebot-b', '06')
+    first.setForward({
+      messages: [
+        {
+          sender: { user_id: 42, nickname: '转发者' },
+          time: 1720000000,
+          raw_message: `前文[CQ:image,file=example.jpg,url=${url.replaceAll('&', '&amp;')}]后文`,
+          message: [
+            { type: 'text', data: { text: '原始文字' } },
+            { type: 'image', data: { file: 'example.jpg', url } },
+            {
+              type: 'node',
+              data: {
+                user_id: 43,
+                content: [
+                  { type: 'image', data: { file: 'platform-only.png' } },
+                  { type: 'text', data: { text: '嵌套文字' } },
+                ],
+              },
+            },
+          ],
+          content: '[CQ:image,file=platform-only.png]',
+        },
+      ],
+    })
+    first.receive()
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    expect(downloads).toEqual(['/download?appid=1407&fileid=example&rkey=example'])
+    expect(first.actions.filter((entry) => entry.action === 'get_image')).toEqual([
+      expect.objectContaining({ params: { file: 'platform-only.png' } }),
+    ])
+    expect(second.actions).toEqual([])
+    expect(app.blobs?.size).toBe(2)
+    const result = JSON.stringify(app.requests[1])
+    expect(result).toContain(`[图片,${resourceId}]`)
+    expect(result).not.toContain('[CQ:image')
+    expect(result).not.toContain('rkey=')
+    expect(result).toContain('转发者')
+    expect(result).toContain('1720000000')
+    expect(result).toContain('原始文字')
+    expect(result).toContain('嵌套文字')
+    expect(app.requests.at(-1)?.messages.flatMap((message) => message.content)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-result',
+        id: 'call-1',
+        isError: false,
+        images: [
+          expect.objectContaining({ resourceId, mimeType: 'image/png', width: 1, height: 1 }),
+        ],
+      }),
+    )
+    const access = await app.ctx.workspaceFile.authorize('im', app.messages[0]!.request)
+    expect((await app.ctx.workspaceFile.readResource(access, resourceId)).bytes).toEqual(png)
+    await app.connection.receive('其他空间')
+    const other = await app.ctx.workspaceFile.authorize('im', app.messages.at(-1)!.request)
+    await expect(app.ctx.workspaceFile.resource(other, resourceId)).rejects.toThrow('文件已过期')
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
+it('损坏、超限和下载失败图片不伪造资源 ID，也不阻断其他图片与文字', async () => {
+  const server = createServer((request, response) => {
+    if (request.url === '/denied') response.writeHead(403)
+    else if (request.url === '/large') response.setHeader('content-length', 8 * 1024 ** 2 + 1)
+    response.end('not-an-image')
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('监听失败')
+    const base = `http://127.0.0.1:${address.port}`
+    const app = await createApp([{ name: toolIds[0]!, arguments: { message_id: '1' } }], true)
+    const bot = await app.connectOneBot('onebot-a', '05')
+    bot.setForward({
+      messages: [
+        {
+          content: [
+            ...['denied', 'large', 'broken'].map((path) => ({
+              type: 'image',
+              data: { url: `${base}/${path}` },
+            })),
+            { type: 'image', data: {} },
+            { type: 'text', data: { text: '保留文字' } },
+            { type: 'image', data: { file: 'good.png' } },
+          ],
+        },
+      ],
+    })
+    bot.receive()
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    const result = app.requests
+      .at(-1)!
+      .messages.flatMap((message) => message.content)
+      .find((block) => block.type === 'tool-result')!
+    const json = JSON.stringify(result)
+    expect(json.match(/"status":"failed"/g)).toHaveLength(4)
+    expect(json.match(/"resourceId":/g)).toHaveLength(1)
+    expect(json).toContain('保留文字')
+    expect(json).toContain('无法识别图片')
+    expect(json).not.toContain(base)
+    expect(app.blobs?.size).toBe(1)
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
+it('未加载图片存储时明确标记失败，取消的媒体下载停止且拒绝跨空间目标', async () => {
+  const app = await createApp([{ name: toolIds[0]!, arguments: { message_id: '1' } }])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  bot.setForward({ messages: [{ content: '文字[CQ:image,file=only.png]' }] })
+  bot.receive()
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(JSON.stringify(app.requests.at(-1))).toContain('图片附件存储不可用')
+  expect(JSON.stringify(app.requests.at(-1))).not.toContain('[CQ:image')
+  const message = app.messages[0]!
+  const target = await app.ctx.im.resolveTarget(message.workspaceId)
+  const segment = { type: 'image' as const, url: 'onebot://file/only.png' }
+  await expect(
+    app.ctx.im.downloadMedia(
+      { ...target, chat: { ...target.chat, id: 'foreign' } },
+      message.message,
+      segment,
+      message.signal,
+      1000,
+    ),
+  ).rejects.toThrow('媒体下载目标不属于当前空间')
+  const prior = bot.actions.length
+  await expect(
+    app.ctx.im.downloadMedia(target, message.message, segment, AbortSignal.abort(), 1000),
+  ).rejects.toThrow()
+  expect(bot.actions).toHaveLength(prior)
+})
+
+it.each(['取消', '卸载'] as const)('%s 接入媒体下载时关闭请求并等待清理', async (operation) => {
+  let requested = false
+  let closed = false
+  const server = createServer((request) => {
+    requested = true
+    request.on('close', () => {
+      closed = true
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('监听失败')
+    const app = await createApp([])
+    const bot = await app.connectOneBot('onebot-a', '05')
+    bot.receive()
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    const message = app.messages[0]!
+    const target = await app.ctx.im.resolveTarget(message.workspaceId)
+    const controller = new AbortController()
+    const pending = app.ctx.im.downloadMedia(
+      target,
+      message.message,
+      { type: 'image', url: `http://127.0.0.1:${address.port}/pending` },
+      controller.signal,
+      1000,
+    )
+    const rejected = expect(pending).rejects.toThrow()
+    await poll(() => requested).toBe(true)
+    if (operation === '取消') controller.abort()
+    else await bot.fiber.dispose()
+    await rejected
+    await poll(() => closed).toBe(true)
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
 
 it('模型实际调用两个工具，保留转发内容并发送指定表情，描述包含全部指定表情', async () => {
   const app = await createApp([

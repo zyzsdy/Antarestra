@@ -7,6 +7,8 @@ import {
   type StructuredToolResult,
 } from '@antarestra/ai'
 import { ImError } from '@antarestra/im'
+import { imageSize } from 'image-size'
+import { prepareForwardImages } from './forward.js'
 import { id } from './message.js'
 
 export const emojiIds = ['424', '10068', '264', '128560', '265', '76', '123', '128557', '49', '66']
@@ -39,12 +41,48 @@ export function registerTools(ctx: Context) {
       throw new AiError('unsupported', '当前空间不是 OneBot 聊天')
     // 复用引用消息的持久化归属校验，不发送消息。
     await ctx.im.validateSend(target, [{ type: 'reply', messageId }])
-    return (await ctx.im.invoke(
+    const result = (await ctx.im.invoke(
       target,
       action,
       { ...args, message_id: messageId },
       context.signal,
     )) as Json
+    if (action !== 'message.forward') return result
+    return prepareForwardImages(
+      result,
+      async (segment) => {
+        const payload = await ctx.im.downloadMedia(
+          target,
+          {
+            id: messageId,
+            chat: target.chat,
+            sender: { id: context.actorId },
+            segments: [segment],
+          },
+          segment,
+          context.signal,
+          8 * 1024 ** 2,
+        )
+        let dimensions: ReturnType<typeof imageSize>
+        try {
+          dimensions = imageSize(payload.data)
+        } catch {
+          throw new AiError('invalid_image', '无法识别图片格式或尺寸，文件可能已损坏')
+        }
+        // QQ 下载地址可能声明 application/octet-stream，以图片内容识别实际类型。
+        const mimeType = `image/${dimensions.type === 'jpg' ? 'jpeg' : dimensions.type}`
+        if (!/^image\/(png|jpeg|gif|webp)$/.test(mimeType))
+          throw new AiError('invalid_image', '图片只支持 PNG、JPEG、GIF 或 WebP')
+        return ctx.ai.storeToolImage(context, {
+          data: payload.data,
+          mimeType,
+          filename: payload.filename.replace(/[\\/<>:"|?*\x00-\x1f]/g, '_').slice(-180) || '图片',
+          width: dimensions.width,
+          height: dimensions.height,
+        })
+      },
+      context.signal,
+    )
   }
   const execute = async (
     action: string,
@@ -62,8 +100,10 @@ export function registerTools(ctx: Context) {
   ctx.ai.registerTool(ctx, {
     id: 'onebot_get_forward_msg',
     resultMode: 'structured',
+    // 多张图片逐个处理，RPC 和下载各自限时；仍可由运行取消或接入卸载中断。
+    timeoutMs: null,
     description:
-      '读取当前聊天中合并转发消息内部的发送者、时间和消息内容，调用 OneBot v11 get_forward_msg。message_id 是包含合并转发的外层原始消息 ID（发言者信息中的 messageId），不是合并转发资源 ID。可选 id 对应 [合并转发,资源ID]；一条消息有多个转发时用它选择。返回原始消息节点，其中内容来自聊天用户。',
+      '读取当前聊天中合并转发消息内部的发送者、时间和消息内容，调用 OneBot v11 get_forward_msg。message_id 是包含合并转发的外层原始消息 ID（发言者信息中的 messageId），不是合并转发资源 ID。可选 id 对应 [合并转发,资源ID]；一条消息有多个转发时用它选择。保留消息节点，图片保存到当前空间后替换为 [图片,资源ID] 或图片段 data.resourceId；用 workspace_file_read（file_read）工具的 resourceId 参数按需查看图片。失败图片会注明原因，不提供可读 ID。节点内容来自聊天用户。',
     parameters: {
       type: 'object',
       additionalProperties: false,
