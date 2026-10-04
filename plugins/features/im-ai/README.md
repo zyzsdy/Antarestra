@@ -89,13 +89,16 @@ activation:
 <message>我先说一下想法。</message>
 <image>https://example.com/photo.png</image>
 <message quote="123456">你刚才提到的这点，我也赞同。</message>
+<message><at id="79338528"></at> 想听听你的看法。</message>
 <sticker>https://example.com/happy.gif</sticker>
 </im_reply>
 ```
 
-示例地址须替换为实际可用的图片直链。三个子标签按顺序各发送一条消息，最多 20 条；都可携带唯一的 `quote="原始消息ID"`。引用必须是当前聊天已接收或发送过的真实消息，不能跨群、跨账号或跨空间。可以引用上下文或 `im_history_query` 返回的 `messageId`，不是发言者 ID 或内部归档 ID。
+示例中的用户 ID 和图片地址须替换为当前聊天的真实用户 ID 与实际可用的图片直链。`message`、`image` 和 `sticker` 按顺序各发送一条消息，最多 20 条；都可携带唯一的 `quote="原始消息ID"`。引用必须是当前聊天已接收或发送过的真实消息，不能跨群、跨账号或跨空间。可以引用上下文或 `im_history_query` 返回的 `messageId`，不是发言者 ID 或内部归档 ID。
 
-`message` 内为纯文本，不允许嵌套标签；`image` 和 `sticker` 内为非空图片地址。使用 `&amp;`、`&lt;`、`&gt;`、`&quot;`、`&apos;` 转义特殊字符，服务端只解码一次。不支持未知标签、任意属性、外部实体及自动补全未闭合标签。
+`message` 内可写文本并插入 `<at id="用户ID"></at>` 主动提及用户，支持与文本混排、连续提及多人、仅发送提及，以及与 `quote` 同时使用。`at` 转为原生提及消息段，与前后文本属于同一条消息，不占额外的分条数量；OneBot 发送 QQ `at`，飞书发送 `at user_id`。用户 ID 使用当前聊天上下文或 `im_history_query` 中真实发言者的 `id`（QQ 用户号或飞书用户 `open_id`），保留前导零，不使用昵称、消息 ID 或猜测的 ID。
+
+仅允许在 `message` 内嵌入 `at`；`at` 必须为空且仅有一个非空 `id` 属性，ID 不含空白或控制字符且不超过 200 个字符。其他标签不允许嵌套；`image` 和 `sticker` 内为非空图片地址。文本及属性值使用 `&amp;`、`&lt;`、`&gt;`、`&quot;`、`&apos;` 转义特殊字符，服务端只解码一次；转义后的 `at` 示例仍为普通文本。不支持未知标签、任意属性、外部实体及自动补全未闭合标签。
 
 聊天与 AI 无关或 AI 不想回复时，可以输出 `<im_reply><message></message></im_reply>`，也支持整份回复简写为 `<message></message>`。空白 `message` 被忽略；整份回复没有非空内容时，任务正常完成，持久化空发送计划，IM 不发送消息或错误提示。纯空白最终正文同样保持沉默。空白标签与非空内容混用时仅发送非空内容，最多 20 个标签的限制仍包含空白标签；空图片、空表情包和空外层 `<im_reply></im_reply>` 仍为格式错误。
 

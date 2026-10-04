@@ -4,6 +4,8 @@ import type { ModelDriver } from '@antarestra/ai'
 import { parseReply, replyFormatGuide } from '../../plugins/features/im-ai/src/reply.js'
 import { pluginId, type Tables } from '../../plugins/features/im-ai/src/store.js'
 import { cleanup, setup } from './im-features-fixture.js'
+import { encodeMessage as encodeOneBot } from '../../plugins/adapters/im-onebot/src/message.js'
+import { encodeMessage as encodeFeishu } from '../../plugins/adapters/im-feishu/src/message.js'
 
 afterEach(cleanup)
 const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
@@ -42,6 +44,61 @@ it('按顺序解析文本、图片、表情包和引用，实体仅解码一次'
     expect(parseReply(text)).toEqual([[{ type: 'text', text }]])
 })
 
+it('引用消息中按顺序混排文本和多个提及，保留用户 ID 与内部空白', () => {
+  expect(
+    parseReply(
+      '<im_reply><message quote="123">  你好 &amp; <at id="00123"></at>\n和 <at id="ou_friend"></at><at id="00456"></at> 一起聊聊  </message></im_reply>',
+    ),
+  ).toEqual([
+    [
+      { type: 'reply', messageId: '123' },
+      { type: 'text', text: '你好 & ' },
+      { type: 'mention', userId: '00123' },
+      { type: 'text', text: '\n和 ' },
+      { type: 'mention', userId: 'ou_friend' },
+      { type: 'mention', userId: '00456' },
+      { type: 'text', text: ' 一起聊聊' },
+    ],
+  ])
+  expect(parseReply('<im_reply><message><at id="00123"></at></message></im_reply>')).toEqual([
+    [{ type: 'mention', userId: '00123' }],
+  ])
+  expect(replyFormatGuide()).toContain('<at id="用户ID"></at>')
+})
+
+it('转义的 at 保持为文本，属性实体仅解码一次，普通回复不提取标签', () => {
+  expect(
+    parseReply(
+      '<im_reply><message>&lt;at id=&quot;123&quot;&gt;&lt;/at&gt;<at id="ou_&amp;quot;"></at></message></im_reply>',
+    ),
+  ).toEqual([
+    [
+      { type: 'text', text: '<at id="123"></at>' },
+      { type: 'mention', userId: 'ou_&quot;' },
+    ],
+  ])
+  const plain = '示例 <at id="123"></at>'
+  expect(parseReply(plain)).toEqual([[{ type: 'text', text: plain }]])
+})
+
+it.each([
+  '<at></at>',
+  '<at id=""></at>',
+  '<at id=" "></at>',
+  '<at id="123 456"></at>',
+  '<at id="123\u0000"></at>',
+  `<at id="${'x'.repeat(201)}"></at>`,
+  '<at id="123" id="456"></at>',
+  '<at id="123" name="某人"></at>',
+  '<at id="123">某人</at>',
+  '<at id="123"><at id="456"></at></at>',
+  '<at id="123"/>',
+  '<at id="123">',
+  '<at id="&unknown;"></at>',
+])('拒绝无效的提及标签：%s', (at) => {
+  expect(() => parseReply(`<im_reply><message>你好${at}</message></im_reply>`)).toThrow()
+})
+
 it.each([
   '<im_reply>',
   '<im_reply></im_reply>',
@@ -59,6 +116,9 @@ it.each([
   '<im_reply><sticker>base64://xxx</sticker></im_reply>',
   '<im_reply><image>https://user:pass@example.com/a.png</image></im_reply>',
   '<im_reply><unknown>文本</unknown></im_reply>',
+  '<im_reply><at id="123"></at></im_reply>',
+  '<im_reply><image><at id="123"></at></image></im_reply>',
+  '<im_reply><sticker><at id="123"></at></sticker></im_reply>',
   `<im_reply>${'<message>文本</message>'.repeat(21)}</im_reply>`,
   `<im_reply>${'<message></message>'.repeat(21)}</im_reply>`,
 ])('拒绝无效的整份回复：%s', (text) => {
@@ -164,24 +224,70 @@ it('一次运行按顺序发送独立消息，引用当前群友发言并逐条�
   expect(JSON.parse(job.reply_plan!)).toHaveLength(4)
 })
 
-it.each(['<message>未闭合', '<message quote="foreign">跨群引用</message>'])(
-  '整份预检失败不先发第一条：%s',
-  async (suffix) => {
+it.each(['00123', 'ou_friend'])(
+  'AI 提及 %s 经发送计划、投递和归档保留原生消息段',
+  async (userId) => {
     const app = await setup({
       ai: true,
-      driver: driver(`<im_reply><message>不可先发</message>${suffix}</im_reply>`),
+      driver: driver(
+        `<im_reply><message quote="friend"><at id="${userId}"></at> 你好</message><message><at id="${userId}"></at></message></im_reply>`,
+      ),
     })
-    const other = app.connect('qq-b', '06')
-    await other.receive('另一个接入的消息', { id: 'foreign' })
+    await app.connection.receive('群友发言', { id: 'friend', sender: { id: userId } })
     await app.connection.receive('/ai 回复')
     await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
-    expect((await app.jobs())[0]?.status).toBe('failed')
-    expect(app.sent).toHaveLength(1)
-    expect(app.sent[0]?.segments).toEqual([
-      { type: 'text', text: 'AI 回复格式、引用或图片地址无效，本次回复未发送，请重试。' },
-    ])
+    const expected = [
+      [
+        { type: 'reply', messageId: 'friend' },
+        { type: 'mention', userId },
+        { type: 'text', text: ' 你好' },
+      ],
+      [{ type: 'mention', userId }],
+    ]
+    expect(app.sent.map((entry) => entry.segments)).toEqual(expected)
+    const job = (await app.jobs())[0]!
+    expect(job.status).toBe('completed')
+    expect(JSON.parse(job.reply_plan!)).toEqual(expected)
+    const history = await app.ctx.im.history(job.workspace_id, { limit: 20 })
+    expect(
+      history.filter((entry) => entry.message.sender.bot).map((entry) => entry.message.segments),
+    ).toEqual(expected)
+    const segments = app.sent[0]!.segments
+    if (userId === '00123') {
+      expect(encodeOneBot(segments)).toEqual([
+        { type: 'reply', data: { id: 'friend' } },
+        { type: 'at', data: { qq: userId } },
+        { type: 'text', data: { text: ' 你好' } },
+      ])
+    } else {
+      expect(encodeFeishu(segments)).toEqual({
+        replyId: 'friend',
+        msg_type: 'text',
+        content: JSON.stringify({ text: `<at user_id="${userId}"></at> 你好` }),
+      })
+    }
   },
 )
+
+it.each([
+  '<message>未闭合',
+  '<message quote="foreign">跨群引用</message>',
+  '<message><at id="">无效提及</at></message>',
+])('整份预检失败不先发第一条：%s', async (suffix) => {
+  const app = await setup({
+    ai: true,
+    driver: driver(`<im_reply><message>不可先发</message>${suffix}</im_reply>`),
+  })
+  const other = app.connect('qq-b', '06')
+  await other.receive('另一个接入的消息', { id: 'foreign' })
+  await app.connection.receive('/ai 回复')
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect((await app.jobs())[0]?.status).toBe('failed')
+  expect(app.sent).toHaveLength(1)
+  expect(app.sent[0]?.segments).toEqual([
+    { type: 'text', text: 'AI 回复格式、引用或图片地址无效，本次回复未发送，请重试。' },
+  ])
+})
 
 it.each([
   { append: false, system: '系统', expected: 'none' },
