@@ -1,4 +1,23 @@
 import { AuthError } from '@antarestra/rbac'
+import { imageSize } from 'image-size'
+
+export function imageDimensions(bytes: Uint8Array, mimeType: string) {
+  let dimensions: ReturnType<typeof imageSize>
+  try {
+    dimensions = imageSize(bytes)
+  } catch {
+    throw new AuthError(400, '无法识别图片格式或尺寸，文件可能已损坏')
+  }
+  if (
+    `image/${dimensions.type === 'jpg' ? 'jpeg' : dimensions.type}` !== mimeType ||
+    !Number.isSafeInteger(dimensions.width) ||
+    dimensions.width <= 0 ||
+    !Number.isSafeInteger(dimensions.height) ||
+    dimensions.height <= 0
+  )
+    throw new AuthError(400, '图片内容与声明格式不符或尺寸无效')
+  return dimensions
+}
 export function filePath(value: unknown, root = false): string {
   if (
     typeof value !== 'string' ||

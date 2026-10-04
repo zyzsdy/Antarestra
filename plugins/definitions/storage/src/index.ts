@@ -7,6 +7,13 @@ export { fileResponse } from './response.js'
 export type { DownloadResponse } from './response.js'
 export type { UploadPlan, UploadedPart } from './client.js'
 
+/** 持有 URL 即可 GET，无需 Cookie、Authorization 或额外请求头；到期后失效。 */
+export interface TemporaryUrl {
+  url: string
+  /** Unix 毫秒时间戳。 */
+  expiresAt: number
+}
+
 export interface BlobUpload {
   key: string
   stagingKey: string
@@ -25,6 +32,8 @@ export interface StorageBackend {
   discard(upload: BlobUpload): Promise<void>
   remove(key: string): Promise<void>
   download(key: string, response?: DownloadResponse): Promise<string>
+  /** 可选能力；不得返回需要会话鉴权的应用地址或永久公开链接。 */
+  temporaryUrl?(key: string, response?: DownloadResponse): Promise<TemporaryUrl>
   read(key: string): Promise<Uint8Array>
   exists?(key: string): Promise<boolean>
 }
@@ -62,6 +71,12 @@ export class StorageService extends Service {
       discard: (upload) => invoke(() => backend.discard(upload)),
       remove: (key) => invoke(() => backend.remove(key)),
       download: (key, response) => invoke(() => backend.download(key, response)),
+      ...(backend.temporaryUrl
+        ? {
+            temporaryUrl: (key: string, response?: DownloadResponse) =>
+              invoke(() => backend.temporaryUrl!(key, response)),
+          }
+        : {}),
       read: (key) => invoke(() => backend.read(key)),
       ...(backend.exists ? { exists: (key: string) => invoke(() => backend.exists!(key)) } : {}),
     }

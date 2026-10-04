@@ -1,7 +1,7 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import type { ChatTarget, ConnectionPolicy } from '@antarestra/im'
-import '@antarestra/im'
+import { downloadHttpMedia } from '@antarestra/im'
 import * as lark from '@larksuiteoapi/node-sdk'
 import axios from 'axios'
 import { createHash } from 'node:crypto'
@@ -108,7 +108,40 @@ export function apply(ctx: Context, input: Config) {
     ...(config.policy ? { policy: config.policy } : {}),
     capabilities: ['text', 'mention', 'reply', 'image.key', 'file.key', 'member'],
     validateMessage: (segments) => {
-      encodeMessage(segments)
+      encodeMessage(segments, true)
+    },
+    async prepareImage(image, signal) {
+      const requestSignal = AbortSignal.any([signal, stopped.signal])
+      return track(
+        (async () => {
+          try {
+            const payload = await downloadHttpMedia(
+              { type: 'image', url: image.url, name: image.filename },
+              requestSignal,
+              8 * 1024 ** 2,
+            )
+            requestSignal.throwIfAborted()
+            const result = await client.request<{ code?: number; data?: { image_key?: string } }>({
+              method: 'POST',
+              url: '/open-apis/im/v1/images',
+              headers: { 'Content-Type': 'multipart/form-data' },
+              // SDK 会展开 data；必须传普通对象，由 Axios 按 multipart 编码 Buffer。
+              data: { image_type: 'message', image: Buffer.from(payload.data) },
+              timeout: 15000,
+              signal: requestSignal,
+            })
+            requestSignal.throwIfAborted()
+            if (result.code !== 0 || !result.data?.image_key) throw new Error('上传失败')
+            return {
+              type: 'image' as const,
+              url: `feishu://image/${encodeURIComponent(result.data.image_key)}`,
+            }
+          } catch {
+            // 原始异常可能包含签名链接、图片内容或平台凭据。
+            throw new Error('飞书图片准备失败，请检查存储地址、图片格式和应用上传权限')
+          }
+        })(),
+      )
     },
     async downloadMedia(message, segment, signal, maxBytes) {
       if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')

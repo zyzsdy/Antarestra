@@ -51,6 +51,22 @@ export interface MediaSegment {
   url: string
   name?: string
 }
+export interface ImageResource {
+  resourceId: string
+  mimeType: string
+  filename: string
+  size: number
+}
+/** 仅由服务端调用；空间来自已验证的发送目标，不接受模型传入空间。 */
+export interface ImageResourceResolver {
+  inspect(workspaceId: string, resourceId: string, signal: AbortSignal): Promise<ImageResource>
+  /** 每次实际发送前生成无需额外鉴权的临时 HTTP(S) 地址。 */
+  resolve(
+    workspaceId: string,
+    resourceId: string,
+    signal: AbortSignal,
+  ): Promise<{ url: string; expiresAt: number }>
+}
 export interface ArchivedMedia {
   id: string
   index: number
@@ -171,6 +187,8 @@ export interface ConnectionDescriptor {
   ): Promise<{ data: Uint8Array; mimeType: string; filename: string }>
   /** 无发送副作用的消息格式检查，可用于批量投递前的完整预检。 */
   validateMessage?(segments: readonly MessageSegment[]): void
+  /** 上传内部图片到平台；失败发生在认领消息投递之前，可安全重试。 */
+  prepareImage?(image: ImageResource & { url: string }, signal: AbortSignal): Promise<MediaSegment>
   send(
     target: ChatTarget,
     segments: readonly MessageSegment[],

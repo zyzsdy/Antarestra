@@ -72,6 +72,16 @@ const bytes = await ctx.workspaceFile.read(access, '/upload/example.txt')
 
 图片资源解析器支持 PNG、JPEG、GIF、WebP，其他格式作为普通文件保存；模型是否接收由其接口决定。附件内容只在调用期间经 `ResolvedResource` 交给模型驱动，历史与请求快照仅保留引用。单附件 AI 读取上限 16 MiB，与空间上传配额是不同限制。
 
+## IM 图片资源与临时地址
+
+AI 工具 `im_prepare_image` 接受 `{ resourceId }` 或 `{ path }`，二选一；助理须显式允许此工具。它验证当前运行与空间授权、文件存在性、真实图片格式和大小，返回 `{ resourceId, src, filename, mimeType, size }`，其中 `src` 为 `resource://图片资源ID`。支持 PNG、JPEG、GIF、WebP，最多 8 MiB。工具不会发送消息，也不会提前签发临时链接；模型在最终回复的 `<image>` 或 `<sticker>` 中使用 `src`。
+
+服务端 `ctx.workspaceFile.temporaryUrl(access, resourceId)` 和 `POST /api/workspace-files/resources/:id/temporary-url` 返回 `{ url, expiresAt }`。申请接口需要现有 `workspace.file.use` 权限与可信空间，返回的完整 HTTP(S) URL 则无需 Cookie、Authorization 或额外请求头即可读取；持有链接者在有效期内可访问该单个对象。签发完全委托文件记录所属存储 provider 的 `temporaryUrl` 能力，不假设 S3，也不回退到网页鉴权地址。provider 未实现、URL 不合法或已过期时明确失败。实际免鉴权与过期控制由 provider 保证，文件服务不代理下载。
+
+可选 IM 扩展注册图片资源解析器，在整份回复预检时检查资源，在实际发送前才签发链接。空间来自 IM 核心验证过的发送目标；归档复用原资源 ID，原文件的删除与保留规则继续生效。文件或 provider 卸载后停止签发，解析器卸载取消并等待在途操作。
+
 ## 验证
 
 `tests/integration/workspace-file.test.ts` 使用内存 SQLite 与内存 blob 后端验证权限、配额并发、目录、重载和清理，不代表真实 S3 验证。`pnpm test:storage` 使用真实 Docker RustFS 与磁盘 SQLite，验证直传、分片、字节内容、随机键、不可覆盖、跨空间拒绝和重载；不使用真实模型密钥。
+
+`tests/integration/im-image-resource.test.ts` 以非 S3 provider 和独立 HTTP 服务验证临时链接无需登录即可读取图片、工具执行、跨空间拒绝、排队后签发、恢复投递和文件扩展重载；仍属于模拟 IM/模型测试。`pnpm test:storage` 另检查临时 URL 申请接口的空间权限，以及真实 RustFS 签名 URL 在不附加任何鉴权请求头时返回完整原始字节。

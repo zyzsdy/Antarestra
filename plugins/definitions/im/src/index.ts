@@ -4,6 +4,7 @@ import { defineDatabasePlugin } from '@antarestra/database'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { migrations, pluginId, type Tables } from './schema.js'
 import { describeArchiveError } from './diagnostics.js'
+import { ImageResources, imageResourceId } from './resources.js'
 import { messageSendDelay, waitForSend, type SendDelayConfig } from './send-delay.js'
 import type {
   ChatPolicy,
@@ -27,8 +28,11 @@ import type {
   MediaSegment,
   AiHistoryReader,
   GroupSummary,
+  ImageResource,
+  ImageResourceResolver,
 } from './types.js'
 export * from './types.js'
+export { imageResourceId } from './resources.js'
 export { downloadHttpMedia } from './media.js'
 export interface Config extends Partial<SendDelayConfig> {
   mediaMaxRetries?: number
@@ -109,6 +113,7 @@ export class ImService extends Service<ServiceOptions> {
   private readonly saved = new Map<string, ConnectionPolicy>()
   private readonly revisions = new Map<string, number>()
   private mediaArchive: MediaArchive | undefined
+  private readonly imageResources = new ImageResources()
   private aiHistoryReader: AiHistoryReader | undefined
   private maintenance: Promise<void> | undefined
   private readonly abort = new AbortController()
@@ -583,6 +588,13 @@ export class ImService extends Service<ServiceOptions> {
     })
   }
   async validateSend(target: ScopedTarget, segments: readonly MessageSegment[]): Promise<void> {
+    await this.validateMessage(target, segments, true)
+  }
+  private async validateMessage(
+    target: ScopedTarget,
+    segments: readonly MessageSegment[],
+    resources: boolean,
+  ) {
     const entry = this.entry(target.connectionId)
     const route = await this.db()
       .selectFrom('route')
@@ -599,6 +611,13 @@ export class ImService extends Service<ServiceOptions> {
     if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
       throw new Error('IM 聊天已禁用')
     for (const segment of segments) {
+      if (resources && segment.type === 'image') {
+        const resourceId = imageResourceId(segment.url)
+        if (resourceId !== undefined)
+          await this.imageResources
+            .get()
+            .inspect(target.workspaceId, resourceId, entry.controller.signal)
+      }
       if (segment.type !== 'reply') continue
       const reference = await this.db()
         .selectFrom('message_reference')
@@ -608,6 +627,42 @@ export class ImService extends Service<ServiceOptions> {
       if (!reference) throw new ImError(403, 'foreign_message', '引用消息不属于当前空间')
     }
     entry.descriptor.validateMessage?.(segments)
+  }
+  registerImageResources(owner: Context, resolver: ImageResourceResolver) {
+    this.ctx.fiber.assertActive()
+    return this.imageResources.register(owner, resolver)
+  }
+  private async prepareImages(
+    entry: Entry,
+    target: ScopedTarget,
+    segments: readonly MessageSegment[],
+    signal: AbortSignal,
+  ) {
+    const prepared = [...segments]
+    const resources = new Map<number, ImageResource>()
+    for (const [index, segment] of segments.entries()) {
+      if (segment.type !== 'image') continue
+      const id = imageResourceId(segment.url)
+      if (id === undefined) continue
+      const resolver = this.imageResources.get()
+      const image = await resolver.inspect(target.workspaceId, id, signal)
+      const link = await resolver.resolve(target.workspaceId, id, signal)
+      const url = new URL(link.url)
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        !Number.isFinite(link.expiresAt) ||
+        link.expiresAt <= Date.now()
+      )
+        throw new Error('图片临时地址无效或已过期')
+      signal.throwIfAborted()
+      prepared[index] = entry.descriptor.prepareImage
+        ? await entry.descriptor.prepareImage({ ...image, url: link.url }, signal)
+        : { ...segment, url: link.url }
+      resources.set(index, image)
+    }
+    return { segments: prepared, resources }
   }
   async send(
     target: ScopedTarget,
@@ -623,12 +678,12 @@ export class ImService extends Service<ServiceOptions> {
     const signal = options.signal
       ? AbortSignal.any([entry.controller.signal, options.signal])
       : entry.controller.signal
-    const deliver = async () => {
+    const deliver = async (prepared: Awaited<ReturnType<ImService['prepareImages']>>) => {
       this.assertEntry(entry)
       signal.throwIfAborted()
       if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
         throw new Error('IM 聊天已禁用')
-      const result = await entry.descriptor.send(target.chat, segments, {
+      const result = await entry.descriptor.send(target.chat, prepared.segments, {
         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
         signal,
       })
@@ -643,6 +698,14 @@ export class ImService extends Service<ServiceOptions> {
             segments,
             timestamp: Date.now(),
           })
+          // 内部资源直接复用原文件；历史不保存签名 URL，也不下载并重复占用配额。
+          for (const media of archived.media) {
+            const resource = prepared.resources.get(media.index)
+            if (!resource) continue
+            media.resource = resource
+            media.status = 'stored'
+          }
+          if (prepared.resources.size) await this.saveMediaState(archived)
           await this.storeMedia(entry, archived)
         } catch (error) {
           this.ctx.logger.warn('已发送群消息归档失败：%o', {
@@ -659,7 +722,8 @@ export class ImService extends Service<ServiceOptions> {
     const dispatch = async (id?: string) => {
       this.assertEntry(entry)
       signal.throwIfAborted()
-      await this.validateSend(target, segments)
+      // 已发送的幂等记录不依赖资源仍存在，避免恢复时卡在已删除的旧图片。
+      await this.validateMessage(target, segments, false)
       if (id) {
         const prior = await this.db()
           .selectFrom('outbox')
@@ -670,19 +734,23 @@ export class ImService extends Service<ServiceOptions> {
         if (prior)
           throw new ImError(409, 'delivery_unknown', 'IM 消息发送结果未知，禁止自动重复发送')
       }
+      await this.validateSend(target, segments)
       if (target.chat.type === 'group')
         await waitForSend(messageSendDelay(segments, this.sendDelay), signal)
       // 等待期间可能撤销聊天或业务权限，必须在真正发送前重新校验。
       await this.validateSend(target, segments)
+      // 签名和平台上传在认领投递前完成；准备失败不应成为投递结果未知。
+      const prepared = await this.prepareImages(entry, target, segments, signal)
+      await this.validateSend(target, segments)
       await options.beforeSend?.()
       this.assertEntry(entry)
       signal.throwIfAborted()
-      if (!id) return deliver()
+      if (!id) return deliver(prepared)
       // 仅在等待完成后认领投递；未调用平台的取消仍可以安全重试。
       await this.db().insertInto('outbox').values({ id, status: 'sending', result: '{}' }).execute()
       let result: { messageId?: string }
       try {
-        result = await deliver()
+        result = await deliver(prepared)
       } catch {
         throw new ImError(409, 'delivery_unknown', 'IM 消息发送结果未知，禁止自动重复发送')
       }

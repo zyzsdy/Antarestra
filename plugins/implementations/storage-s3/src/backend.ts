@@ -215,6 +215,13 @@ export class S3Backend implements StorageBackend {
     await this.client.send(new DeleteObjectCommand(this.object(key)))
   }
   download(key: string, response?: DownloadResponse) {
+    return this.signDownload(key, response, 60)
+  }
+  async temporaryUrl(key: string, response?: DownloadResponse) {
+    const expiresAt = Math.floor(Date.now() / 1000) * 1000 + 300_000
+    return { url: await this.signDownload(key, response, 300), expiresAt }
+  }
+  private signDownload(key: string, response: DownloadResponse | undefined, expiresIn: number) {
     return getSignedUrl(
       this.publicClient,
       new GetObjectCommand({
@@ -228,7 +235,7 @@ export class S3Backend implements StorageBackend {
             }
           : {}),
       }),
-      { expiresIn: 60 },
+      { expiresIn },
     )
   }
   async read(key: string) {

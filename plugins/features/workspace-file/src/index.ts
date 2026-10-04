@@ -102,6 +102,9 @@ export default defineDatabasePlugin({
         route('GET', '/resources/:id', (http, access) =>
           service.resource(access, textField(http.params.id, '文件标识')),
         )
+        route('POST', '/resources/:id/temporary-url', (http, access) =>
+          service.temporaryUrl(access, textField(http.params.id, '文件标识')),
+        )
         route('POST', '/resources/:id/remove', async (http, access) => {
           await readJson(http)
           return service.removeResource(access, textField(http.params.id, '文件标识'))

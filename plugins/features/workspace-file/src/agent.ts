@@ -2,7 +2,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import type { RunContext } from '@antarestra/ai'
 import { AuthError } from '@antarestra/rbac'
 import { AiError } from '@antarestra/ai'
-import { imageSize } from 'image-size'
+import { imageDimensions } from './validation.js'
 import type { FileAccess } from './service.js'
 export const agentFiles = {
   inject: ['ai', 'workspaceFile', 'rbac'],
@@ -139,6 +139,30 @@ export const agentFiles = {
       additionalProperties: false,
     }
     ctx.ai.registerTool(ctx, {
+      id: 'im_prepare_image',
+      description:
+        '准备当前工作空间图片供 IM 回复使用。resourceId 或 path 只填一个。返回的 src 可直接写入 <image>src</image> 或 <sticker>src</sticker>；本工具不发送消息。支持 PNG、JPEG、GIF、WebP，最多 8 MiB。',
+      parameters: {
+        type: 'object',
+        properties: {
+          resourceId: { type: 'string', minLength: 1 },
+          path: { type: 'string', minLength: 1 },
+        },
+        oneOf: [{ required: ['resourceId'] }, { required: ['path'] }],
+        additionalProperties: false,
+      },
+      async execute(args, context) {
+        if (!ctx.ai.running.get(context.runId)?.ownsToolContext(context))
+          throw new AiError('forbidden', '准备图片需要有效工具上下文', 403)
+        return withAccess(context, (access) =>
+          ctx.workspaceFile.prepareImage(access, {
+            ...(typeof args.resourceId === 'string' ? { resourceId: args.resourceId } : {}),
+            ...(typeof args.path === 'string' ? { path: args.path } : {}),
+          }),
+        )
+      },
+    })
+    ctx.ai.registerTool(ctx, {
       id: 'workspace_file_list',
       description: '列出当前工作空间目录，根目录为 /。文件路径仅在当前空间有效。',
       parameters: {
@@ -185,21 +209,7 @@ export const agentFiles = {
               ? (await ctx.workspaceFile.readResource(access, resource.id, limit)).bytes
               : await ctx.workspaceFile.read(access, args.path)
             if (isImage && resource) {
-              let dimensions: ReturnType<typeof imageSize>
-              try {
-                dimensions = imageSize(bytes)
-              } catch {
-                throw new AuthError(400, '无法识别图片格式或尺寸，文件可能已损坏')
-              }
-              const mimeType = `image/${dimensions.type === 'jpg' ? 'jpeg' : dimensions.type}`
-              if (
-                mimeType !== resource.mimeType ||
-                !Number.isSafeInteger(dimensions.width) ||
-                dimensions.width <= 0 ||
-                !Number.isSafeInteger(dimensions.height) ||
-                dimensions.height <= 0
-              )
-                throw new AuthError(400, '图片内容与声明格式不符或尺寸无效')
+              const dimensions = imageDimensions(bytes, resource.mimeType)
               return {
                 content: {
                   resourceId: resource.id,

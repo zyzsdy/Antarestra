@@ -120,6 +120,17 @@ try {
       parts,
     })
     assert.equal(complete.status, 200, await complete.clone().text())
+    const temporaryPath = `/workspace-files/resources/${ticket.token}/temporary-url`
+    assert.equal((await request(temporaryPath, '', {})).status, 401)
+    assert.equal((await request(temporaryPath, otherCookie, {})).status, 410)
+    const issued = await request(temporaryPath, cookie, {})
+    assert.equal(issued.status, 200, await issued.clone().text())
+    const temporary = (await issued.json()) as { url: string; expiresAt: number }
+    assert.ok(temporary.expiresAt > Date.now())
+    // 不携带 Cookie、Authorization 或额外请求头，直接验证 provider 链接返回原始字节。
+    const anonymous = await fetch(temporary.url)
+    assert.equal(anonymous.status, 200)
+    assert.deepEqual(Buffer.from(await anonymous.arrayBuffer()), bytes)
     assert.equal(
       (await request(`/workspace-files/uploads/${ticket.token}/complete`, cookie, { parts }))
         .status,

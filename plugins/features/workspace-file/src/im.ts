@@ -6,6 +6,19 @@ export const imFiles = {
   inject: ['im', 'workspaceFile'],
   apply(ctx: Context) {
     const service = ctx.workspaceFile
+    ctx.im.registerImageResources(ctx, {
+      async inspect(workspaceId, resourceId, signal) {
+        signal.throwIfAborted()
+        const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)
+        const { src: _src, ...resource } = await service.prepareImage(access, { resourceId })
+        return resource
+      },
+      async resolve(workspaceId, resourceId, signal) {
+        signal.throwIfAborted()
+        const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)
+        return service.temporaryUrl(access, resourceId)
+      },
+    })
     ctx.im.registerMediaArchive(ctx, {
       async store(message, media, download, signal) {
         const access = await service.groupArchiveAccess(

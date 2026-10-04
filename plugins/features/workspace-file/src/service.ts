@@ -7,7 +7,7 @@ import type { UploadedPart } from '@antarestra/storage'
 import { fileResponse } from '@antarestra/storage'
 import { name, usage } from './store.js'
 import type { Tables, Space, FileEntry } from './store.js'
-import { filePath, sizeValue } from './validation.js'
+import { filePath, sizeValue, imageDimensions } from './validation.js'
 export interface Config {
   backendId?: string
   defaultQuota?: number
@@ -433,6 +433,30 @@ export class WorkspaceFileService extends Service<Config> {
   async resource(access: FileAccess, id: string) {
     return this.descriptor(await this.resourceFile(access, id))
   }
+  /** 图片发送准备只返回稳定资源引用，不提前生成会过期的下载凭证。 */
+  async prepareImage(access: FileAccess, input: { resourceId?: string; path?: string }) {
+    if ((input.resourceId === undefined) === (input.path === undefined))
+      throw new AuthError(400, 'resourceId 与 path 必须且只能填写一个')
+    const file =
+      input.resourceId !== undefined
+        ? await this.resourceFile(access, input.resourceId)
+        : await this.file(access, input.path)
+    const resource = this.descriptor(file)
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(resource.mimeType))
+      throw new AuthError(400, '发送图片只支持 PNG、JPEG、GIF 或 WebP')
+    if (resource.size > 8 * 1024 ** 2) throw new AuthError(413, '图片超过 8 MiB 发送上限')
+    if (!this.ctx.storage.backend(file.backend).temporaryUrl)
+      throw new AuthError(503, '存储后端不支持免鉴权临时地址')
+    const { bytes } = await this.readResource(access, resource.id, 8 * 1024 ** 2)
+    imageDimensions(bytes, resource.mimeType)
+    return {
+      resourceId: resource.id,
+      src: `resource://${encodeURIComponent(resource.id)}`,
+      filename: resource.filename,
+      mimeType: resource.mimeType,
+      size: resource.size,
+    }
+  }
   async readResource(access: FileAccess, id: string, limit = 16 * 1024 * 1024) {
     const file = await this.resourceFile(access, id)
     if (file.size > sizeValue(limit, 16 * 1024 * 1024))
@@ -455,15 +479,44 @@ export class WorkspaceFileService extends Service<Config> {
   }
   async resourceDownload(access: FileAccess, id: string, attachment = false) {
     const file = await this.resourceFile(access, id)
+    return this.ctx.storage
+      .backend(file.backend)
+      .download(file.key, this.downloadResponse(file, attachment))
+  }
+  /** 调用者仍需空间授权；返回地址本身可直接 GET，无需登录或额外请求头。 */
+  async temporaryUrl(access: FileAccess, id: string) {
+    const file = await this.resourceFile(access, id)
+    const backend = this.ctx.storage.backend(file.backend)
+    if (!backend.temporaryUrl) throw new AuthError(503, '存储后端不支持免鉴权临时地址')
+    const link = await backend.temporaryUrl(file.key, this.downloadResponse(file, false))
+    let url: URL
+    try {
+      url = new URL(link.url)
+    } catch {
+      throw new AuthError(503, '存储后端返回了无效临时地址')
+    }
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      !Number.isFinite(link.expiresAt) ||
+      link.expiresAt <= Date.now()
+    )
+      throw new AuthError(503, '存储后端返回了无效或已过期的临时地址')
+    await this.verify(access)
+    return { url: link.url, expiresAt: link.expiresAt }
+  }
+  private downloadResponse(file: FileEntry, attachment: boolean) {
     const response = fileResponse(file.contentType ?? (lookup(file.path) || undefined))
     const encoded = encodeURIComponent(file.path.split('/').at(-1)!).replace(
       /['()*]/g,
       (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
     )
-    return this.ctx.storage.backend(file.backend).download(file.key, {
+    return {
       contentType: response.contentType,
       contentDisposition: `${attachment ? 'attachment' : response.contentDisposition}; filename*=UTF-8''${encoded}`,
-    })
+    }
   }
   async download(access: FileAccess, path: unknown) {
     const file = await this.file(access, path)
@@ -515,7 +568,7 @@ export class WorkspaceFileService extends Service<Config> {
     })
     return { ok: true }
   }
-  /** 仅供持有所属插件 Context 的服务端归档扩展使用，不签发给网页或模型。 */
+  /** 仅供持有所属插件 Context 的 IM 媒体扩展使用，空间须来自已验证的入站消息或出站目标。 */
   async groupArchiveAccess(
     owner: Context,
     workspaceId: string,

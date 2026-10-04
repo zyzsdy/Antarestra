@@ -1,4 +1,5 @@
 import type { IncomingMessage, MessageSegment } from '@antarestra/im'
+import { imageResourceId } from '@antarestra/im'
 
 function object(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -122,7 +123,10 @@ const escape = (text: string) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
 
-export function encodeMessage(segments: readonly MessageSegment[]): {
+export function encodeMessage(
+  segments: readonly MessageSegment[],
+  allowResources = false,
+): {
   msg_type: 'text' | 'image' | 'file'
   content: string
   replyId?: string
@@ -145,8 +149,11 @@ export function encodeMessage(segments: readonly MessageSegment[]): {
     const segment = media[0]!
     if (segment.type !== 'image' && segment.type !== 'file') throw new Error('无效的媒体消息')
     const prefix = `feishu://${segment.type}/`
-    if (!segment.url.startsWith(prefix)) throw new Error('飞书媒体发送需要平台已上传的资源键')
-    const key = decodeURIComponent(segment.url.slice(prefix.length))
+    const resource =
+      segment.type === 'image' && allowResources ? imageResourceId(segment.url) : undefined
+    if (resource === undefined && !segment.url.startsWith(prefix))
+      throw new Error('飞书媒体发送需要平台已上传的资源键')
+    const key = resource ?? decodeURIComponent(segment.url.slice(prefix.length))
     if (!key) throw new Error('飞书媒体资源键不能为空')
     return {
       msg_type: segment.type,

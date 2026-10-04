@@ -34,6 +34,16 @@ it('S3 默认下载保留对象响应头，显式覆盖支持历史对象的图�
   })
   try {
     const original = new URL(await backend.download('objects/test'))
+    const temporary = await backend.temporaryUrl('objects/test', {
+      contentType: 'image/png',
+      contentDisposition: 'inline',
+    })
+    const signed = new URL(temporary.url)
+    expect(signed.searchParams.get('X-Amz-Expires')).toBe('300')
+    expect(signed.searchParams.has('X-Amz-Signature')).toBe(true)
+    expect(signed.searchParams.get('X-Amz-SignedHeaders')).toBe('host')
+    expect(signed.searchParams.get('response-content-type')).toBe('image/png')
+    expect(temporary.expiresAt).toBeGreaterThan(Date.now())
     expect(original.searchParams.has('response-content-type')).toBe(false)
     expect(original.searchParams.has('response-content-disposition')).toBe(false)
     const image = new URL(

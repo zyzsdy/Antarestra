@@ -32,7 +32,7 @@ docker compose --env-file .env.storage.local -p antarestra-storage -f compose.st
 
 - `id`：默认 `s3`，由 workspace-file.backendId 引用。
 - `endpoint`：服务端 S3 地址。
-- `publicEndpoint`：可选，浏览器可访问的 S3 地址；在该地址上直接生成签名，不能签名后改写 host。
+- `publicEndpoint`：可选，下载方可访问的 S3 地址；在该地址上直接生成签名，不能签名后改写 host。用于 IM 图片时，还须让 NapCat 或飞书适配器所在机器可达；无需公网域名，同机可用 localhost，容器部署按实际网络配置。
 - `bucket`、`region`、`accessKeyId`、`secretAccessKey`：连接配置。凭据使用配置加载器 `$环境变量` 引用。
 - `forcePathStyle`：默认 true，适合 RustFS / MinIO；AWS 或其他供应商按要求修改。
 - `multipartThreshold`、`partSize`：以字节计。
@@ -44,3 +44,5 @@ docker compose --env-file .env.storage.local -p antarestra-storage -f compose.st
 已有文件记录保存后端 id，修改该 id 对应的桶/凭据不会迁移历史数据。更换存储位置需要单独迁移，不应直接把同一 id 指向空桶。本次仅验证 RustFS，不宣称已实测 AWS、R2 或 OSS。不同供应商的条件写入和 CORS 支持仍需实际验证。
 
 WebUI 的 connect-src 默认只有同源。S3 插件会登记 endpoint / publicEndpoint 的精确连接源，虚拟主机模式同时登记桶域名，并在卸载时回收。切换连接地址后需刷新已打开的页面，以取得新的 CSP 响应头。
+
+`temporaryUrl` 实现返回有效期 300 秒的 GET 预签名 URL 及 `expiresAt`，请求签名随查询参数携带，读取方无需 Cookie、Authorization 或额外请求头。此方法复用当前实例的签名客户端与响应头规则，不开放桶的匿名访问；普通 `download` 保持 60 秒有效期。临时 URL 在实际发送前签发，不在模型思考或排队前生成。

@@ -43,6 +43,7 @@ const contexts: Context[] = []
 afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
 })
 
 const account = { appId: 'cli_test', tenantId: 'tenant_test', botOpenId: 'ou_bot' }
@@ -99,6 +100,66 @@ async function setup() {
 }
 
 describe('飞书适配器（官方 SDK 边界模拟）', () => {
+  it('内部图片先免鉴权下载，再以 multipart 上传取得资源键；预检不会上传', async () => {
+    const app = await setup()
+    const input = [{ type: 'image' as const, url: 'resource://Photo_A' }]
+    expect(() => app.descriptor.validateMessage!(input)).not.toThrow()
+    expect(() =>
+      app.descriptor.validateMessage!([...input, { type: 'text', text: '不能混排' }]),
+    ).toThrow()
+    expect(() => encodeMessage(input)).toThrow()
+    expect(sdk.request).not.toHaveBeenCalled()
+    const fetchImage = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } }),
+      )
+    sdk.request.mockResolvedValueOnce({ code: 0, data: { image_key: 'img_uploaded' } })
+    const image = await app.descriptor.prepareImage!(
+      {
+        resourceId: 'Photo_A',
+        url: 'http://127.0.0.1/image?ticket=secret',
+        mimeType: 'image/png',
+        filename: 'photo.png',
+        size: 3,
+      },
+      new AbortController().signal,
+    )
+    expect(fetchImage.mock.calls[0]?.[1]).not.toHaveProperty('headers')
+    expect(image).toEqual({ type: 'image', url: 'feishu://image/img_uploaded' })
+    const request = sdk.request.mock.calls[0]![0] as {
+      url: string
+      data: { image_type: string; image: Buffer }
+      headers: Record<string, string>
+    }
+    expect(request.url).toBe('/open-apis/im/v1/images')
+    expect(request.headers['Content-Type']).toBe('multipart/form-data')
+    expect(request.data.image_type).toBe('message')
+    expect(request.data.image).toEqual(Buffer.from([1, 2, 3]))
+    sdk.request.mockResolvedValueOnce({ code: 0, data: { message_id: 'om_image' } })
+    await app.descriptor.send({ type: 'group', id: 'oc_allowed' }, [image])
+    expect(sdk.request).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          msg_type: 'image',
+          content: JSON.stringify({ image_key: 'img_uploaded' }),
+        }),
+      }),
+    )
+    sdk.request.mockRejectedValueOnce(new Error('private credential'))
+    await expect(
+      app.descriptor.prepareImage!(
+        {
+          resourceId: 'Photo_A',
+          url: 'http://127.0.0.1/image',
+          mimeType: 'image/png',
+          filename: 'photo.png',
+          size: 3,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow('飞书图片准备失败')
+  })
   it('使用消息资源鉴权接口下载媒体，并限制实际响应大小', async () => {
     const app = await setup()
     const message = normalizeMessage(event(), account)!

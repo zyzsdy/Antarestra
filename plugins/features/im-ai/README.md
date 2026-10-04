@@ -88,14 +88,14 @@ activation:
 ```xml
 <im_reply>
 <message>我先说一下想法。</message>
-<image>https://example.com/photo.png</image>
+<image>resource://图片资源ID</image>
 <message quote="123456">你刚才提到的这点，我也赞同。</message>
 <message><at id="79338528"></at> 想听听你的看法。</message>
-<sticker>https://example.com/happy.gif</sticker>
+<sticker>resource://表情包资源ID</sticker>
 </im_reply>
 ```
 
-示例中的用户 ID 和图片地址须替换为当前聊天的真实用户 ID 与实际可用的图片直链。`message`、`image` 和 `sticker` 按顺序各发送一条消息，最多 20 条；都可携带唯一的 `quote="原始消息ID"`。引用必须是当前聊天已接收或发送过的真实消息，不能跨群、跨账号或跨空间。可以引用上下文或 `im_history_query` 返回的 `messageId`，不是发言者 ID 或内部归档 ID。
+示例中的用户 ID 和图片资源 ID 须替换为当前聊天的真实用户 ID 与当前空间的文件资源 ID。`message`、`image` 和 `sticker` 按顺序各发送一条消息，最多 20 条；都可携带唯一的 `quote="原始消息ID"`。引用必须是当前聊天已接收或发送过的真实消息，不能跨群、跨账号或跨空间。可以引用上下文或 `im_history_query` 返回的 `messageId`，不是发言者 ID 或内部归档 ID。
 
 `message` 内可写文本并插入 `<at id="用户ID"></at>` 主动提及用户，支持与文本混排、连续提及多人、仅发送提及，以及与 `quote` 同时使用。`at` 转为原生提及消息段，与前后文本属于同一条消息，不占额外的分条数量；OneBot 发送 QQ `at`，飞书发送 `at user_id`。用户 ID 使用当前聊天上下文或 `im_history_query` 中真实发言者的 `id`（QQ 用户号或飞书用户 `open_id`），保留前导零，不使用昵称、消息 ID 或猜测的 ID。
 
@@ -105,7 +105,11 @@ activation:
 
 除空回复简写和下述状态块外，普通文本（包括用于展示代码的围栏）仍作为一条文本发送；`<im_reply>` 中的消息标签才进入结构化处理。整份围栏代码和消息中转义后的标签示例不作为状态指令。
 
-OneBot 使用 HTTP(S) 图片直链，拒绝本地路径、Base64、带用户凭据的 URL 和其他协议；图片能否下载仍取决于平台。`sticker` 复用图片发送能力，可发送图片/GIF 表情包，不表示平台原生表情或专属贴纸。飞书沿用现有适配器能力，必须使用已上传的 `feishu://image/资源键`，尚不支持自动上传 HTTP 图片；指引根据接入能力说明这一限制。
+图片与表情包优先使用 `resource://图片资源ID`，QQ 和飞书共用这一格式，资源 ID 保留大小写。启用 workspace-file，并在助理工具列表中允许 `im_prepare_image`；调用 `{ "resourceId": "ID" }` 或 `{ "path": "/图片.png" }`（二选一）检查图片后，把返回的 `src` 原样放入标签。工具只准备资源，最终回复才发送。图片须属于当前空间且仍存在，支持 PNG、JPEG、GIF、WebP，最多 8 MiB；不会因 ID 可见而获得其他空间的访问权。
+
+发送计划仅保存资源引用，整份回复先检查图片与引用归属。同群排队与发送延迟结束后，文件服务向所属存储 provider 申请无需登录或额外请求头的临时 URL；恢复投递时重新生成，不把临时凭证保存在回复计划或内部图片的群消息归档中。OneBot 将地址交给 NapCat 下载；飞书由适配器下载并上传到平台取得图片键。签名或上传失败发生在认领消息投递之前，可以安全重试；消息投递结果未知时仍禁止自动重发。出站归档复用原资源，不重复上传或占用配额。
+
+OneBot 仍支持已知 HTTP(S) 图片直链，拒绝本地路径、Base64 和带用户凭据的 URL；飞书仍支持已上传的 `feishu://image/资源键`，不接受模型直接提交任意 HTTP 图片地址。`sticker` 按图片发送，可发送 GIF，不表示平台原生表情或专属贴纸。旧任务保存的格式指引保持原快照，新任务使用更新后的指引。
 
 `{{im_reply_format}}` 由 IM AI 插件持续注册，出现在 Agent 系统提示词任意位置时展开为指引，不受自动追加开关影响；普通网页等非 IM 运行中展开为空。模板变量目录同时提供说明，不解析真实运行内容。
 

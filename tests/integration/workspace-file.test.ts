@@ -53,6 +53,12 @@ class MemoryStorage implements StorageBackend {
   async download(key: string) {
     return 'https://example.invalid/' + key
   }
+  async temporaryUrl(key: string) {
+    return {
+      url: 'https://example.invalid/' + key + '?ticket=test',
+      expiresAt: Date.now() + 60_000,
+    }
+  }
   async read(key: string) {
     return this.blobs.get(key)!
   }
@@ -169,6 +175,86 @@ it('服务端附件写入保留配额、隔离与失败清理', async () => {
     ),
   ).rejects.toThrow('模拟上传失败')
   expect([...app.backend.blobs.values()]).toHaveLength(1)
+})
+it('临时 URL 由所属 provider 签发，拒绝越权、失效或不支持的后端，并随授权和插件回收', async () => {
+  const app = await setup()
+  const ticket = await app.upload(app.a, '/image.png')
+  const sign = vi.spyOn(app.backend, 'temporaryUrl')
+  const backend = app.ctx.storage.backend('test')
+  const link = await app.ctx.workspaceFile.temporaryUrl(app.a, ticket.token)
+  expect(link.url).toContain('?ticket=test')
+  expect(link.expiresAt).toBeGreaterThan(Date.now())
+  expect(sign).toHaveBeenCalledWith(
+    expect.stringMatching(/^objects\//),
+    expect.objectContaining({
+      contentType: 'image/png',
+      contentDisposition: expect.stringMatching(/^inline;/),
+    }),
+  )
+  await expect(app.ctx.workspaceFile.temporaryUrl(app.b, ticket.token)).rejects.toMatchObject({
+    status: 410,
+  })
+  await expect(
+    app.ctx.workspaceFile.temporaryUrl({ workspaceId: 'a' }, ticket.token),
+  ).rejects.toMatchObject({ status: 403 })
+  expect(sign).toHaveBeenCalledTimes(1)
+  for (const url of ['/relative', 'file:///local.png', 'https://user:password@example.com/a']) {
+    sign.mockResolvedValueOnce({ url, expiresAt: Date.now() + 60_000 })
+    await expect(app.ctx.workspaceFile.temporaryUrl(app.a, ticket.token)).rejects.toMatchObject({
+      status: 503,
+    })
+  }
+  sign.mockResolvedValueOnce({ url: 'https://example.com/a', expiresAt: Date.now() - 1 })
+  await expect(app.ctx.workspaceFile.temporaryUrl(app.a, ticket.token)).rejects.toThrow('已过期')
+  await app.owner.dispose()
+  expect(() => backend.temporaryUrl!('key')).toThrow()
+  const { temporaryUrl: _temporaryUrl, ...withoutTemporaryUrl } = backend
+  app.ctx.storage.register(app.ctx, 'test', { ...withoutTemporaryUrl, exists: async () => true })
+  await expect(app.ctx.workspaceFile.temporaryUrl(app.a, ticket.token)).rejects.toThrow('不支持')
+})
+
+it('准备图片按 ID 或路径返回简短引用，校验格式、大小、空间和当前授权', async () => {
+  const app = await setup(16 * 1024 ** 2)
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=',
+    'base64',
+  )
+  const photo = await app.upload(app.a, '/photo.png', png)
+  const signed = vi.spyOn(app.backend, 'temporaryUrl')
+  expect(await app.ctx.workspaceFile.prepareImage(app.a, { path: '/photo.png' })).toMatchObject({
+    src: `resource://${photo.token}`,
+    resourceId: photo.token,
+    mimeType: 'image/png',
+  })
+  await app.ctx.workspaceFile.move(app.a, '/photo.png', '/moved.png')
+  expect(
+    await app.ctx.workspaceFile.prepareImage(app.a, { resourceId: photo.token }),
+  ).toMatchObject({ filename: 'moved.png' })
+  expect(signed).not.toHaveBeenCalled()
+  await expect(
+    app.ctx.workspaceFile.prepareImage(app.b, { resourceId: photo.token }),
+  ).rejects.toMatchObject({ status: 410 })
+  await expect(
+    app.ctx.workspaceFile.prepareImage(app.a, { resourceId: photo.token, path: '/moved.png' }),
+  ).rejects.toMatchObject({ status: 400 })
+  for (const [path, data] of [
+    ['/broken.png', Buffer.from('bad')],
+    ['/mismatch.jpg', png],
+    ['/image.svg', Buffer.from('<svg/>')],
+    ['/large.png', Buffer.alloc(8 * 1024 ** 2 + 1)],
+  ] as const) {
+    const invalid = await app.upload(app.a, path, data)
+    await expect(
+      app.ctx.workspaceFile.prepareImage(app.a, { resourceId: invalid.token }),
+    ).rejects.toThrow()
+  }
+  app.disable()
+  await expect(app.ctx.workspaceFile.temporaryUrl(app.a, photo.token)).rejects.toMatchObject({
+    status: 401,
+  })
+  await expect(
+    app.ctx.workspaceFile.prepareImage(app.a, { resourceId: photo.token }),
+  ).rejects.toMatchObject({ status: 401 })
 })
 it('拒绝路径穿越，并且随机对象键不包含用户名称或目录', async () => {
   for (const path of ['../secret', '/a/../secret', '/a/./b', '/a\\b', '/a\0b'])

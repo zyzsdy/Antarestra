@@ -1,4 +1,4 @@
-import type { MessageSegment } from '@antarestra/im'
+import { imageResourceId, type MessageSegment } from '@antarestra/im'
 
 export const replyFormatVariable = /\{\{\s*im_reply_format\s*\}\}/
 export const maxReplyMessages = 20
@@ -11,8 +11,8 @@ export interface ParsedReply {
 export function replyFormatGuide(capabilities?: readonly string[]) {
   const media =
     capabilities?.includes('image.key') && !capabilities.includes('image')
-      ? '当前接入的图片与表情包必须使用已上传的 feishu://image/资源键，不支持直接发送 HTTP 图片链接。'
-      : '图片与表情包使用已知、可访问的 http:// 或 https:// 图片直链（可为 GIF）；不得编造链接，不支持本地路径、Base64 或其他协议。'
+      ? '也可使用已上传的 feishu://image/资源键，不支持直接发送 HTTP 图片链接。'
+      : '也可使用已知、可访问的 http:// 或 https:// 图片直链（可为 GIF）；不支持本地路径、Base64 或其他协议。'
   return `回复格式：
 一次最终回复可以按顺序发送多条独立消息。需要分条、引用、@用户、发送图片或保持沉默时，严格使用以下受限标签格式：
 <im_reply>
@@ -23,12 +23,13 @@ export function replyFormatGuide(capabilities?: readonly string[]) {
 动作: ""
 </status>
 <message>第一条文本</message>
-<image>图片地址</image>
+<image>resource://图片资源ID</image>
 <message quote="原始消息ID">针对该发言的回复</message>
 <message><at id="用户ID"></at> 想听听你的看法。</message>
-<sticker>表情包图片地址</sticker>
+<sticker>resource://表情包资源ID</sticker>
 </im_reply>
 只输出一个 im_reply 外层，不加 Markdown 代码围栏或标签外说明。每个 message、image、sticker 都会单独发送，最多 ${maxReplyMessages} 条；按需要选择内容，不必包含全部类型。
+发送工作空间图片时，优先调用 im_prepare_image（resourceId 或 path 只填一个），把返回的 src 原样放入 image 或 sticker。统一格式为 resource://图片资源ID，QQ 和飞书均支持；ID 必须来自当前空间的文件、图片工具结果或历史消息，不得编造。此工具只准备资源，最终回复才发送图片。
 可以使用一个 <status>自由文本</status> 保存当前聊天的状态，放在 im_reply 内与 message 同级，也可放在回复前后或单独输出。status 内部内容只保存为当前状态，不发送到聊天。
 message 内可写多行文本，并可插入 <at id="用户ID"></at> 主动@用户；可与文本混排、连续@多个用户，也可仅包含 at。id 使用当前聊天上下文或 im_history_query 中真实发言者的 id（QQ 用户号或飞书用户 open_id），不要使用昵称、消息ID或猜测ID；at 必须为空且只能带一个非空 id 属性。image 和 sticker 内只能写图片地址。sticker 按图片发送，不代表平台原生表情或专属贴纸。${media}
 message、image 和 sticker 均可带唯一的 quote="消息ID" 属性，引用当前聊天中上下文或 im_history_query 返回的真实原始 messageId；不要使用用户ID、归档ID或猜测ID。
@@ -64,6 +65,7 @@ function messageSegments(value: string): MessageSegment[] {
 }
 
 function imageUrl(value: string, capabilities?: readonly string[]) {
+  if (imageResourceId(value) !== undefined) return value
   let url: URL
   try {
     url = new URL(value)
