@@ -60,6 +60,7 @@ plugins:
           prefixes: [ '/ai' ]
           cooldownMs: 3000
           maxPerMinute: 10
+    filterCitationLinks: true
   storage: {}
   # 运行 pnpm startdevstorage 和 pnpm initdevstorage 后启用；凭据从环境读取。
   storage-s3:
@@ -96,7 +97,6 @@ plugins:
   config-panel: {}
   markdown-render: {}
   chat-webui: {}
-pluginPanel:
-  instances:
-    im-onebot:
-      alias: ''
+  open-terminal: 
+    url: $OPEN_TERMINAL_URL
+    apiKey: $OPEN_TERMINAL_API_KEY
