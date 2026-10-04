@@ -228,6 +228,10 @@
   overflow: auto;
   font-size: 13px;
 }
+.im-sent-input {
+  max-height: 420px;
+  overflow: auto;
+}
 .im-history-disclosure {
   margin: 12px 0;
 }

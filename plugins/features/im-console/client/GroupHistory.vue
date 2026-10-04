@@ -196,7 +196,7 @@ onMounted(() => {
               <thead>
                 <tr>
                   <th>发起时间 / 会话</th>
-                  <th>发送给 AI 的输入</th>
+                  <th>IM 输入摘要</th>
                   <th>处理与投递</th>
                   <th>操作</th>
                 </tr>

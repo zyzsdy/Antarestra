@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { AiHistoryDetail } from '@antarestra/im'
 import {
   CollapsibleRoot,
@@ -7,7 +8,25 @@ import {
 } from '@antarestra/webui/components'
 import AiMessages from './AiMessages.vue'
 import { formatTime, jobStates, deliveryStates } from './history-format'
-defineProps<{ detail: AiHistoryDetail }>()
+const props = defineProps<{ detail: AiHistoryDetail }>()
+const inputRequest = computed(() =>
+  props.detail.run?.requests.find((request) => !request.purpose || request.purpose === 'reply'),
+)
+const sentInput = computed(() => {
+  const users = inputRequest.value?.messages.filter((message) => message.role === 'user') ?? []
+  const current = props.detail.run?.messages.find((message) => message.role === 'user')
+  // 旧快照可能没有消息 ID；新记录按 ID 匹配，避免把上一轮输入当成本轮输入。
+  return current?.id && users.some((message) => message.id)
+    ? users.find((message) => message.id === current.id)
+    : users.at(-1)
+})
+const inputUnavailable = computed(() => {
+  if (!props.detail.run && props.detail.runId) return '运行详情已不存在，无法读取实际模型输入。'
+  if (inputRequest.value) return '回复请求快照中没有本轮用户消息。'
+  return props.detail.status === 'queued' || props.detail.status === 'running'
+    ? '尚未生成回复请求快照，实际模型输入暂不可用。'
+    : '未保存回复请求快照，无法读取实际模型输入。'
+})
 </script>
 <template>
   <div class="im-history-detail">
@@ -18,8 +37,24 @@ defineProps<{ detail: AiHistoryDetail }>()
     <p class="im-hint im-history-id">
       会话：{{ detail.conversationId || '尚未建立' }}<br />运行：{{ detail.runId || '尚未开始' }}
     </p>
-    <h3>发送给 AI 的输入</h3>
-    <pre>{{ detail.input }}</pre>
+    <section aria-label="发送给 AI 的输入">
+      <h3>发送给 AI 的输入</h3>
+      <template v-if="sentInput">
+        <p class="im-hint">显示首次回复请求中的本轮用户消息；完整上下文与后续请求见下方快照。</p>
+        <div class="im-sent-input" role="region" aria-label="本轮模型输入" tabindex="0">
+          <AiMessages :messages="[sentInput]" />
+        </div>
+      </template>
+      <template v-else>
+        <p class="im-hint">{{ inputUnavailable }}</p>
+        <CollapsibleRoot class="im-history-disclosure">
+          <CollapsibleTrigger>查看原始 IM 输入（Agent 模板处理前）</CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre>{{ detail.input }}</pre>
+          </CollapsibleContent>
+        </CollapsibleRoot>
+      </template>
+    </section>
     <h3>回复群聊的内容</h3>
     <pre v-if="detail.answer !== null">{{ detail.answer }}</pre>
     <p v-else class="im-hint">
