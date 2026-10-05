@@ -1222,9 +1222,20 @@ export class ImService extends Service<ServiceOptions> {
       throw new Error('IM 操作目标不属于当前空间')
     if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
       throw new Error('IM 聊天已禁用')
+    if (action === 'message.recall') {
+      const messageId = parameters.message_id
+      if (typeof messageId !== 'string' || !messageId.trim())
+        throw new ImError(400, 'invalid_message', '必须指定要撤回的原始消息 ID')
+      const reference = await this.db()
+        .selectFrom('message_reference')
+        .select('id')
+        .where('id', '=', hash([target.workspaceId, messageId]))
+        .executeTakeFirst()
+      if (!reference) throw new ImError(403, 'foreign_message', '撤回消息不属于当前空间')
+    }
     this.assertEntry(entry)
     if (!entry.descriptor.capabilities?.includes(action) || !entry.descriptor.invoke)
-      throw new Error('IM 接入不支持该操作')
+      throw new ImError(400, 'unsupported', 'IM 接入不支持该操作')
     const combined = signal
       ? AbortSignal.any([signal, entry.controller.signal])
       : entry.controller.signal

@@ -3,7 +3,7 @@ import { AiError } from '@antarestra/ai'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import '@antarestra/plugin-server'
 import type { ChatTarget } from '@antarestra/im'
-import '@antarestra/im'
+import { ImError } from '@antarestra/im'
 import { downloadMedia } from './media.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -114,6 +114,7 @@ export function apply(ctx: Context, input: Config) {
       'group.kick',
       'message.forward',
       'message.emoji-like',
+      'message.recall',
     ],
     validateMessage: (segments) => {
       encodeMessage(segments)
@@ -158,6 +159,38 @@ export function apply(ctx: Context, input: Config) {
     },
     async invoke(action, target, parameters, signal) {
       if (!allowed(target)) throw new Error('目标聊天未获准接入')
+      if (action === 'message.recall') {
+        const messageId = id(parameters.message_id)
+        if (!messageId || !/^-?\d+$/.test(messageId))
+          throw new ImError(400, 'invalid_message', '必须指定有效的原始消息 ID')
+        let message: Record<string, unknown>
+        try {
+          message = record(await rpc('get_msg', { message_id: messageId }, signal))
+        } catch {
+          throw new ImError(400, 'onebot_error', '无法读取待撤回消息，可能已撤回或不可访问')
+        }
+        // 私聊出站 get_msg 的 user_id 可能是机器人；聊天归属由核心持久化引用校验。
+        if (
+          id(message.message_id) !== messageId ||
+          message.message_type !== target.type ||
+          (target.type === 'group' && id(message.group_id) !== target.id)
+        )
+          throw new ImError(403, 'foreign_message', '撤回消息不属于当前聊天')
+        if (id(record(message.sender).user_id) !== config.selfId)
+          throw new ImError(403, 'not_own_message', '只能撤回本机器人发送的消息')
+        if (!allowed(target)) throw new ImError(403, 'forbidden', '目标聊天未获准接入')
+        signal?.throwIfAborted()
+        try {
+          await rpc('delete_msg', { message_id: messageId }, signal)
+        } catch {
+          throw new ImError(
+            409,
+            'recall_failed',
+            'OneBot 撤回失败或结果未知，可能超过平台时限；不要自动重试',
+          )
+        }
+        return { message_id: messageId, recalled: true }
+      }
       if (action === 'message.forward' || action === 'message.emoji-like') {
         const messageId = id(parameters.message_id)
         if (!messageId || !/^-?\d+$/.test(messageId)) throw new Error('必须指定有效的原始消息 ID')

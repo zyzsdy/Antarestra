@@ -1,5 +1,6 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import { AiError, type RunContext, type Json } from '@antarestra/ai'
+import { ImError } from '@antarestra/im'
 import { formatMessage, type InputSnapshot } from './history.js'
 import { replyFormatGuide, replyFormatVariable } from './reply.js'
 
@@ -7,6 +8,43 @@ export function registerHistoryTools(
   ctx: Context,
   snapshot: (context: RunContext) => Promise<InputSnapshot | undefined>,
 ) {
+  ctx.ai.registerTool(ctx, {
+    id: 'im_recall_message',
+    resultMode: 'structured',
+    description:
+      '主动撤回当前 IM 聊天中本机器人已经发送的消息。message_id 必须是原始平台消息 ID，可从 im_history_query 的 messageId 或引用消息中获取，不是 AI 会话消息 ID。仅支持具备撤回能力的接入，不能撤回其他人的消息或其他聊天的消息。撤回受平台权限和时限限制；失败或结果未知时不要自动重试。撤回不删除本地历史归档。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['message_id'],
+      properties: {
+        message_id: {
+          type: 'string',
+          minLength: 1,
+          description: '本机器人已发送的原始平台消息 ID',
+        },
+      },
+    },
+    async execute(args, context) {
+      try {
+        if (!ctx.ai.running.get(context.runId)?.ownsToolContext(context))
+          throw new AiError('forbidden', '撤回消息需要有效工具上下文', 403)
+        context.signal.throwIfAborted()
+        const target = await ctx.im.resolveTarget(context.workspaceId)
+        await ctx.im.invoke(
+          target,
+          'message.recall',
+          { message_id: args.message_id },
+          context.signal,
+        )
+        return { content: { message_id: args.message_id!, recalled: true } }
+      } catch (error) {
+        if (error instanceof AiError || error instanceof ImError)
+          return { content: { error: error.message, code: error.code }, isError: true }
+        throw error
+      }
+    },
+  })
   ctx.ai.registerTemplateVariable(ctx, {
     id: 'im_reply_format',
     description: 'IM 分条回复、引用、图片和表情包格式指引；不受自动追加开关影响，非 IM 运行为空。',

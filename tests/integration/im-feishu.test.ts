@@ -42,6 +42,7 @@ import * as Feishu from '../../plugins/adapters/im-feishu/src/index.js'
 const contexts: Context[] = []
 afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
+  sdk.request.mockReset()
   vi.clearAllMocks()
   vi.restoreAllMocks()
 })
@@ -103,6 +104,56 @@ async function setup() {
 }
 
 describe('飞书适配器（官方 SDK 边界模拟）', () => {
+  it.each([
+    '成功',
+    '其他聊天',
+    '其他应用',
+    '用户消息',
+    '平台失败',
+    '查询中禁用',
+    '查询中取消',
+  ] as const)('撤回消息：%s', async (mode) => {
+    const app = await setup()
+    const controller = new AbortController()
+    sdk.request.mockImplementationOnce(async () => {
+      if (mode === '查询中禁用') app.allowedChats.clear()
+      if (mode === '查询中取消') controller.abort()
+      return {
+        code: 0,
+        data: {
+          items: [
+            {
+              message_id: 'om_sent',
+              chat_id: mode === '其他聊天' ? 'oc_other' : 'oc_allowed',
+              sender: {
+                id: mode === '其他应用' ? 'cli_other' : account.appId,
+                id_type: 'app_id',
+                sender_type: mode === '用户消息' ? 'user' : 'app',
+              },
+            },
+          ],
+        },
+      }
+    })
+    sdk.request.mockResolvedValueOnce({ code: mode === '平台失败' ? 230006 : 0 })
+    const work = app.descriptor.invoke!(
+      'message.recall',
+      { type: 'group', id: 'oc_allowed' },
+      { message_id: 'om_sent' },
+      controller.signal,
+    )
+    if (mode === '成功') await expect(work).resolves.toMatchObject({ recalled: true })
+    else await expect(work).rejects.toThrow()
+    const deletes = sdk.request.mock.calls.filter(([request]) => request.method === 'DELETE')
+    expect(deletes).toHaveLength(mode === '成功' || mode === '平台失败' ? 1 : 0)
+    if (deletes.length)
+      expect(deletes[0]![0]).toMatchObject({
+        url: '/open-apis/im/v1/messages/om_sent',
+        signal: expect.any(AbortSignal),
+      })
+    app.release()
+  })
+
   it('实时读取 IM 核心规则，放行与撤销不需要重新连接飞书', async () => {
     const app = await setup()
     const target = { type: 'private', id: 'oc_new' } as const

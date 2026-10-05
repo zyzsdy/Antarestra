@@ -1,7 +1,7 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import type { ChatTarget } from '@antarestra/im'
-import { downloadHttpMedia } from '@antarestra/im'
+import { downloadHttpMedia, ImError } from '@antarestra/im'
 import * as lark from '@larksuiteoapi/node-sdk'
 import axios from 'axios'
 import { createHash } from 'node:crypto'
@@ -27,7 +27,13 @@ interface SendResponse {
 
 interface MessageResponse {
   code?: number
-  data?: { items?: { message_id?: string; chat_id?: string }[] }
+  data?: {
+    items?: {
+      message_id?: string
+      chat_id?: string
+      sender?: { id?: string; id_type?: string; sender_type?: string }
+    }[]
+  }
 }
 
 interface MembersResponse {
@@ -94,7 +100,7 @@ export function apply(ctx: Context, input: Config) {
     accountId: config.botOpenId,
     tenantId: `${config.tenantId}:${config.appId}`,
     ...(config.label ? { label: config.label } : {}),
-    capabilities: ['text', 'mention', 'reply', 'image.key', 'file.key', 'member'],
+    capabilities: ['text', 'mention', 'reply', 'image.key', 'file.key', 'member', 'message.recall'],
     validateMessage: (segments) => {
       encodeMessage(segments, true)
     },
@@ -240,6 +246,62 @@ export function apply(ctx: Context, input: Config) {
         tokens.add(pageToken)
       }
       return { active: false }
+    },
+    async invoke(action, target, parameters, signal) {
+      if (action !== 'message.recall') throw new ImError(400, 'unsupported', '不支持的平台操作')
+      const messageId = parameters.message_id
+      if (typeof messageId !== 'string' || !messageId.trim())
+        throw new ImError(400, 'invalid_message', '必须指定要撤回的原始消息 ID')
+      const requestSignal = signal ? AbortSignal.any([signal, stopped.signal]) : stopped.signal
+      return track(
+        (async () => {
+          requestSignal.throwIfAborted()
+          if (!allowed(target)) throw new ImError(403, 'forbidden', '目标聊天未获准接入')
+          const url = `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`
+          let original: MessageResponse
+          try {
+            original = await client.request<MessageResponse>({
+              method: 'GET',
+              url,
+              timeout: 15000,
+              signal: requestSignal,
+            })
+          } catch {
+            throw new ImError(400, 'feishu_error', '无法读取待撤回消息，可能已撤回或不可访问')
+          }
+          if (original.code !== 0)
+            throw new ImError(400, 'feishu_error', `读取待撤回消息失败（${String(original.code)}）`)
+          const message = original.data?.items?.find((item) => item.message_id === messageId)
+          if (!message || message.chat_id !== target.id)
+            throw new ImError(403, 'foreign_message', '撤回消息不属于当前聊天')
+          if (
+            message.sender?.sender_type !== 'app' ||
+            message.sender.id_type !== 'app_id' ||
+            message.sender.id !== config.appId
+          )
+            throw new ImError(403, 'not_own_message', '只能撤回本机器人发送的消息')
+          requestSignal.throwIfAborted()
+          if (!allowed(target)) throw new ImError(403, 'forbidden', '目标聊天未获准接入')
+          let result: SendResponse
+          try {
+            result = await client.request<SendResponse>({
+              method: 'DELETE',
+              url,
+              timeout: 15000,
+              signal: requestSignal,
+            })
+          } catch {
+            throw new ImError(409, 'recall_failed', '飞书撤回失败或结果未知，不要自动重试')
+          }
+          if (result.code !== 0)
+            throw new ImError(
+              400,
+              'recall_failed',
+              `飞书撤回失败（${String(result.code)}），请检查权限和平台时限；不要自动重试`,
+            )
+          return { message_id: messageId, recalled: true }
+        })(),
+      )
     },
     async send(target, segments, sendOptions) {
       stopped.signal.throwIfAborted()

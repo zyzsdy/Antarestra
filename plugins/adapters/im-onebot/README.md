@@ -65,6 +65,8 @@ AI 服务可用时自动注册以下工具，未加载 AI 服务不影响 OneBot
 
 工具从可信 AI 运行的工作空间解析接入账号和聊天，不接受模型指定其他账号、群或工作空间；只能访问当前空间已记录的原始消息，并遵守接入白名单及在线禁用策略。平台无法读取的过期或已撤回消息会返回错误；表态需要 NapCat 或兼容该扩展的实现。调用取消、超时、断连或卸载时清理待处理请求；表态结果未知时不自动重试。
 
+通用撤回工具 `im_recall_message` 由 im-ai 注册，需在助理工具列表中启用。适配器声明 `message.recall`，先通过 `get_msg` 检查原始 ID、消息类型、群归属和发送者，再调用 [OneBot v11 `delete_msg`](https://github.com/botuniverse/onebot-11/blob/master/api/public.md#delete_msg-撤回消息)。私聊出站消息的 `user_id` 可能是机器人，聊天归属使用核心的持久化引用校验。仅允许撤回本机器人已发送的消息，失败或结果未知不自动重试；本地归档保留。
+
 接口参数对照 NapCat 官方实现：[合并转发](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/go-cqhttp/GetForwardMsg.ts)、[消息表态](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/msg/SetMsgEmojiLike.ts)。
 
 群媒体下载到 workspace-file，失败保留元数据并重试。消息输入模板、历史条数、附件数量和媒体清理全部在“IM 接入”面板配置；适配器不再提供 context/recentLimit 配置。

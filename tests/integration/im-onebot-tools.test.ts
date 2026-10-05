@@ -9,7 +9,7 @@ import { cleanup, setup } from './im-features-fixture.js'
 
 afterEach(cleanup)
 const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
-const toolIds = ['onebot_get_forward_msg', 'onebot_set_msg_emoji_like']
+const toolIds = ['onebot_get_forward_msg', 'onebot_set_msg_emoji_like', 'im_recall_message']
 type Call = { name: string; arguments: JsonObject }
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=',
@@ -109,6 +109,9 @@ async function createApp(
     })
     const actions: { action: string; params: JsonObject }[] = []
     let messageGroup = '40894918'
+    let messageSender = selfId
+    let messageType = 'group'
+    let stalled: string | undefined
     let failure: string | undefined
     let forward: Json = {
       messages: [
@@ -126,21 +129,23 @@ async function createApp(
         echo: string
       }
       actions.push(request)
+      if (request.action === stalled) return
       const data =
         request.action === 'get_group_member_info'
           ? { user_id: request.params.user_id, role: 'member' }
           : request.action === 'get_msg'
             ? {
                 message_id: Number(request.params.message_id),
-                message_type: 'group',
+                message_type: messageType,
                 group_id: messageGroup,
+                sender: { user_id: messageSender },
                 message: [{ type: 'forward', data: { id: 'resource-1' } }],
               }
             : request.action === 'get_forward_msg'
               ? forward
               : request.action === 'get_image'
                 ? { base64: png.toString('base64') }
-                : request.action === 'send_group_msg'
+                : request.action === 'send_group_msg' || request.action === 'send_private_msg'
                   ? { message_id: 100 }
                   : { result: true }
       socket.send(
@@ -152,12 +157,12 @@ async function createApp(
         }),
       )
     })
-    const receive = (messageId = 1) =>
+    const receive = (messageId = 1, privateChat = false) =>
       socket.send(
         JSON.stringify({
           post_type: 'message',
           self_id: selfId,
-          message_type: 'group',
+          message_type: privateChat ? 'private' : 'group',
           group_id: '40894918',
           message_id: messageId,
           user_id: '79338528',
@@ -181,6 +186,15 @@ async function createApp(
       },
       fail: (action: string) => {
         failure = action
+      },
+      setSender: (value: string) => {
+        messageSender = value
+      },
+      setType: (value: string) => {
+        messageType = value
+      },
+      stall: (value: string) => {
+        stalled = value
       },
     }
   }
@@ -501,4 +515,99 @@ it('非 OneBot 空间不可借用已注册的 OneBot 工具', async () => {
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect(bot.actions).toEqual([])
   expect(JSON.stringify(app.requests.at(-1))).toContain('当前空间不是 OneBot 聊天')
+})
+
+it('未声明撤回能力的接入返回结构化错误，不借用其他平台连接', async () => {
+  const app = await createApp([{ name: 'im_recall_message', arguments: { message_id: '1' } }])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  await app.connection.receive('/ai 撤回', { id: '1' })
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(bot.actions).toEqual([])
+  expect(JSON.stringify(app.requests.at(-1))).toContain('unsupported')
+})
+
+it('AI 撤回上一轮已发送消息，保留本地归档；不同账号只操作各自聊天', async () => {
+  const calls: Call[] = []
+  const app = await createApp(calls)
+  const first = await app.connectOneBot('onebot-a', '05')
+  const second = await app.connectOneBot('onebot-b', '06')
+  first.receive()
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  calls.push({ name: 'im_recall_message', arguments: { message_id: '100' } })
+  first.receive(2)
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(2)
+  expect(first.actions.filter((entry) => entry.action === 'delete_msg')).toEqual([
+    expect.objectContaining({ params: { message_id: '100' } }),
+  ])
+  expect(second.actions).toEqual([])
+  expect(JSON.stringify(app.requests.at(-1))).toContain('"recalled":true')
+  expect(
+    (await app.ctx.im.history(app.messages[0]!.workspaceId)).some(
+      (entry) => entry.message.id === '100',
+    ),
+  ).toBe(true)
+  second.receive()
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(3)
+  expect(second.actions.some((entry) => entry.action === 'delete_msg')).toBe(false)
+  expect(JSON.stringify(app.requests.at(-1))).toContain('撤回消息不属于当前空间')
+})
+
+it.each(['他人消息', '其他群', '平台失败', '未记录消息'] as const)(
+  '撤回拒绝或反馈：%s',
+  async (mode) => {
+    const app = await createApp([
+      { name: 'im_recall_message', arguments: { message_id: mode === '未记录消息' ? '999' : '1' } },
+    ])
+    const bot = await app.connectOneBot('onebot-a', '05')
+    if (mode === '他人消息') bot.setSender('someone-else')
+    if (mode === '其他群') bot.setGroup('other-group')
+    if (mode === '平台失败') bot.fail('delete_msg')
+    bot.receive()
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    expect(bot.actions.filter((entry) => entry.action === 'delete_msg')).toHaveLength(
+      mode === '平台失败' ? 1 : 0,
+    )
+    expect(app.requests.at(-1)?.messages.flatMap((message) => message.content)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'tool-result', isError: true })]),
+    )
+  },
+)
+
+it.each(['取消', '卸载'] as const)('撤回等待期间%s不会执行 delete_msg', async (operation) => {
+  const app = await createApp([])
+  const bot = await app.connectOneBot('onebot-a', '05')
+  bot.receive()
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  const target = await app.ctx.im.resolveTarget(app.messages[0]!.workspaceId)
+  bot.stall('get_msg')
+  const controller = new AbortController()
+  const work = app.ctx.im.invoke(target, 'message.recall', { message_id: '100' }, controller.signal)
+  const rejected = expect(work).rejects.toThrow()
+  await poll(() => bot.actions.some((entry) => entry.action === 'get_msg')).toBe(true)
+  if (operation === '取消') controller.abort()
+  else await bot.fiber.dispose()
+  await rejected
+  expect(bot.actions.some((entry) => entry.action === 'delete_msg')).toBe(false)
+})
+
+it('私聊撤回使用持久化空间归属，禁用聊天后拒绝操作', async () => {
+  const calls: Call[] = []
+  const app = await createApp(calls)
+  const bot = await app.connectOneBot('onebot-a', '05')
+  await app.ctx.im.setPolicy('onebot-a', {
+    private: { mode: 'whitelist', ids: ['79338528'], defaults: { ai: true, agentId: 'assistant' } },
+  })
+  bot.setType('private')
+  bot.receive(1, true)
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  calls.push({ name: 'im_recall_message', arguments: { message_id: '100' } })
+  bot.receive(2, true)
+  await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(2)
+  expect(bot.actions.filter((entry) => entry.action === 'delete_msg')).toHaveLength(1)
+  const target = await app.ctx.im.resolveTarget(app.messages[0]!.workspaceId)
+  await app.ctx.im.setPolicy('onebot-a', { enabled: false })
+  await expect(app.ctx.im.invoke(target, 'message.recall', { message_id: '100' })).rejects.toThrow(
+    '禁用',
+  )
+  expect(bot.actions.filter((entry) => entry.action === 'delete_msg')).toHaveLength(1)
 })
