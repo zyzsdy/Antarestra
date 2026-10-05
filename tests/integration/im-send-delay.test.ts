@@ -115,10 +115,10 @@ it('出站文本转换后的字数决定延迟，不计入被移除的引用链�
     id: 'filtered',
     platform: 'onebot11',
     accountId: '06',
-    policy: app.defaultPolicy,
     transformText: filterCitationLinks,
     send,
   })
+  await app.ctx.im.setPolicy('filtered', app.defaultPolicy)
   await connection.receive({
     id: 'incoming',
     chat: { type: 'group', id: '40894918' },
@@ -157,7 +157,7 @@ it.each([
 
 it('不同群、接入独立计时，私聊无需等待', async () => {
   const app = await prepare()
-  const other = app.connect('qq-b', '06', {
+  const other = await app.connect('qq-b', '06', {
     group: { mode: 'whitelist', ids: ['40894918', 'other'] },
     private: { mode: 'whitelist', ids: ['friend'] },
   })
@@ -260,9 +260,9 @@ it('独立卸载接入取消当前及排队发送，其他接入继续发送', a
     id: 'temporary',
     platform: 'qq',
     accountId: '07',
-    policy: app.defaultPolicy,
     send,
   })
+  await app.ctx.im.setPolicy('temporary', app.defaultPolicy)
   await handle.receive({
     id: 'temporary-message',
     chat: app.target.chat,
@@ -297,9 +297,9 @@ it('前一条平台发送完成后才开始下一条计时', async () => {
     id: 'slow',
     platform: 'qq',
     accountId: '08',
-    policy: app.defaultPolicy,
     send,
   })
+  await app.ctx.im.setPolicy('slow', app.defaultPolicy)
   await handle.receive({
     id: 'slow-message',
     chat: app.target.chat,

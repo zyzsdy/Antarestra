@@ -43,23 +43,6 @@ plugins:
     selfId: '152408856'
     token: $ANTARESTRA_ONEBOT_TOKEN
     path: /im/onebot/qq-qianqian
-    policy:
-      private:
-        mode: whitelist
-        ids: []
-      group:
-        mode: whitelist
-        ids:
-          - "40894918"
-          - "839236997"
-      defaults:
-        commands: true
-        ai: true
-        activation:
-          mention: true
-          prefixes: [ '/ai' ]
-          cooldownMs: 3000
-          maxPerMinute: 10
     filterCitationLinks: true
   storage: {}
   # 运行 pnpm startdevstorage 和 pnpm initdevstorage 后启用；凭据从环境读取。

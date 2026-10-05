@@ -13,20 +13,13 @@ im-onebot:
   selfId: '152408856'
   token: $ANTARESTRA_ONEBOT_TOKEN
   path: /im/onebot/qq-qianqian
-  policy:
-    private:
-      mode: whitelist
-      ids: []
-    group:
-      mode: whitelist
-      ids: ['40894918']
 ```
 
 以上条目放在主配置的 `plugins` 映射下。若配置多个 OneBot 插件，映射键使用 `im-onebot:八位随机十六进制哈希`；`id` 必须在所有 IM 接入中唯一且保持稳定。账号和聊天 ID 全部使用字符串。
 
 NapCat WebUI 的网络配置中新建 **WebSocket 客户端（反向 WebSocket）**，地址填写 `ws://127.0.0.1:14451/im/onebot/qq-qianqian`，令牌与环境变量一致，消息格式选择 `array`，连接角色选择 `Universal`（同时收事件和调用 API）。地址没有 `/api` 前缀。如 NapCat 在其他机器，替换为 Antarestra 的可达地址并通过安全的网络连接。
 
-`token` 与 `tokenEnv` 二选一；`tokenEnv` 从运行进程的环境变量读取，而 `.env` 由项目加载器替换时应使用上例 `token` 写法。不设置准入规则时拒绝所有聊天。以上白名单在适配器入口和出口都检查，因此后台策略不能扩大到其他群或私聊。修改范围需明确修改接入配置。
+`token` 与 `tokenEnv` 二选一；`tokenEnv` 从运行进程的环境变量读取，而 `.env` 由项目加载器替换时应使用上例 `token` 写法。聊天规则统一在“机器人 → IM 接入”配置，未保存准入规则时拒绝所有聊天。收发消息、媒体下载和平台操作均使用 IM 核心的当前规则，保存后立即生效，无需重载适配器。旧 `policy` 配置已删除，不做迁移；已有主配置须移除该字段。
 
 ## 支持范围
 

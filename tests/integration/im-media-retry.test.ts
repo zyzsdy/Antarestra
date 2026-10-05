@@ -27,6 +27,40 @@ function archive(app: Awaited<ReturnType<typeof setup>>) {
   return { store, dispose }
 }
 
+it('归档准备期间撤销聊天准入，核心在下载前重新检查已保存策略', async () => {
+  const app = await setup()
+  const download = vi.fn(async () => ({
+    data: new Uint8Array([1]),
+    mimeType: 'image/png',
+    filename: 'test.png',
+  }))
+  const connection = await app.connect('revoked', '08', app.defaultPolicy, download)
+  let workspace = ''
+  app.ctx.im.registerMediaArchive(app.ctx, {
+    async store(message, media, load, signal) {
+      workspace = message.workspaceId
+      await app.ctx.im.setPolicy('revoked', { ...app.defaultPolicy, enabled: false })
+      const result = await load(1000, signal)
+      return {
+        resourceId: media.id,
+        mimeType: result.mimeType,
+        filename: result.filename,
+        size: result.data.byteLength,
+      }
+    },
+    retain: async () => {},
+    available: async () => true,
+  })
+  await connection.receive('归档时禁用', {
+    segments: [{ type: 'image', url: 'https://example.invalid/image' }],
+  })
+  expect(download).not.toHaveBeenCalled()
+  expect((await app.ctx.im.history(workspace))[0]?.media[0]).toMatchObject({
+    status: 'failed',
+    lastError: expect.stringContaining('禁用'),
+  })
+})
+
 it('默认最多重试十次，插件重载继续累计，耗尽后退出队列并输出可定位的失败原因', async () => {
   const app = await setup()
   archive(app)
@@ -37,7 +71,7 @@ it('默认最多重试十次，插件重载继续累计，耗尽后退出队列�
       cause: Object.assign(new Error('连接被重置'), { code: 'ECONNRESET' }),
     })
   })
-  const connection = app.connect('retry-limit', '08', app.defaultPolicy, download)
+  const connection = await app.connect('retry-limit', '08', app.defaultPolicy, download)
   await connection.receive('正文仍保留', {
     id: 'failed-image',
     segments: [
@@ -55,7 +89,7 @@ it('默认最多重试十次，插件重载继续累计，耗尽后退出队列�
 
   await app.imPlugin.dispose()
   await app.ctx.plugin(im)
-  app.connect('retry-limit', '08', app.defaultPolicy, download)
+  await app.connect('retry-limit', '08', app.defaultPolicy, download)
   archive(app)
   for (let index = 0; index < 20; index++) await app.ctx.im.maintainHistory()
   expect(download).toHaveBeenCalledTimes(11)
@@ -106,7 +140,7 @@ it.each([0, 2])(
       if (media.url.endsWith('bad')) throw new Error('文件大小超过上限')
       return { data: new Uint8Array([1]), filename: 'ok.png', mimeType: 'image/png' }
     })
-    const connection = app.connect('mixed', '08', app.defaultPolicy, download)
+    const connection = await app.connect('mixed', '08', app.defaultPolicy, download)
     await connection.receive('', {
       segments: [
         { type: 'image', url: 'https://example.invalid/ok' },
@@ -132,7 +166,7 @@ it('未启用归档不消耗次数，旧失败记录仍受上限约束，成功�
     filename: 'ok.png',
     mimeType: 'image/png',
   }))
-  const connection = app.connect('legacy', '08', app.defaultPolicy, download)
+  const connection = await app.connect('legacy', '08', app.defaultPolicy, download)
   await connection.receive('', { segments: [{ type: 'image', url: 'https://example.invalid/a' }] })
   const workspace = app.messages.at(-1)!.workspaceId
   for (let index = 0; index < 3; index++) await app.ctx.im.maintainHistory()
@@ -164,12 +198,11 @@ it('卸载连接取消下载，不消耗取消资源的次数，也不丢失同�
   let connection: ConnectionHandle | undefined
   const owner = await app.ctx.plugin({
     inject: ['im'],
-    apply(ctx) {
+    async apply(ctx) {
       connection = ctx.im.registerConnection(ctx, {
         id: 'cancel',
         accountId: '08',
         platform: 'qq',
-        policy: app.defaultPolicy,
         getMember: async () => ({ active: true }),
         send: async () => ({}),
         downloadMedia: async (_message, media, signal) => {
@@ -180,6 +213,7 @@ it('卸载连接取消下载，不消耗取消资源的次数，也不丢失同�
           })
         },
       })
+      await ctx.im.setPolicy('cancel', app.defaultPolicy)
     },
   })
   const pending = connection!

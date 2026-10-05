@@ -91,7 +91,9 @@ it('不依赖 AI 激活归档群文本、命令和机器人；去重并保持原
       { type: 'text', text: '引用成功' },
     ],
   )
-  const privateChat = app.connect('private', '09', { private: { mode: 'blacklist', ids: [] } })
+  const privateChat = await app.connect('private', '09', {
+    private: { mode: 'blacklist', ids: [] },
+  })
   await privateChat.receive('私聊不存', { chat: { type: 'private', id: 'user' } })
   expect(await app.ctx.im.history(app.messages.at(-1)!.workspaceId)).toEqual([])
 })
@@ -128,7 +130,7 @@ it('未读游标与请求快照持久化，重载后不重复读取，最后消�
 it('媒体保存到空间文件，7 天清理及容量淘汰只删除群媒体；文本与原始信息保留', async () => {
   const app = await setup()
   const store = await storage(app)
-  const connection = app.connect('media', '06', app.defaultPolicy, download)
+  const connection = await app.connect('media', '06', app.defaultPolicy, download)
   const timestamp = Date.now() - 6 * 86400000
   await connection.receive('带媒体', {
     id: 'image',
@@ -233,7 +235,7 @@ it('按时间自动附带最后五张图片和最后一个文件，超限图片�
     },
   })
   await storage(app)
-  const connection = app.connect(
+  const connection = await app.connect(
     'images',
     '07',
     { ...app.defaultPolicy, defaults: { maxImages: 5, maxFiles: 1, historyLimit: 20 } },
@@ -283,7 +285,7 @@ it('媒体失败保留记录并重试；卸载文件扩展取消并等待下载'
   const app = await setup()
   const store = await storage(app)
   let attempts = 0
-  const connection = app.connect('retry', '08', app.defaultPolicy, async (...args) => {
+  const connection = await app.connect('retry', '08', app.defaultPolicy, async (...args) => {
     attempts++
     if (attempts === 1) throw new Error('临时故障')
     return download(args[0], args[1])
@@ -297,15 +299,20 @@ it('媒体失败保留记录并重试；卸载文件扩展取消并等待下载'
   expect((await app.ctx.im.history(workspace))[0]?.media[0]?.status).toBe('stored')
   let started = false,
     aborted = false
-  const slow = app.connect('slow', '10', app.defaultPolicy, async (_message, _media, signal) => {
-    started = true
-    try {
-      await delay(60000, undefined, { signal })
-    } finally {
-      aborted = signal.aborted
-    }
-    return { data: new Uint8Array(), mimeType: 'image/png', filename: 'slow.png' }
-  })
+  const slow = await app.connect(
+    'slow',
+    '10',
+    app.defaultPolicy,
+    async (_message, _media, signal) => {
+      started = true
+      try {
+        await delay(60000, undefined, { signal })
+      } finally {
+        aborted = signal.aborted
+      }
+      return { data: new Uint8Array(), mimeType: 'image/png', filename: 'slow.png' }
+    },
+  )
   const pending = slow
     .receive('', { segments: [{ type: 'image', url: 'https://example.invalid/slow' }] })
     .catch(() => {})
@@ -358,7 +365,7 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
       },
     },
   })
-  const other = app.connect('foreign', '11')
+  const other = await app.connect('foreign', '11')
   await other.receive('预算机密', { timestamp: Date.parse('2026-10-01T01:00:00Z') })
   await app.connection.receive('预算 123', {
     id: 'budget',
@@ -388,7 +395,7 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
 it('私聊图片进入原 AI 会话附件，不进入群归档或群媒体清理', async () => {
   const app = await setup({ ai: true, contextWindow: 100000, modelInput: ['text', 'image'] })
   await storage(app)
-  const privateChat = app.connect(
+  const privateChat = await app.connect(
     'private-media',
     '12',
     { private: { mode: 'blacklist', ids: [], defaults: { ai: true, agentId: 'assistant' } } },

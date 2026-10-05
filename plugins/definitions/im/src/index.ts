@@ -170,7 +170,6 @@ export class ImService extends Service<ServiceOptions> {
   }
   registerConnection(owner: Context, descriptor: ConnectionDescriptor): ConnectionHandle {
     this.ctx.fiber.assertActive()
-    descriptor = { ...descriptor, policy: validateConnectionPolicy(descriptor.policy ?? {}) }
     if (!descriptor.id || !descriptor.accountId || !descriptor.platform)
       throw new Error('IM 接入标识不能为空')
     if (this.connections.has(descriptor.id)) throw new Error('IM 接入标识重复')
@@ -187,7 +186,7 @@ export class ImService extends Service<ServiceOptions> {
       },
       controller: new AbortController(),
       pending: new Set(),
-      policy: structuredClone(this.saved.get(connectionKey(descriptor)) ?? descriptor.policy ?? {}),
+      policy: structuredClone(this.saved.get(connectionKey(descriptor)) ?? {}),
     }
     owner.effect(() => {
       this.connections.set(descriptor.id, entry)
@@ -347,7 +346,7 @@ export class ImService extends Service<ServiceOptions> {
           : a.mode === 'blacklist' && !a.ids.includes(chat.id))
       )
     }
-    const allowed = admits(policy) && admits(entry.descriptor.policy ?? {})
+    const allowed = admits(policy)
     const merged = {
       commands: true,
       ai: false,
@@ -875,7 +874,17 @@ export class ImService extends Service<ServiceOptions> {
           message,
           media,
           (limit, signal) =>
-            entry.descriptor.downloadMedia!(context.message, segment, signal, limit),
+            this.downloadMedia(
+              {
+                connectionId: entry.descriptor.id,
+                workspaceId: context.workspaceId,
+                chat: context.message.chat,
+              },
+              context.message,
+              segment,
+              signal,
+              limit,
+            ),
           context.signal,
         )
         media.status = 'stored'
@@ -972,7 +981,12 @@ export class ImService extends Service<ServiceOptions> {
             message,
             media,
             (limit, downloadSignal) =>
-              entry.descriptor.downloadMedia!(
+              this.downloadMedia(
+                {
+                  connectionId: entry.descriptor.id,
+                  workspaceId: message.workspaceId,
+                  chat: message.message.chat,
+                },
                 message.message,
                 message.message.segments[media.index] as MediaSegment,
                 downloadSignal,

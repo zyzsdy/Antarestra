@@ -2,7 +2,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { AiError } from '@antarestra/ai'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import '@antarestra/plugin-server'
-import type { ChatTarget, ConnectionPolicy } from '@antarestra/im'
+import type { ChatTarget } from '@antarestra/im'
 import '@antarestra/im'
 import { downloadMedia } from './media.js'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -24,18 +24,6 @@ export interface Config {
   rpcTimeoutMs?: number
   ignoredUserIds?: string[]
   filterCitationLinks?: boolean
-  policy?: ConnectionPolicy
-}
-
-function allowed(policy: ConnectionPolicy | undefined, target: ChatTarget) {
-  const access = policy?.[target.type]
-  return (
-    policy?.enabled !== false &&
-    !!access &&
-    Array.isArray(access.ids) &&
-    (access.mode === 'whitelist' || access.mode === 'blacklist') &&
-    (access.mode === 'whitelist' ? access.ids.includes(target.id) : !access.ids.includes(target.id))
-  )
 }
 
 function matches(actual: string | undefined, expected: string) {
@@ -46,6 +34,7 @@ function matches(actual: string | undefined, expected: string) {
 
 export function apply(ctx: Context, input: Config) {
   const config = schemaConfig(new URL('../config.schema.json', import.meta.url), input) as Config
+  const allowed = (target: ChatTarget) => ctx.im.getChatPolicy(config.id, target).enabled
   const token = config.token ?? (config.tokenEnv ? process.env[config.tokenEnv] : undefined)
   if (!token) throw new Error('OneBot 访问令牌未设置')
   const server = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 })
@@ -114,7 +103,6 @@ export function apply(ctx: Context, input: Config) {
     platform: 'onebot11',
     accountId: config.selfId,
     ...(config.label ? { label: config.label } : {}),
-    ...(config.policy ? { policy: config.policy } : {}),
     ...(config.filterCitationLinks ? { transformText: filterCitationLinks } : {}),
     capabilities: [
       'text',
@@ -131,11 +119,11 @@ export function apply(ctx: Context, input: Config) {
       encodeMessage(segments)
     },
     async downloadMedia(message, segment, signal, maxBytes) {
-      if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')
+      if (!allowed(message.chat)) throw new Error('目标聊天未获准接入')
       return downloadMedia(message, segment, signal, maxBytes, rpc)
     },
     async send(target, segments, options) {
-      if (!allowed(config.policy, target)) throw new Error('目标聊天未获准接入')
+      if (!allowed(target)) throw new Error('目标聊天未获准接入')
       const data = record(
         await rpc(
           target.type === 'group' ? 'send_group_msg' : 'send_private_msg',
@@ -154,7 +142,7 @@ export function apply(ctx: Context, input: Config) {
       return messageId ? { messageId } : {}
     },
     async getMember(target, userId) {
-      if (!allowed(config.policy, target)) return { active: false }
+      if (!allowed(target)) return { active: false }
       if (target.type === 'private') return { active: target.id === userId, role: 'member' }
       const member = record(
         await rpc('get_group_member_info', {
@@ -169,7 +157,7 @@ export function apply(ctx: Context, input: Config) {
       }
     },
     async invoke(action, target, parameters, signal) {
-      if (!allowed(config.policy, target)) throw new Error('目标聊天未获准接入')
+      if (!allowed(target)) throw new Error('目标聊天未获准接入')
       if (action === 'message.forward' || action === 'message.emoji-like') {
         const messageId = id(parameters.message_id)
         if (!messageId || !/^-?\d+$/.test(messageId)) throw new Error('必须指定有效的原始消息 ID')
@@ -211,8 +199,7 @@ export function apply(ctx: Context, input: Config) {
           throw new AiError('invalid_forward', '消息中不存在指定的合并转发')
         return call('get_forward_msg', { id: forwardId })
       }
-      if (!allowed(config.policy, target) || target.type !== 'group')
-        throw new Error('目标群未获准接入')
+      if (!allowed(target) || target.type !== 'group') throw new Error('目标群未获准接入')
       if (action !== 'group.ban' && action !== 'group.kick') throw new Error('不支持的平台操作')
       const userId = id(parameters.userId)
       if (!userId) throw new Error('必须指定群成员')
@@ -297,7 +284,7 @@ export function apply(ctx: Context, input: Config) {
             return
           }
           const message = normalizeMessage(event, config.selfId)
-          if (!message || !allowed(config.policy, message.chat)) return
+          if (!message || !allowed(message.chat)) return
           if (config.ignoredUserIds?.includes(message.sender.id)) message.passive = true
           message.replyToBot = message.segments.some(
             (segment) => segment.type === 'reply' && sentIds.has(segment.messageId),

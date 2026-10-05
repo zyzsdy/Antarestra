@@ -34,9 +34,10 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
     id: 'test',
     platform: 'qq',
     accountId: '05',
-    policy: { group: { mode: 'whitelist', ids: ['40894918'] } },
     send: async () => ({}),
   })
+  expect(ctx.im.getPolicy('test')).toEqual({})
+  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '40894918' }).enabled).toBe(false)
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   const request = (path: string, cookie = '', body?: object, method = 'POST', origin?: string) =>
     fetch(base + path, {
@@ -122,6 +123,23 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
   ).toBe(400)
   expect(ctx.im.getChatPolicy('test', { type: 'group', id: '40894918' }).ai).toBe(true)
   expect(ctx.im.getChatPolicy('test', { type: 'group', id: 'other' }).enabled).toBe(false)
+  const expanded = { ...policy, group: { mode: 'blacklist', ids: [] } }
+  expect(
+    (await request('/im/connections/test/policy', cookie, { policy: expanded, revision: 1 }, 'PUT'))
+      .status,
+  ).toBe(200)
+  expect(ctx.im.getChatPolicy('test', { type: 'group', id: 'other' }).enabled).toBe(true)
+  expect(
+    (
+      await request(
+        '/im/connections/test/policy',
+        cookie,
+        { policy: { ...expanded, enabled: false }, revision: 2 },
+        'PUT',
+      )
+    ).status,
+  ).toBe(200)
+  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '40894918' }).enabled).toBe(false)
   await fiber.dispose()
   expect((await request('/im/connections', cookie)).status).toBe(404)
 })

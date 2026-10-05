@@ -107,7 +107,7 @@ function updateDefaults(type: 'private' | 'group', value: ChatPolicy) {
   >
     <fieldset :disabled="busy">
       <p class="im-hint">
-        名单先决定是否准入，再依次合并接入默认、聊天类型默认和单独规则。适配器准入上限始终有效。
+        名单先决定是否准入，再依次合并接入默认、聊天类型默认和单独规则。此处保存的规则统一控制聊天准入。
       </p>
       <label class="im-check"
         ><CheckboxField
@@ -142,9 +142,7 @@ function updateDefaults(type: 'private' | 'group', value: ChatPolicy) {
             "
           />
         </label>
-        <p class="im-hint">
-          白名单留空表示全部禁止；黑名单留空表示全部允许，但仍受适配器准入上限限制。
-        </p>
+        <p class="im-hint">白名单留空表示全部禁止；黑名单留空表示全部允许。</p>
         <ChatPolicyFields
           :model-value="draft[scope.key]!.defaults ?? {}"
           :id="`im-${scope.key}`"

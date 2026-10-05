@@ -9,6 +9,7 @@ import im, {
   type IncomingMessage,
   type MessageContext,
   type ConnectionHandle,
+  type ChatTarget,
 } from '@antarestra/im'
 
 const contexts: Context[] = []
@@ -45,6 +46,85 @@ async function setup() {
   return { ctx, fiber }
 }
 
+it.each(['onebot11', 'feishu'])(
+  '%s 仅由已保存规则控制群聊和私聊的收发及平台操作',
+  async (platform) => {
+    const { ctx } = await setup()
+    const send = vi.fn(async () => ({ messageId: 'sent' }))
+    const invoke = vi.fn(async () => 'ok')
+    const download = vi.fn(async () => ({
+      data: new Uint8Array([1]),
+      mimeType: 'image/png',
+      filename: 'image.png',
+    }))
+    const connection = ctx.im.registerConnection(ctx, {
+      id: 'test',
+      platform,
+      accountId: 'bot',
+      send,
+      invoke,
+      capabilities: ['test.action'],
+      downloadMedia: download,
+    })
+    let context!: MessageContext
+    ctx.im.registerHandler(ctx, {
+      id: 'capture',
+      stage: 'message',
+      handle: (value) => {
+        context = value
+      },
+    })
+    const chats: ChatTarget[] = [
+      { type: 'group', id: 'new-group' },
+      { type: 'private', id: 'new-user' },
+    ]
+    expect(ctx.im.getPolicy('test')).toEqual({})
+    for (const chat of chats) {
+      const incoming = { ...message(chat.id), chat }
+      expect(await connection.receive(incoming)).toEqual({ status: 'ignored' })
+    }
+    await ctx.im.setPolicy(
+      'test',
+      {
+        group: { mode: 'whitelist', ids: ['new-group'] },
+        private: { mode: 'blacklist', ids: [] },
+      },
+      0,
+    )
+    for (const chat of chats) {
+      const incoming = { ...message(chat.id), chat }
+      expect(await connection.receive(incoming)).toEqual({ status: 'processed' })
+      const target = { connectionId: 'test', workspaceId: context.workspaceId, chat }
+      const segment = { type: 'image' as const, url: 'https://example.invalid/image' }
+      const signal = new AbortController().signal
+      await ctx.im.send(target, [{ type: 'text', text: '允许' }])
+      expect(await ctx.im.invoke(target, 'test.action', {})).toBe('ok')
+      await ctx.im.downloadMedia(target, incoming, segment, signal, 1024)
+      const calls = [send.mock.calls.length, invoke.mock.calls.length, download.mock.calls.length]
+      const saved = ctx.im.getPolicy('test')
+      await ctx.im.setPolicy('test', { ...saved, [chat.type]: { mode: 'whitelist', ids: [] } })
+      expect(await connection.receive({ ...incoming, id: `${chat.id}-denied` })).toEqual({
+        status: 'ignored',
+      })
+      expect(await ctx.im.authenticate(context.request)).toBeUndefined()
+      await expect(ctx.im.send(target, [])).rejects.toThrow('禁用')
+      await expect(ctx.im.invoke(target, 'test.action', {})).rejects.toThrow('禁用')
+      await expect(ctx.im.downloadMedia(target, incoming, segment, signal, 1024)).rejects.toThrow(
+        '禁用',
+      )
+      expect([
+        send.mock.calls.length,
+        invoke.mock.calls.length,
+        download.mock.calls.length,
+      ]).toEqual(calls)
+      await ctx.im.setPolicy('test', saved)
+      expect(await connection.receive({ ...incoming, id: `${chat.id}-denied` })).toEqual({
+        status: 'processed',
+      })
+    }
+  },
+)
+
 it('按持久化空间解析连接，禁用与卸载后拒绝访问，卸载取消并等待操作', async () => {
   const { ctx } = await setup()
   const owner = await ctx.plugin(() => {})
@@ -53,7 +133,6 @@ it('按持久化空间解析连接，禁用与卸载后拒绝访问，卸载取�
     id: 'onebot',
     platform: 'onebot11',
     accountId: '05',
-    policy,
     capabilities: ['test.wait'],
     send: async () => ({}),
     invoke: async (
@@ -70,6 +149,7 @@ it('按持久化空间解析连接，禁用与卸载后拒绝访问，卸载取�
     },
   }
   const connection = ctx.im.registerConnection(owner.ctx, descriptor)
+  await ctx.im.setPolicy('onebot', policy)
   await connection.receive(message())
   const workspaceId = identity({
     connection: { ...descriptor, status: 'online' },
@@ -99,17 +179,19 @@ it('群成员共享空间，不同账号、接入实例和私聊分别隔离', a
       received.push(context)
     },
   })
-  const register = (id: string, accountId: string) =>
-    ctx.im.registerConnection(ctx, {
+  const register = async (id: string, accountId: string) => {
+    const handle = ctx.im.registerConnection(ctx, {
       id,
       platform: 'qq',
       accountId,
-      policy,
       send: async () => ({}),
     })
-  const a = register('qq-a', '05'),
-    b = register('qq-b', '06'),
-    c = register('qq-c', '05')
+    await ctx.im.setPolicy(id, policy)
+    return handle
+  }
+  const a = await register('qq-a', '05'),
+    b = await register('qq-b', '06'),
+    c = await register('qq-c', '05')
   await a.receive(message('1', 'fish'))
   await a.receive(message('2', 'bird'))
   await b.receive(message('1'))
@@ -120,7 +202,7 @@ it('群成员共享空间，不同账号、接入实例和私聊分别隔离', a
   expect(new Set(received.map((item) => item.workspaceId)).size).toBe(4)
 })
 
-it('默认拒绝、名单上限、命令先于AI执行，禁用命令不影响普通消息', async () => {
+it('默认拒绝、后台名单独立生效、命令先于AI执行，禁用命令不影响普通消息', async () => {
   const { ctx } = await setup(),
     calls: string[] = []
   ctx.im.registerHandler(ctx, {
@@ -150,9 +232,9 @@ it('默认拒绝、名单上限、命令先于AI执行，禁用命令不影响�
     id: 'qq',
     platform: 'qq',
     accountId: '05',
-    policy,
     send: async () => ({}),
   })
+  await ctx.im.setPolicy('qq', policy)
   expect(await handle.receive({ ...message(), chat: { type: 'group', id: 'other' } })).toEqual({
     status: 'ignored',
   })
@@ -161,21 +243,22 @@ it('默认拒绝、名单上限、命令先于AI执行，禁用命令不影响�
   await ctx.im.setPolicy(
     'qq',
     { group: { mode: 'blacklist', ids: [] }, defaults: { ai: true, commands: false } },
-    0,
+    1,
   )
   expect(await handle.receive({ ...message('2'), chat: { type: 'group', id: 'other' } })).toEqual({
-    status: 'ignored',
+    status: 'processed',
   })
   await handle.receive(message('2'))
-  expect(calls).toEqual(['command', 'ai'])
+  expect(calls).toEqual(['command', 'ai', 'ai'])
 })
 
 it('并发投递去重在卸载重装后仍有效，处理失败也不重复执行副作用', async () => {
   const { ctx, fiber } = await setup(),
     run = vi.fn()
   ctx.im.registerHandler(ctx, { id: 'effect', stage: 'message', handle: run })
-  const descriptor = { id: 'qq', platform: 'qq', accountId: '05', policy, send: async () => ({}) }
+  const descriptor = { id: 'qq', platform: 'qq', accountId: '05', send: async () => ({}) }
   let handle = ctx.im.registerConnection(ctx, descriptor)
+  await ctx.im.setPolicy('qq', policy)
   expect(
     (await Promise.all([handle.receive(message()), handle.receive(message())]))
       .map((item) => item.status)
@@ -214,14 +297,14 @@ it('可信请求拒绝JSON伪造并在连接卸载或策略撤销后失效', asy
   })
   const owner = await ctx.plugin({
     inject: ['im'],
-    apply(owner: Context) {
+    async apply(owner: Context) {
       handle = owner.im.registerConnection(owner, {
         id: 'qq',
         platform: 'qq',
         accountId: '05',
-        policy,
         send: async () => ({}),
       })
+      await owner.im.setPolicy('qq', policy)
     },
   })
   await handle.receive(message())
@@ -257,9 +340,9 @@ it('出站空间和接入严格匹配，投递幂等并保守标记未知结果'
     id: 'qq',
     platform: 'qq',
     accountId: '05',
-    policy,
     send,
   })
+  await ctx.im.setPolicy('qq', policy)
   await handle.receive(message())
   const target = { connectionId: 'qq', chat: message().chat, workspaceId: context.workspaceId }
   await expect(
@@ -288,7 +371,7 @@ it('出站空间和接入严格匹配，投递幂等并保守标记未知结果'
 
 it('策略持久化、校验格式，并发更新只有一个相同修订号获准', async () => {
   const { ctx, fiber } = await setup()
-  const descriptor = { id: 'qq', platform: 'qq', accountId: '05', policy, send: async () => ({}) }
+  const descriptor = { id: 'qq', platform: 'qq', accountId: '05', send: async () => ({}) }
   ctx.im.registerConnection(ctx, descriptor)
   const results = await Promise.allSettled([
     ctx.im.setPolicy('qq', { ...policy, enabled: false }, 0),
@@ -321,9 +404,9 @@ it('卸载处理器后回收且同名注册可恢复，后台身份需要在线�
     id: 'qq',
     platform: 'qq',
     accountId: '05',
-    policy,
     send: async () => ({}),
   })
+  await ctx.im.setPolicy('qq', policy)
   await handle.receive(message())
   await handler.dispose()
   await handle.receive(message('2'))
@@ -361,9 +444,9 @@ it('独立卸载处理器会取消并等待正在处理的普通消息', async (
     id: 'qq',
     platform: 'qq',
     accountId: '05',
-    policy,
     send: async () => ({}),
   })
+  await ctx.im.setPolicy('qq', policy)
   const receive = handle.receive(message())
   await started.promise
   const dispose = handler.dispose()
@@ -394,23 +477,23 @@ it('连接卸载会取消并等待该连接的活动处理，不影响其他连�
   })
   const owner = await ctx.plugin({
     inject: ['im'],
-    apply(owner: Context) {
+    async apply(owner: Context) {
       handle = owner.im.registerConnection(owner, {
         id: 'first',
         platform: 'qq',
         accountId: '05',
-        policy,
         send: async () => ({}),
       })
+      await owner.im.setPolicy('first', policy)
     },
   })
   const second = ctx.im.registerConnection(ctx, {
     id: 'second',
     platform: 'qq',
     accountId: '06',
-    policy,
     send: async () => ({}),
   })
+  await ctx.im.setPolicy('second', policy)
   const result = handle.receive(message()).catch(() => undefined)
   await started.promise
   await owner.dispose()

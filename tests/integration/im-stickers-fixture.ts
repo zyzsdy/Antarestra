@@ -93,10 +93,6 @@ export async function setupStickers(ai = false, driver?: ModelDriver) {
     id: 'stickers-test',
     platform: 'qq',
     accountId: 'bot',
-    policy: {
-      group: { mode: 'whitelist', ids: ['g1', 'g2'] },
-      private: { mode: 'whitelist', ids: ['owner'] },
-    },
     getMember: async (target, id) => ({
       active: true,
       role: owners.get(target.id) === id ? 'owner' : id === 'platform-admin' ? 'admin' : 'member',
@@ -106,6 +102,10 @@ export async function setupStickers(ai = false, driver?: ModelDriver) {
       sent.push(segments)
       return { messageId: randomUUID() }
     },
+  })
+  await ctx.im.setPolicy('stickers-test', {
+    group: { mode: 'whitelist', ids: ['g1', 'g2'] },
+    private: { mode: 'whitelist', ids: ['owner'] },
   })
   connection.setStatus('online')
   const receive = (

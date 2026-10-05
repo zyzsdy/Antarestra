@@ -1,14 +1,34 @@
 // @vitest-environment jsdom
-import { readFile } from 'node:fs/promises'
 import { createApp, h, nextTick, reactive } from 'vue'
 import { expect, it } from 'vitest'
 import SchemaForm from '../../plugins/features/config-panel/client/SchemaForm.vue'
 import type { Schema } from '../../plugins/features/config-panel/client/types.js'
 
-it('OneBot 表单保留嵌套编辑路径、动态对象和无效草稿，并遮罩令牌', async () => {
-  const schema = JSON.parse(
-    await readFile('plugins/adapters/im-onebot/config.schema.json', 'utf8'),
-  ) as Schema
+it('通用表单保留嵌套编辑路径、动态对象和无效草稿，并遮罩令牌', async () => {
+  const schema: Schema = {
+    type: 'object',
+    $defs: {
+      chat: {
+        type: 'object',
+        properties: {
+          ai: { type: 'boolean' },
+          activation: { type: 'object', properties: { cooldownMs: { type: 'integer' } } },
+        },
+      },
+      access: { type: 'object', properties: { defaults: { $ref: '#/$defs/chat' } } },
+    },
+    properties: {
+      policy: {
+        type: 'object',
+        properties: {
+          group: { $ref: '#/$defs/access' },
+          private: { $ref: '#/$defs/access' },
+          chats: { type: 'object', additionalProperties: { $ref: '#/$defs/chat' } },
+        },
+      },
+      token: { type: 'string', format: 'password' },
+    },
+  }
   const value = reactive<Record<string, unknown>>({
     policy: { chats: { '123': { ai: true } } },
     token: 'test-token',

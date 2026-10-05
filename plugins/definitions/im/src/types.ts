@@ -177,7 +177,6 @@ export interface ConnectionDescriptor {
   accountId: string
   tenantId?: string
   label?: string
-  policy?: ConnectionPolicy
   capabilities?: readonly string[]
   downloadMedia?(
     message: IncomingMessage,

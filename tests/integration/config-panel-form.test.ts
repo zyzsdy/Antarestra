@@ -22,18 +22,12 @@ it('IM 命令启动表单只保留前缀和内置开关，不再配置权限', a
   expect(() => validateConfig(schema, { commands: {} })).toThrow()
 })
 
-it('OneBot 自动表单展开聊天策略引用，服务端仍强制令牌二选一', async () => {
+it('OneBot 自动表单移除聊天策略，服务端仍强制令牌二选一', async () => {
   const schema = await pluginSchema('plugins/adapters/im-onebot')
   const original = JSON.stringify(schema)
   expect(supportsForm(schema)).toBe(true)
   const resolved = resolveFormSchema(schema)!
-  const policy = resolved.properties!.policy!
-  expect(policy.properties!.group!.properties!.mode!.enum).toEqual(['whitelist', 'blacklist'])
-  expect(
-    policy.properties!.private!.properties!.defaults!.properties!.activation!.properties!.mention!
-      .type,
-  ).toBe('boolean')
-  expect(policy.properties!.chats!.additionalProperties).toBeDefined()
+  expect(resolved.properties).not.toHaveProperty('policy')
   expect(JSON.stringify(schema)).toBe(original)
   const base = { id: 'test', selfId: '123456' }
   expect(validateConfig(schema, { ...base, token: 'test-token' })).toMatchObject(base)
@@ -46,7 +40,7 @@ it('OneBot 自动表单展开聊天策略引用，服务端仍强制令牌二选
     validateConfig(schema, {
       ...base,
       token: 'test',
-      policy: { group: { mode: 'invalid', ids: [] } },
+      policy: { group: { mode: 'blacklist', ids: [] } },
     }),
   ).toThrow()
 })

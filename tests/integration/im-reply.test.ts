@@ -330,7 +330,7 @@ it.each([
     ai: true,
     driver: driver(`<im_reply><message>不可先发</message>${suffix}</im_reply>`),
   })
-  const other = app.connect('qq-b', '06')
+  const other = await app.connect('qq-b', '06')
   await other.receive('另一个接入的消息', { id: 'foreign' })
   await app.connection.receive('/ai 回复')
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')

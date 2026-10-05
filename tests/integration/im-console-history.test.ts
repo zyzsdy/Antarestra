@@ -59,10 +59,12 @@ it('群历史管理独立鉴权，消息游标不遗漏，隔离其他群与私�
       raw: { platformOnly: true },
     })
   const group = app.messages[0]!.workspaceId
-  const other = app.connect('other', '06')
+  const other = await app.connect('other', '06')
   await other.receive('其他机器人的同名群')
   const otherGroup = app.messages.at(-1)!.workspaceId
-  const privateChat = app.connect('private', '07', { private: { mode: 'blacklist', ids: [] } })
+  const privateChat = await app.connect('private', '07', {
+    private: { mode: 'blacklist', ids: [] },
+  })
   await privateChat.receive('私聊', { chat: { type: 'private', id: 'user' } })
   const privateGroup = app.messages.at(-1)!.workspaceId
   const listing = await request('/im/groups', cookie)
@@ -165,7 +167,7 @@ it('从群读取实际 AI 请求与返回，保留 reset 前会话，防止跨�
     run: { model: { modelId: 'model' }, requests: [{ systemPrompt: '系统' }] },
   })
   expect(detail.run.messages.some((item: { role: string }) => item.role === 'assistant')).toBe(true)
-  const other = app.connect('other', '06')
+  const other = await app.connect('other', '06')
   await other.receive('其他群')
   const otherGroup = app.messages.at(-1)!.workspaceId
   expect((await request(`/im/groups/${otherGroup}/ai/${firstJob.id}`, cookie)).status).toBe(404)

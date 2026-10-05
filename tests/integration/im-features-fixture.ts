@@ -84,7 +84,7 @@ export async function setup(
     group: { mode: 'whitelist', ids: ['40894918'], defaults: { ai: true, agentId: 'assistant' } },
     private: { mode: 'whitelist', ids: [] },
   }
-  function connect(
+  async function connect(
     id = 'qq-a',
     accountId = '05',
     policy = defaultPolicy,
@@ -95,7 +95,6 @@ export async function setup(
       id,
       accountId,
       platform: 'qq',
-      policy,
       ...(downloadMedia ? { downloadMedia } : {}),
       getMember,
       async send(target, segments) {
@@ -104,6 +103,7 @@ export async function setup(
         return { messageId: randomUUID() }
       },
     })
+    if (ctx.im.getPolicyRevision(id) === 0) await ctx.im.setPolicy(id, policy)
     handle.setStatus('online')
     return {
       handle,
@@ -118,7 +118,7 @@ export async function setup(
       },
     }
   }
-  const connection = connect()
+  const connection = await connect()
   const aiState = { calls: 0 }
   let aiPlugin: Awaited<ReturnType<typeof ctx.plugin>> | undefined
   if (options.ai) {

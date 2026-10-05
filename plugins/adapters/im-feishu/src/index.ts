@@ -1,6 +1,6 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
-import type { ChatTarget, ConnectionPolicy } from '@antarestra/im'
+import type { ChatTarget } from '@antarestra/im'
 import { downloadHttpMedia } from '@antarestra/im'
 import * as lark from '@larksuiteoapi/node-sdk'
 import axios from 'axios'
@@ -18,18 +18,6 @@ export interface Config {
   tenantId: string
   botOpenId: string
   label?: string
-  policy?: ConnectionPolicy
-}
-
-function allowed(policy: ConnectionPolicy | undefined, target: ChatTarget) {
-  const access = policy?.[target.type]
-  return (
-    policy?.enabled !== false &&
-    !!access &&
-    Array.isArray(access.ids) &&
-    (access.mode === 'whitelist' || access.mode === 'blacklist') &&
-    (access.mode === 'whitelist' ? access.ids.includes(target.id) : !access.ids.includes(target.id))
-  )
 }
 
 interface SendResponse {
@@ -53,6 +41,7 @@ interface MembersResponse {
 
 export function apply(ctx: Context, input: Config) {
   const config = schemaConfig(new URL('../config.schema.json', import.meta.url), input) as Config
+  const allowed = (target: ChatTarget) => ctx.im.getChatPolicy(config.id, target).enabled
   const appSecret =
     config.appSecret ?? (config.appSecretEnv ? process.env[config.appSecretEnv] : undefined)
   if (!appSecret) throw new Error('飞书应用密钥未设置')
@@ -105,7 +94,6 @@ export function apply(ctx: Context, input: Config) {
     accountId: config.botOpenId,
     tenantId: `${config.tenantId}:${config.appId}`,
     ...(config.label ? { label: config.label } : {}),
-    ...(config.policy ? { policy: config.policy } : {}),
     capabilities: ['text', 'mention', 'reply', 'image.key', 'file.key', 'member'],
     validateMessage: (segments) => {
       encodeMessage(segments, true)
@@ -144,7 +132,7 @@ export function apply(ctx: Context, input: Config) {
       )
     },
     async downloadMedia(message, segment, signal, maxBytes) {
-      if (!allowed(config.policy, message.chat)) throw new Error('目标聊天未获准接入')
+      if (!allowed(message.chat)) throw new Error('目标聊天未获准接入')
       const url = new URL(segment.url)
       if (url.protocol !== 'feishu:') throw new Error('飞书资源键无效')
       const fileKey = decodeURIComponent(url.pathname.slice(1))
@@ -188,7 +176,7 @@ export function apply(ctx: Context, input: Config) {
     },
     async getMember(target, userId, options) {
       stopped.signal.throwIfAborted()
-      if (!allowed(config.policy, target) || !userId) return { active: false }
+      if (!allowed(target) || !userId) return { active: false }
       const tokens = new Set<string>()
       let pageToken: string | undefined
       // 不缓存成员权限，后台恢复时重新查询。超出分页上限或平台拒绝时保持关闭。
@@ -255,7 +243,7 @@ export function apply(ctx: Context, input: Config) {
     },
     async send(target, segments, sendOptions) {
       stopped.signal.throwIfAborted()
-      if (!allowed(config.policy, target)) throw new Error('目标聊天未获准接入')
+      if (!allowed(target)) throw new Error('目标聊天未获准接入')
       const message = encodeMessage(segments)
       const signal = sendOptions?.signal
         ? AbortSignal.any([stopped.signal, sendOptions.signal])
@@ -342,7 +330,7 @@ export function apply(ctx: Context, input: Config) {
     'im.message.receive_v1': (event) => {
       if (stopped.signal.aborted) return
       const message = normalizeMessage(event, config)
-      if (!message || !allowed(config.policy, message.chat)) return
+      if (!message || !allowed(message.chat)) return
       rememberMessage(message.id, message.chat.id)
       message.replyToBot = message.segments.some(
         (segment) => segment.type === 'reply' && sentIds.has(segment.messageId),

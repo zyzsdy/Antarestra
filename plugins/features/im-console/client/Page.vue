@@ -68,7 +68,7 @@ async function save(value: ConnectionPolicy) {
     if (
       !(await feedback.modal(
         `保存“${editing.value!.label ?? editing.value!.id}”的聊天规则？`,
-        '修改立即影响该接入的消息准入、普通命令与 AI 激活。适配器中配置的准入上限继续生效。',
+        '修改立即影响该接入的消息准入、收发消息、普通命令与 AI 激活。',
       ))
     )
       return

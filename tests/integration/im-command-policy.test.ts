@@ -15,7 +15,7 @@ const openPolicy: ConnectionPolicy = {
 
 it('新指令默认空白名单，数据库权限保存后即时生效，拒绝不落入其他处理器', async () => {
   const app = await setup({ allowCommands: false })
-  const connection = app.connect('policy', 'bot', openPolicy)
+  const connection = await app.connect('policy', 'bot', openPolicy)
   expect(await app.ctx.imCommands.getPolicy('ping')).toEqual({
     revision: 0,
     policy: {
@@ -36,7 +36,7 @@ it('新指令默认空白名单，数据库权限保存后即时生效，拒绝�
 
 it.each(['group', 'private'] as const)('%s 的白黑名单按首词控制所有子命令', async (type) => {
   const app = await setup()
-  const connection = app.connect('policy', 'bot', openPolicy)
+  const connection = await app.connect('policy', 'bot', openPolicy)
   const execute = vi.fn(() => '完成')
   app.ctx.imCommands.register(app.ctx, { name: 'echo', description: '测试', execute })
   await allowCommand(app.ctx, 'echo', { [type]: { mode: 'whitelist', ids: ['allowed'] } })
@@ -69,7 +69,7 @@ it('群聊先检查名单，只有群主和本群 bot 管理员能执行高级�
           ? ('admin' as const)
           : ('member' as const),
   }))
-  const connection = app.connect('policy', 'bot', openPolicy, undefined, getMember)
+  const connection = await app.connect('policy', 'bot', openPolicy, undefined, getMember)
   const receive = (user: string, group = 'g1') =>
     connection.receive('/ping', {
       chat: { type: 'group', id: group },
@@ -99,7 +99,7 @@ it.each(['whitelist', 'blacklist'] as const)(
   '私聊高级命令只检查 %s 名单，帮助使用相同规则',
   async (mode) => {
     const app = await setup()
-    const connection = app.connect('policy', 'bot', openPolicy)
+    const connection = await app.connect('policy', 'bot', openPolicy)
     app.ctx.imCommands.register(app.ctx, {
       name: 'high',
       access: 'bot-admin',
@@ -140,7 +140,7 @@ it('数据库级别覆盖声明，帮助过滤名单与业务 RBAC 权限', asyn
   expect((await app.ctx.imCommands.admins.get(workspace)).users).toEqual(['delegate'])
   await app.connection.receive('/help')
   expect(JSON.stringify(app.sent.at(-1)?.segments)).not.toContain('/ping')
-  const connection = app.connect('policy', 'bot', openPolicy)
+  const connection = await app.connect('policy', 'bot', openPolicy)
   await connection.receive('/restricted', { chat: { type: 'private', id: 'user' } })
   expect(JSON.stringify(app.sent.at(-1)?.segments)).toContain('没有执行')
 })

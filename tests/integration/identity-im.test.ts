@@ -43,15 +43,17 @@ async function setup() {
     },
   })
   let memberActive = true
-  const register = (id: string, accountId: string) =>
-    ctx.im.registerConnection(ctx, {
+  const register = async (id: string, accountId: string) => {
+    const handle = ctx.im.registerConnection(ctx, {
       id,
       platform: 'qq',
       accountId,
-      policy,
       send: async () => ({}),
       getMember: async () => ({ active: memberActive }),
     })
+    await ctx.im.setPolicy(id, policy)
+    return handle
+  }
   return {
     ctx,
     received,
@@ -65,8 +67,8 @@ async function setup() {
 
 it('真实数据库映射维持双账号隔离、同群共享空间、普通用户权限且不签发本地会话', async () => {
   const { ctx, received, register } = await setup(),
-    a = register('a', '05'),
-    b = register('b', '06')
+    a = await register('a', '05'),
+    b = await register('b', '06')
   await a.receive(message())
   await a.receive(message('2', 'bird'))
   await b.receive(message())
@@ -96,7 +98,7 @@ it('真实数据库映射维持双账号隔离、同群共享空间、普通用�
 
 it('撤销成员、禁用空间、平台成员离开及卸载身份源使请求和后台任务失效', async () => {
   const { ctx, received, register, identityFiber, setMemberActive } = await setup(),
-    a = register('a', '05')
+    a = await register('a', '05')
   a.setStatus('online')
   await a.receive(message())
   const context = received[0]!
@@ -122,7 +124,7 @@ it('撤销成员、禁用空间、平台成员离开及卸载身份源使请求�
 
 it('映射在身份插件重装后保留，停用主体不会因再次收到消息复活', async () => {
   const { ctx, received, register, identityFiber } = await setup(),
-    a = register('a', '05')
+    a = await register('a', '05')
   await a.receive(message())
   const first = received[0]!
   await identityFiber.dispose()
@@ -143,7 +145,7 @@ it('映射在身份插件重装后保留，停用主体不会因再次收到消�
 
 it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与重载保留空间和配额', async () => {
   const { ctx, received, register, identityFiber } = await setup()
-  const connection = register('a', '05')
+  const connection = await register('a', '05')
   await connection.receive(message())
   await connection.receive({ ...message('2'), chat: { type: 'private', id: 'fish' } })
   // 模拟升级前只有 IM 私有映射，插件重载时将既有空间迁入统一目录。
@@ -177,7 +179,7 @@ it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与�
 
 it('非Web身份的手工空间授权只作用于指定群，不接受system范围扩散', async () => {
   const { ctx, received, register } = await setup(),
-    a = register('a', '05')
+    a = await register('a', '05')
   ctx.rbac.registerPermission(ctx, 'test.im.manage', '群管理测试', [])
   await a.receive(message())
   await a.receive(message('2', 'fish', 'other'))

@@ -61,7 +61,7 @@ it('同群不同发言者共用会话并保持各自授权，双账号同群隔�
   await poll(() => app.sent.length).toBe(1)
   await app.connection.receive('/ai 第二条', { sender: { id: 'other', name: '另一成员' } })
   await poll(() => app.sent.length).toBe(2)
-  const second = app.connect('qq-b', '06')
+  const second = await app.connect('qq-b', '06')
   await second.receive('/ai 独立空间')
   await poll(() => app.sent.length).toBe(3)
   await app.connection.receive('/ai 第一条', { id: 'stable-message' })

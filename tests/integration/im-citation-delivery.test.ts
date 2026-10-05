@@ -22,9 +22,9 @@ async function connect(filterCitationLinks?: boolean) {
     id: 'filtered',
     selfId: '06',
     token: 'local-test-token',
-    policy: app.defaultPolicy,
     ...(filterCitationLinks !== undefined ? { filterCitationLinks } : {}),
   })
+  await app.ctx.im.setPolicy('filtered', app.defaultPolicy)
   const socket = new WebSocket(
     `ws://127.0.0.1:${app.ctx.server.address!.port}/im/onebot/filtered`,
     {

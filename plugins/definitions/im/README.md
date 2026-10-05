@@ -4,7 +4,7 @@
 
 ## 接入与处理
 
-适配器通过 `registerConnection(owner, descriptor)` 注册稳定接入标识、平台、机器人账号、可选租户、准入策略和发送能力。返回的 `receive()` 入口只接收已完成平台验签、账号校验的消息。平台 ID 一律用字符串。`setStatus()` 用于报告连接状态，不包含凭据。
+适配器通过 `registerConnection(owner, descriptor)` 注册稳定接入标识、平台、机器人账号、可选租户和发送能力。返回的 `receive()` 入口只接收已完成平台验签、账号校验的消息。平台 ID 一律用字符串。`setStatus()` 用于报告连接状态，不包含凭据。
 
 `registerHandler(owner, { id, stage, handle })` 按 `command`、`message`、`ai` 顺序执行，返回 `consumed` 或 `rejected` 时停止后续处理。命令插件负责消费禁用、无权限或参数错误的已匹配命令；普通消息处理不要求 AI 开启。卸载处理器或连接时中止对应信号，并等待正在执行的处理器结束；业务处理器应响应 `context.signal`。
 
@@ -12,9 +12,9 @@
 
 ## 策略与空间
 
-群聊和私聊分别设置 `whitelist` 或 `blacklist`；没有配置该类型即拒绝。生效值按实例默认、聊天类型默认、`chats["group:群号"]` 或 `chats["private:用户号"]` 合并。AI 默认关闭。适配器启动配置的准入名单作为上限，后台存储策略只能在该范围内启用聊天；扩大上限必须显式修改接入配置。
+群聊和私聊分别设置 `whitelist` 或 `blacklist`；没有配置该类型即拒绝。生效值按实例默认、聊天类型默认、`chats["group:群号"]` 或 `chats["private:用户号"]` 合并。AI 默认关闭。“机器人 → IM 接入”保存的数据库策略是唯一规则来源；连接注册不接受策略。未保存规则时使用空策略并拒绝全部聊天；保存后立即影响收发消息、身份授权、媒体下载与平台操作，重启和重载后继续使用已保存策略。
 
-`getPolicy()` 返回已保存策略，`getPolicyRevision()` 返回修订号。`setPolicy(id, policy, expectedRevision)` 验证完整 JSON Schema 并在互斥区校验修订号，冲突抛出 `ImError`，状态码 `409`、代码 `revision_conflict`。`getChatPolicy()` 返回最终生效值，包含硬限制后的 `enabled`。
+`getPolicy()` 返回已保存策略，`getPolicyRevision()` 返回修订号。`setPolicy(id, policy, expectedRevision)` 验证完整 JSON Schema 并在互斥区校验修订号，冲突抛出 `ImError`，状态码 `409`、代码 `revision_conflict`。`getChatPolicy()` 返回最终生效值，包含总开关、准入名单和聊天级开关共同决定的 `enabled`。
 
 `send()` 与 `invoke()` 必须带连接、聊天对象和内部 Workspace ID，逐次核验持久化路由及准入范围。不能用另一个群的 Workspace 操作当前群。平台操作还需要匹配声明的能力；具体成员管理命令另外负责操作者权限检查。
 

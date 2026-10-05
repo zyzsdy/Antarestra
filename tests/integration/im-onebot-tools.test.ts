@@ -91,14 +91,8 @@ async function createApp(
       selfId,
       token: 'test-secret',
       rpcTimeoutMs: 1000,
-      policy: {
-        group: {
-          mode: 'whitelist',
-          ids: ['40894918'],
-          defaults: { ai: true, agentId: 'assistant' },
-        },
-      },
     })
+    await app.ctx.im.setPolicy(connectionId, app.defaultPolicy)
     const socket = new WebSocket(
       `ws://127.0.0.1:${app.ctx.server.address!.port}/im/onebot/${connectionId}`,
       {

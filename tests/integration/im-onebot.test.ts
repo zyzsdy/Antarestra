@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@antarestra/plugin-sdk'
-import type { ConnectionDescriptor, IncomingMessage } from '@antarestra/im'
+import type { ChatTarget, ConnectionDescriptor, IncomingMessage } from '@antarestra/im'
 import Server from '@antarestra/plugin-server'
 import { WebSocket } from 'ws'
 import * as OneBot from '../../plugins/adapters/im-onebot/src/index.js'
@@ -17,9 +17,13 @@ async function setup(privateIds: string[] = []) {
   let descriptor!: ConnectionDescriptor
   const received: IncomingMessage[] = []
   const statuses: string[] = []
+  const allowedChats = new Set(['group:40894918', ...privateIds.map((id) => `private:${id}`)])
   class ImProbe extends Service {
     constructor(owner: Context) {
       super(owner, 'im')
+    }
+    getChatPolicy(_id: string, target: ChatTarget) {
+      return { enabled: allowedChats.has(`${target.type}:${target.id}`) }
     }
     registerConnection(_owner: Context, value: ConnectionDescriptor) {
       descriptor = value
@@ -39,10 +43,6 @@ async function setup(privateIds: string[] = []) {
     selfId: '152408856',
     token: 'test-secret',
     rpcTimeoutMs: 100,
-    policy: {
-      private: { mode: 'whitelist', ids: privateIds },
-      group: { mode: 'whitelist', ids: ['40894918'] },
-    },
   })
   const url = `ws://127.0.0.1:${ctx.server.address!.port}/im/onebot/test`
   const connect = async (headers: Record<string, string> = {}) => {
@@ -61,7 +61,7 @@ async function setup(privateIds: string[] = []) {
     })
     return socket
   }
-  return { ctx, adapter, connect, descriptor, received, statuses }
+  return { ctx, adapter, connect, descriptor, received, statuses, allowedChats }
 }
 
 const event = (changes: Record<string, unknown> = {}) => ({
@@ -77,6 +77,43 @@ const event = (changes: Record<string, unknown> = {}) => ({
 })
 
 describe('OneBot 11 反向 WebSocket', () => {
+  it('实时读取 IM 核心规则，无需重载即可放行新聊天或撤销平台操作', async () => {
+    const app = await setup()
+    const socket = await app.connect()
+    const target = { type: 'group', id: '123' } as const
+    const actions: string[] = []
+    socket.on('message', (raw) => {
+      const request = JSON.parse(raw.toString())
+      actions.push(request.action)
+      socket.send(
+        JSON.stringify({ echo: request.echo, status: 'ok', retcode: 0, data: { message_id: 42 } }),
+      )
+    })
+    expect(app.descriptor).not.toHaveProperty('policy')
+    await expect(app.descriptor.send(target, [])).rejects.toThrow('未获准')
+    app.allowedChats.add('group:123')
+    socket.send(JSON.stringify(event({ group_id: 123 })))
+    await expect.poll(() => app.received.length).toBe(1)
+    expect(await app.descriptor.send(target, [{ type: 'text', text: '已放行' }])).toEqual({
+      messageId: '42',
+    })
+    app.allowedChats.delete('group:123')
+    await expect(app.descriptor.send(target, [])).rejects.toThrow('未获准')
+    await expect(app.descriptor.invoke!('group.kick', target, { userId: '1' })).rejects.toThrow(
+      '未获准',
+    )
+    expect(await app.descriptor.getMember!(target, '1')).toEqual({ active: false })
+    await expect(
+      app.descriptor.downloadMedia!(
+        { ...event(), id: '1', chat: target, sender: { id: '1' }, segments: [] },
+        { type: 'image', url: 'https://example.invalid/a' },
+        new AbortController().signal,
+        100,
+      ),
+    ).rejects.toThrow('未获准')
+    expect(actions).toEqual(['send_group_msg'])
+  })
+
   it('合并转发保留数组与 CQ 资源 ID，并禁止作为普通出站消息发送', async () => {
     const app = await setup()
     for (const message of [[{ type: 'forward', data: { id: 'res-1' } }], '[CQ:forward,id=res-1]']) {

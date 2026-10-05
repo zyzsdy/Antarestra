@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Readable } from 'node:stream'
 import { Context, Service } from '@antarestra/plugin-sdk'
-import type { ConnectionDescriptor, IncomingMessage } from '@antarestra/im'
+import type { ChatTarget, ConnectionDescriptor, IncomingMessage } from '@antarestra/im'
 import { normalizeMessage, encodeMessage } from '../../plugins/adapters/im-feishu/src/message.js'
 
 const sdk = vi.hoisted(() => ({
@@ -69,6 +69,7 @@ async function setup() {
   let descriptor!: ConnectionDescriptor
   const received: IncomingMessage[] = []
   const statuses: string[] = []
+  const allowedChats = new Set(['group:oc_allowed'])
   let release!: () => void
   const blocked = new Promise<void>((resolve) => {
     release = resolve
@@ -76,6 +77,9 @@ async function setup() {
   class ImProbe extends Service {
     constructor(owner: Context) {
       super(owner, 'im')
+    }
+    getChatPolicy(_id: string, target: ChatTarget) {
+      return { enabled: allowedChats.has(`${target.type}:${target.id}`) }
     }
     registerConnection(_owner: Context, value: ConnectionDescriptor) {
       descriptor = value
@@ -94,12 +98,47 @@ async function setup() {
     id: 'feishu-test',
     ...account,
     appSecret: 'test-secret',
-    policy: { group: { mode: 'whitelist', ids: ['oc_allowed'] } },
   })
-  return { ctx, fiber, descriptor, received, statuses, release }
+  return { ctx, fiber, descriptor, received, statuses, allowedChats, release }
 }
 
 describe('飞书适配器（官方 SDK 边界模拟）', () => {
+  it('实时读取 IM 核心规则，放行与撤销不需要重新连接飞书', async () => {
+    const app = await setup()
+    const target = { type: 'private', id: 'oc_new' } as const
+    expect(app.descriptor).not.toHaveProperty('policy')
+    await expect(app.descriptor.send(target, [])).rejects.toThrow('未获准')
+    app.allowedChats.add('private:oc_new')
+    sdk.request.mockResolvedValueOnce({ code: 0, data: { message_id: 'om_new' } })
+    expect(await app.descriptor.send(target, [{ type: 'text', text: '已放行' }])).toEqual({
+      messageId: 'om_new',
+    })
+    const source = event()
+    sdk.handler?.({
+      ...source,
+      message: { ...source.message, chat_type: 'p2p', chat_id: 'oc_new' },
+    })
+    expect(app.received).toHaveLength(1)
+    app.allowedChats.delete('private:oc_new')
+    sdk.handler?.({
+      ...source,
+      message: { ...source.message, chat_type: 'p2p', chat_id: 'oc_new' },
+    })
+    expect(app.received).toHaveLength(1)
+    await expect(app.descriptor.send(target, [])).rejects.toThrow('未获准')
+    expect(await app.descriptor.getMember!(target, 'ou_user')).toEqual({ active: false })
+    await expect(
+      app.descriptor.downloadMedia!(
+        app.received[0]!,
+        { type: 'image', url: 'feishu://image/key' },
+        new AbortController().signal,
+        100,
+      ),
+    ).rejects.toThrow('未获准')
+    expect(sdk.request).toHaveBeenCalledTimes(1)
+    app.release()
+  })
+
   it('内部图片先免鉴权下载，再以 multipart 上传取得资源键；预检不会上传', async () => {
     const app = await setup()
     const input = [{ type: 'image' as const, url: 'resource://Photo_A' }]

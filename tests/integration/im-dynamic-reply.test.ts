@@ -22,10 +22,12 @@ it.each([
     'im-feishu',
     { id: 'test', appId: 'app', appSecret: 'test-only', tenantId: 'tenant', botOpenId: 'bot' },
   ],
-])('适配器 %s 的主配置接受动态回复并拒绝越界参数', (adapter, credentials) => {
+])('适配器 %s 的主配置不再接受 policy，动态回复由 IM 规则校验', (adapter, credentials) => {
   const schema = new URL(`../../plugins/adapters/${adapter}/config.schema.json`, import.meta.url)
   const policy = { defaults: { activation: { dynamic: { maxSilentMessages: 150 } } } }
-  expect(schemaConfig(schema, { ...credentials, policy })).toMatchObject({ policy })
+  expect(schemaConfig(schema, credentials)).toMatchObject(credentials)
+  expect(() => schemaConfig(schema, { ...credentials, policy })).toThrow()
+  expect(validateConnectionPolicy(policy)).toEqual(policy)
   expect(() =>
     schemaConfig(schema, {
       ...credentials,
@@ -287,7 +289,7 @@ it('一个账号自主沉默时，不清除另一个账号的热点', async () =
     },
   }
   await app.ctx.im.setPolicy('qq-a', policy)
-  const other = app.connect('qq-b', '06', policy)
+  const other = await app.connect('qq-b', '06', policy)
   vi.spyOn(Math, 'random').mockReturnValue(0.5)
   await app.connection.receive('/ai 第一个账号')
   await poll(() => app.sent.length).toBe(1)
@@ -309,7 +311,7 @@ it('主动发送不被激活条件拦截、不清零沉默、不开启热点，�
   const dynamic = { maxSilentMessages: 3 }
   const policy = { ...app.defaultPolicy, defaults: { activation: { dynamic } } }
   await app.ctx.im.setPolicy('qq-a', policy)
-  const other = app.connect('qq-b', '06', policy)
+  const other = await app.connect('qq-b', '06', policy)
   const random = vi.spyOn(Math, 'random').mockReturnValue(0.999999)
   await app.connection.receive('第一条')
   await other.receive('其他账号第一条')
@@ -360,7 +362,7 @@ it('冷却拦截后保留阈值，冷却结束即激活；卸载重载清理动�
 
 it('私聊不使用群聊动态条件，按原有普通条件判断', async () => {
   const app = await setup({ ai: true })
-  const privateChat = app.connect('private', '07', {
+  const privateChat = await app.connect('private', '07', {
     private: {
       mode: 'blacklist',
       ids: [],

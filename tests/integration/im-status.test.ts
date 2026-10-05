@@ -100,7 +100,7 @@ it('状态按 workspace 保存，同群成员共享，不同群、私聊用户�
       },
     },
   })
-  const connection = app.connect('status-chats', '07', {
+  const connection = await app.connect('status-chats', '07', {
     group: {
       mode: 'whitelist',
       ids: ['40894918', 'other'],
@@ -133,7 +133,7 @@ it('状态按 workspace 保存，同群成员共享，不同群、私聊用户�
     expect(prompts[index + 2]).toBe('当前状态：')
   }
   answer = block('另一个接入的状态')
-  await app.connect('qq-b', '06').receive('/ai 相同群号不同接入')
+  await (await app.connect('qq-b', '06')).receive('/ai 相同群号不同接入')
   await settled(app, 6)
   expect(prompts[5]).toBe('当前状态：')
   const rows = await statuses(app)
