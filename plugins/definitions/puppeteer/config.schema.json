@@ -6,7 +6,7 @@
       "type": "string",
       "minLength": 1,
       "title": "User-Agent",
-      "description": "省略时从浏览器原生系统信息、实际 Chrome 版本及 Antarestra 版本自动生成。"
+      "description": "省略时从浏览器原生系统信息、Chrome 主版本（其余版本号为 0）及 Antarestra 版本自动生成。"
     },
     "executablePath": {
       "type": "string",

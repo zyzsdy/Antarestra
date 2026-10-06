@@ -52,7 +52,7 @@ describe('浏览器生命周期', () => {
   it.each([
     [
       {},
-      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.8123.42 Safari/537.36 Anta/${version}`,
+      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36 Anta/${version}`,
     ],
     [{ userAgent: 'Custom/1.0' }, 'Custom/1.0'],
   ] satisfies [plugin.Config, string][])(

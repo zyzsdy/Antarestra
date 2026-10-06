@@ -19,7 +19,7 @@ plugins:
 
 `args` 追加启动参数，`proxy` 使用 Playwright 的 `server/bypass/username/password` 配置。代理只作用于此服务，不修改 HTTP 服务、环境代理或用户浏览器。`context` 支持视口、缩放、触摸、移动设备、语言、时区、User-Agent 和证书校验设置；完整字段见 `config.schema.json`。
 
-`userAgent` 设置所有新建隔离上下文的默认 User-Agent，省略时保留浏览器原生 UA 中的系统信息，将 Chrome 版本替换为实际运行版本，并追加 `Anta/<根 package.json 的 version>`。无头浏览器的 `HeadlessChrome` 标识统一为 `Chrome`。系统信息遵循浏览器 UA 格式，例如 Windows 11 仍可能显示 `Windows NT 10.0`。已有的 `context.userAgent` 配置优先于顶层 `userAgent`。
+`userAgent` 设置所有新建隔离上下文的默认 User-Agent，省略时保留浏览器原生 UA 中的系统信息，Chrome 版本遵循原生缩减格式 `Chrome/<实际主版本>.0.0.0`，并追加 `Anta/<根 package.json 的 version>`。无头浏览器的 `HeadlessChrome` 标识统一为 `Chrome`。系统信息遵循浏览器 UA 格式，例如 Windows 11 仍可能显示 `Windows NT 10.0`。已有的 `context.userAgent` 配置优先于顶层 `userAgent`。
 
 ```ts
 import type { Context } from '@antarestra/plugin-sdk'
