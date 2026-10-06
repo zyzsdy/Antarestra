@@ -184,3 +184,7 @@ Markdown 代码块操作由 packages/markdown 统一维护：默认显示无边�
 ## 群消息与 AI 会话
 
 沿用 IM 接入页面的蓝白表格、系统字体与自然滚动。群列表进入详情，消息历史与 AI 会话复用 Reka UI Tabs；详情复用 EditorDialog，长输入、请求快照和返回文本自然换行并局部滚动，思考及工具明细复用 Collapsible。列表分页复用 PaginationField，刷新沿用带中文标签的图标按钮。样式由 im-console/client/style.css 维护，不新增全局令牌。
+
+## 插件配置集合表格
+
+数组与动态字典由 config-panel 的 SchemaCollection 统一渲染，沿用控制台蓝白表格、系统字体、细边框与 7px 圆角。对象成员展开为列；每行保留上移、下移与删除，添加行和环境变量入口置于表格上方。窄屏在表格内部横向滚动，页面本身不溢出；敏感单元格复用 SecretInput，枚举与布尔值复用 SelectField。

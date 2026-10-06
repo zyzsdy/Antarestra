@@ -13,11 +13,11 @@ import {
   TabsContent,
 } from '@antarestra/webui/components'
 import { computed, inject, onMounted, onUnmounted, ref, toRaw } from 'vue'
-import { parseDocument } from 'yaml'
 import { feedbackKey, refreshExtensionsKey } from '@antarestra/webui/client'
 import { PlusIcon, ArrowPathIcon } from '@antarestra/webui/icons'
 import { ApiError, useApi } from '@antarestra/webui/api'
 import SchemaForm from './SchemaForm.vue'
+import { parseFormYaml, updateFormYaml } from './form-values.js'
 import RestartAction from './RestartAction.vue'
 import { supportsForm } from './types.js'
 import type { Snapshot, Detail, Metadata, Operation, Instance, Settings } from './types.js'
@@ -86,9 +86,7 @@ const draft = () =>
 const dirty = computed(() => !!selected.value && draft() !== baseline.value)
 const parsed = computed(() => {
   try {
-    const doc = parseDocument(yaml.value)
-    if (doc.errors.length) return undefined
-    const value: unknown = doc.toJS({ maxAliasCount: 0 })
+    const value = parseFormYaml(yaml.value)
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : undefined
@@ -184,11 +182,7 @@ async function reload() {
   }
 }
 function field(path: string[], value: unknown, remove = false) {
-  const document = parseDocument(yaml.value)
-  if (document.errors.length) return
-  if (remove) document.deleteIn(path)
-  else document.setIn(path, value)
-  yaml.value = document.toString()
+  yaml.value = updateFormYaml(yaml.value, path, value, remove)
 }
 async function operate(path: string, body: object, method = 'POST') {
   let operation = await api<Operation>(`/plugin-config-panel${path}`, body, method)

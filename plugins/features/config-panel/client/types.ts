@@ -77,7 +77,20 @@ export function resolveFormSchema(
       if (!resolved) return undefined
       Object.defineProperty(properties, key, { value: resolved, enumerable: true })
     }
-    return { ...schema, ...(schema.properties ? { properties } : {}) }
+    const additional =
+      typeof schema.additionalProperties === 'object'
+        ? resolveFormSchema(schema.additionalProperties, root, seen)
+        : schema.additionalProperties
+    if (typeof schema.additionalProperties === 'object' && !additional) return undefined
+    return {
+      ...schema,
+      ...(schema.properties ? { properties } : {}),
+      ...(additional !== undefined ? { additionalProperties: additional } : {}),
+    }
+  }
+  if (schema.type === 'array' && schema.items) {
+    const items = resolveFormSchema(schema.items, root, seen)
+    return items ? { ...schema, items } : undefined
   }
   return ['string', 'integer', 'number', 'boolean', 'array'].includes(schema.type ?? '')
     ? schema
