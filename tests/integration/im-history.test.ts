@@ -108,6 +108,11 @@ it('未读游标与请求快照持久化，重载后不重复读取，最后消�
   await poll(() => app.aiState.calls).toBe(1)
   await poll(() => app.sent.length).toBe(1)
   const first = (await app.jobs())[0]!
+  const snapshot = JSON.parse(first.snapshot!)
+  expect(snapshot.history_message).toContain('旧闲聊')
+  expect(snapshot.history_message).not.toContain('/ai 第一次')
+  expect(snapshot.last_message).toContain('/ai 第一次')
+  expect(first.input.match(/\/ai 第一次/g)).toHaveLength(1)
   const access = await app.ctx.ai.authorize('im', app.messages[0]!.request)
   const run = await app.ctx.ai.getRun(access, first.run_id!)
   expect(JSON.stringify(run.messages)).toContain('原因=命令')
@@ -125,6 +130,49 @@ it('未读游标与请求快照持久化，重载后不重复读取，最后消�
   await app.connection.receive('不会作为输入发送')
   await app.connection.receive('/ai 只发最后')
   expect((await app.jobs())[2]?.input).not.toContain('不会作为输入发送')
+})
+
+it.each([false, true])(
+  '触发消息不占历史条数，当前媒体只随 last_message 附带：%s',
+  async (includeLast) => {
+    const app = await setup({ ai: true, modelInput: ['text', 'image'] })
+    await storage(app)
+    const connection = await app.connect(
+      'template-media',
+      '06',
+      {
+        ...app.defaultPolicy,
+        defaults: {
+          historyLimit: 1,
+          userInputTemplate: includeLast
+            ? '{{ history_message }}\n{{ last_message }}'
+            : '{{ history_message }}',
+        },
+      },
+      download,
+    )
+    await connection.receive('应保留的历史')
+    await connection.receive('/ai 当前图片', {
+      segments: [
+        { type: 'text', text: '/ai 当前图片' },
+        { type: 'image', url: 'https://example.invalid/current.png' },
+      ],
+    })
+    const snapshot = JSON.parse((await app.jobs())[0]!.snapshot!)
+    expect(snapshot.history_message).toContain('应保留的历史')
+    expect(snapshot.history_message).not.toContain('当前图片')
+    expect(snapshot.history_message).not.toContain('[图片')
+    expect(snapshot.last_message).toContain('当前图片')
+    expect(snapshot.attachments).toHaveLength(includeLast ? 1 : 0)
+  },
+)
+
+it('默认群模板在没有历史时仍包含当前消息且历史变量为空', async () => {
+  const app = await setup({ ai: true })
+  await app.connection.receive('/ai 首条消息')
+  const job = (await app.jobs())[0]!
+  expect(JSON.parse(job.snapshot!).history_message).toBe('')
+  expect(job.input.match(/\/ai 首条消息/g)).toHaveLength(1)
 })
 
 it('媒体保存到空间文件，7 天清理及容量淘汰只删除群媒体；文本与原始信息保留', async () => {

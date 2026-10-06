@@ -61,7 +61,7 @@ export function registerHistoryTools(
   for (const [id, description] of [
     [
       'history_message',
-      '上次成功入队激活之后的未读群消息，受 IM 接入的最大条数限制；媒体使用类型与资源 ID 标签。',
+      '上次成功入队激活之后的未读群消息，不包含本次触发消息，受 IM 接入的最大条数限制；媒体使用类型与资源 ID 标签。',
     ],
     ['last_message', '激活本次 IM AI 请求的原始消息；媒体按请求附件上限关联。'],
     ['active_reason', '本次 IM AI 激活原因：被 at、回复或引用、名字或关键词、命令、动态激活等。'],

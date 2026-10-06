@@ -211,7 +211,7 @@ export class ImAiService extends Service<Config> {
       const history = message.archived
         ? await this.ctx.im.history(message.workspaceId, {
             afterSequence: cursor?.sequence ?? 0,
-            beforeSequence: message.archived.sequence,
+            beforeSequence: message.archived.sequence - 1,
             limit: policy.historyLimit ?? 50,
           })
         : []

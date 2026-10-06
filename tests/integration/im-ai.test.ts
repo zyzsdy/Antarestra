@@ -293,7 +293,8 @@ it('组合激活条件、冷却与近期缓冲按群策略执行', async () => {
   })
   await poll(() => app.sent.length).toBe(1)
   expect((await app.jobs())[0]?.input).toContain('最近闲聊')
-  expect((await app.jobs())[0]?.input).not.toContain('较早闲聊')
+  expect((await app.jobs())[0]?.input).toContain('较早闲聊')
+  expect((await app.jobs())[0]?.input).not.toContain('问题')
   await app.connection.receive('问题', {
     segments: [
       { type: 'mention', userId: '05' },

@@ -13,7 +13,9 @@ export interface InputSnapshot {
 }
 const labels = { image: '图片', video: '视频', audio: '音频', file: '文件' }
 export const defaultInputTemplate = (type: 'private' | 'group') =>
-  type === 'group' ? '激活原因：{{active_reason}}\n{{history_message}}' : '{{last_message}}'
+  type === 'group'
+    ? '激活原因：{{active_reason}}\n{{history_message}}\n{{last_message}}'
+    : '{{last_message}}'
 export function formatMessage(
   message: IncomingMessage,
   media: ArchivedMessage['media'],

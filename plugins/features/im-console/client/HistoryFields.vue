@@ -86,7 +86,7 @@ function setOverride(key: Key, enabled: boolean, value: number) {
       />
     </label>
     <p :id="`${id}-template-help`" class="im-hint">
-      <code v-pre>{{ history_message }}</code> 为上次激活后尚未读取的群消息（包含本次消息）；
+      <code v-pre>{{ history_message }}</code> 为上次激活后尚未读取的群消息（不包含本次消息）；
       <code v-pre>{{ last_message }}</code> 为本次触发消息；<code v-pre>{{ active_reason }}</code>
       为激活原因。 仅需最后一条时填写 <code v-pre>{{ last_message }}</code
       >。附件合计最多 20 个，单个最多 16
