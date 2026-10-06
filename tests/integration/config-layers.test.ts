@@ -21,8 +21,8 @@ async function fixture(base: string, local?: string) {
   directories.push(directory)
   const filename = join(directory, 'main.yml')
   await writeFile(filename, base)
-  if (local !== undefined) await writeFile(`${filename}.local`, local)
-  return { directory, filename, local: `${filename}.local`, base }
+  if (local !== undefined) await writeFile(join(directory, 'main.local.yml'), local)
+  return { directory, filename, local: join(directory, 'main.local.yml'), base }
 }
 
 it('同目录同名 local 递归合并映射，数组、标量、null 覆盖，环境在合并后解析', async () => {
@@ -87,6 +87,28 @@ it('只有 local 但基础文件不存在时不回退', async () => {
   await rm(app.filename)
   await expect(loader.readDocument(app.filename)).rejects.toThrow('无法读取主配置文件')
 })
+
+it.each(['custom.yml', 'custom.yaml', 'custom.prod.yml', 'custom'])(
+  '覆盖文件使用去掉扩展名后的名称加 .local.yml：%s',
+  async (name) => {
+    const app = await fixture('plugins: {}')
+    const filename = join(app.directory, name)
+    const stem = name === 'custom.prod.yml' ? 'custom.prod' : 'custom'
+    const localFilename = join(app.directory, `${stem}.local.yml`)
+    await writeFile(filename, 'plugins: { base: {} }')
+    await writeFile(`${filename}.local`, 'plugins: { obsolete: {} }')
+    await writeFile(localFilename, 'plugins: { local: {} }')
+    const current = await loader.readDocument(filename)
+    expect(current.entries.map((entry) => entry.pluginId)).toEqual(['base', 'local'])
+    expect(current.writeFilename).toBe(localFilename)
+    await writeDocument(filename, current.version, (document) => {
+      document.setIn(['plugins', 'added'], {})
+    })
+    expect(await readFile(filename, 'utf8')).toBe('plugins: { base: {} }')
+    expect(await readFile(localFilename, 'utf8')).toContain('added')
+    expect(await readFile(`${filename}.local`, 'utf8')).toBe('plugins: { obsolete: {} }')
+  },
+)
 
 it.each([
   'plugins: [invalid]',

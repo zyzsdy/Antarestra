@@ -9,9 +9,9 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-创建独立配置 `antarestra.dev.yml.local`，写入下面的 YAML，并通过 `--conf` 明确选择它。该文件名匹配仓库的 `*.local` 忽略规则，不覆盖默认主配置。最小配置使用 SQLite，包含网页登录、提供商与助理管理、工具和持久化聊天；不需要 Docker、对象存储或 IM 凭据。
+创建独立配置 `antarestra.dev.local.yml`，写入下面的 YAML，并通过 `--conf` 明确选择它。该文件名匹配仓库的 `*.local.yml` 忽略规则，不覆盖默认主配置。最小配置使用 SQLite，包含网页登录、提供商与助理管理、工具和持久化聊天；不需要 Docker、对象存储或 IM 凭据。
 
-若希望复用根目录 `antarestra.yml`，则把差异写进 `antarestra.yml.local`，直接运行 `pnpm dev` 或 `pnpm start` 即可自动合并。该覆盖文件可以只包含第三方插件；存在时配置面板只向它保存修改。下面的独立最小配置使用另一文件名，避免继承默认配置中的其他服务。
+若希望复用根目录 `antarestra.yml`，则把差异写进 `antarestra.local.yml`，直接运行 `pnpm dev` 或 `pnpm start` 即可自动合并。该覆盖文件可以只包含第三方插件；存在时配置面板只向它保存修改。下面的独立最小配置使用另一文件名，避免继承默认配置中的其他服务。
 
 ```yaml
 plugins:
@@ -47,7 +47,7 @@ plugins:
 ```powershell
 $adminSecret = Read-Host '设置初始管理员密码（8–128 字符）' -AsSecureString
 $env:ANTARESTRA_ADMIN_PASSWORD = [System.Net.NetworkCredential]::new('', $adminSecret).Password
-$localConfig = (Resolve-Path -LiteralPath './antarestra.dev.yml.local').Path
+$localConfig = (Resolve-Path -LiteralPath './antarestra.dev.local.yml').Path
 pnpm start "--conf=$localConfig"
 ```
 

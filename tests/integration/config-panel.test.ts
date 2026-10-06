@@ -34,7 +34,7 @@ async function setup(local = false) {
   plugin-config-panel: {}
 `,
   )
-  if (local) await writeFile(`${filename}.local`, '{}\n')
+  if (local) await writeFile(join(directory, 'main.local.yml'), '{}\n')
   const ctx = new Context()
   contexts.push(ctx)
   const restart = vi.fn(async () => {})
@@ -77,7 +77,9 @@ it.each([false, true])(
     const before = await app.ctx.configManager.snapshot()
     if (local) {
       expect(await readFile(app.filename, 'utf8')).toBe(original)
-      expect(await readFile(`${app.filename}.local`, 'utf8')).toContain('logger')
+      expect(await readFile(app.filename.replace(/\.yml$/, '.local.yml'), 'utf8')).toContain(
+        'logger',
+      )
     }
     const id = before.instances.find((item) => item.pluginId === 'logger')!.instanceId
     const response = await app.request(

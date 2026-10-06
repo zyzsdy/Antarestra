@@ -37,7 +37,7 @@ plugins:
     const original = await readFile(config, 'utf8')
     if (mode === 'local-overlay') {
       await writeFile(
-        `${config}.local`,
+        join(directory, 'main.local.yml'),
         `loader: { supervision: internal }\nplugins: { plugin-server: { port: ${port} } }\n`,
       )
     }

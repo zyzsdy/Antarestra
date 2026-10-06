@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { basename, dirname, extname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { isMap, isScalar, isSeq, parseDocument, Scalar, YAMLMap } from 'yaml'
 import type { Document, Node, Pair } from 'yaml'
@@ -170,6 +171,10 @@ export function writeOverlay(
 }
 
 export async function readLayers(filename: string) {
+  const localFilename = join(
+    dirname(filename),
+    `${basename(filename, extname(filename))}.local.yml`,
+  )
   let baseSource: string
   try {
     baseSource = await readFile(filename, 'utf8')
@@ -178,7 +183,7 @@ export async function readLayers(filename: string) {
   }
   let localSource: string | undefined
   try {
-    localSource = await readFile(`${filename}.local`, 'utf8')
+    localSource = await readFile(localFilename, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
       throw new Error('无法读取本地覆盖配置文件')
@@ -194,6 +199,6 @@ export async function readLayers(filename: string) {
     baseDocument,
     localDocument,
     document,
-    writeFilename: localDocument ? `${filename}.local` : filename,
+    writeFilename: localDocument ? localFilename : filename,
   }
 }
