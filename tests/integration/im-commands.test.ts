@@ -95,6 +95,37 @@ it('固定命令解析参数并检查权限，所有命中包括错误都消费�
   expect(app.messages).toHaveLength(0)
   expect(parseArguments("a '' 'b c' d\\ e")).toEqual(['a', '', 'b c', 'd e'])
 })
+it.each([
+  { error: new Error('目标服务返回 503\n请检查连接'), detail: '目标服务返回 503\n请检查连接' },
+  { error: '原始命令拒绝执行', detail: '原始命令拒绝执行' },
+  { error: new Error(''), detail: '未知错误' },
+])('命令同步和异步失败均回复原始错误并消费消息：$detail', async ({ error, detail }) => {
+  const app = await setup()
+  app.ctx.imCommands.register(app.ctx, {
+    name: 'fail-sync',
+    description: '同步失败',
+    execute: () => {
+      throw error
+    },
+  })
+  app.ctx.imCommands.register(app.ctx, {
+    name: 'fail-async',
+    description: '异步失败',
+    execute: async () => {
+      throw error
+    },
+  })
+  for (const name of ['fail-sync', 'fail-async']) {
+    await allowCommand(app.ctx, name)
+    await app.connection.receive(`/${name}`)
+  }
+  expect(app.sent.map((item) => item.segments)).toEqual([
+    [{ type: 'text', text: `命令执行失败：${detail}` }],
+    [{ type: 'text', text: `命令执行失败：${detail}` }],
+  ])
+  expect(app.messages).toHaveLength(0)
+})
+
 it('业务插件卸载后回收命令，命令关闭时不会落入 AI', async () => {
   const app = await setup()
   const plugin = await app.ctx.plugin({

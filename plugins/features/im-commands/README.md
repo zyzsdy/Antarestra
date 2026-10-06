@@ -61,6 +61,8 @@ export function apply(ctx: Context) {
 
 命令按整个首个单词精确匹配。命中后无论参数错误、权限不足还是执行失败均消费消息，不继续进入 AI；聊天关闭命令时也消费已注册命令。未注册的首词继续传给其他消息处理器。
 
+命令执行抛出异常时，回复“命令执行失败：原始错误信息”：`Error` 使用 `message`，其他抛出值转换为字符串，空错误信息显示“未知错误”。保留错误信息中的换行，不附加调用栈；执行已取消时不发送失败回复。
+
 由其他消息处理器执行的入口使用 `ctx.imCommands.registerTrigger(owner, { name, description, usage?, access?, permission? })` 注册。IM AI 已注册 `ai`，通过中央权限校验后继续交给 AI 激活流程，被拒绝则消费；同样须匹配 `im-commands.prefix`，注册不会修改 AI 激活条件。`@`、关键词等非命令激活方式继续由 AI 聊天策略控制。帮助列表只列出实际注册并提供描述的命令。
 
 `execute` 收到 `CommandContext`，含 `args`、`rawArgs`、可信 `request`、`actorId`、`workspaceId`、`message`、`connection`、`reply` 与 `signal`。返回字符串会自动回复，也可以调用 `reply` 自行发送消息。耗时操作必须响应 `signal`；卸载所属插件会撤销命令、取消信号并等待活动命令清理。

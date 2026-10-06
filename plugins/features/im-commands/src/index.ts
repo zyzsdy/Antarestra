@@ -419,8 +419,11 @@ export class ImCommandsService extends Service<Config> {
           }
         }
       }
-    } catch {
-      if (!signal.aborted) answer = '命令执行失败，请稍后重试。'
+    } catch (error) {
+      if (!signal.aborted) {
+        const detail = error instanceof Error ? error.message : String(error)
+        answer = `命令执行失败：${detail || '未知错误'}`
+      }
     }
     if (answer && !signal.aborted) await message.reply([{ type: 'text', text: answer }])
     return 'consumed' as const
