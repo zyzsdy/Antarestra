@@ -157,7 +157,7 @@ export class ImCommandsService extends Service<Config> {
   }
   private registerEntry(owner: Context, command: Entry['command']) {
     this.ctx.fiber.assertActive()
-    if (!/^[a-z][\w-]*$/.test(command.name) || command.name.length > 200)
+    if (!/^[a-z0-9][\w-]*$/.test(command.name) || command.name.length > 200)
       throw new Error('命令名称无效')
     if (this.entries.has(command.name)) throw new Error(`命令重复：${command.name}`)
     if ((command.minArgs ?? 0) < 0 || (command.maxArgs ?? Infinity) < (command.minArgs ?? 0))

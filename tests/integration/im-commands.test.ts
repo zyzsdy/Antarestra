@@ -5,6 +5,47 @@ import { parseArguments } from '@antarestra/plugin-im-commands'
 import { allowCommand, cleanup, setup } from './im-features-fixture.js'
 
 afterEach(cleanup)
+it('数字开头的命令复用权限策略、帮助和精确匹配，卸载后可重新注册', async () => {
+  const app = await setup()
+  const register = () =>
+    app.ctx.plugin({
+      inject: ['imCommands'],
+      apply(owner: Context) {
+        owner.imCommands.register(owner, {
+          name: '2fa',
+          description: '数字开头的测试命令',
+          usage: '<标识符>',
+          minArgs: 1,
+          maxArgs: 1,
+          execute: ({ args }) => `收到：${args[0]}`,
+        })
+      },
+    })
+  const first = await register()
+  await app.connection.receive('/2fa example')
+  expect(app.sent).toHaveLength(0)
+  expect(app.messages).toHaveLength(0)
+  await allowCommand(app.ctx, '2fa')
+  await app.connection.receive('/2fa example')
+  await app.connection.receive('/help')
+  expect(app.sent[0]?.segments).toEqual([{ type: 'text', text: '收到：example' }])
+  expect(JSON.stringify(app.sent[1]?.segments)).toContain('/2fa <标识符>')
+  await app.connection.receive('/2fa-other example')
+  expect(app.messages).toHaveLength(1)
+  await first.dispose()
+  expect(
+    (await app.ctx.imCommands.listCommands()).commands.some((item) => item.name === '2fa'),
+  ).toBe(false)
+  await register()
+  await app.connection.receive('/2fa restored')
+  expect(app.sent.at(-1)?.segments).toEqual([{ type: 'text', text: '收到：restored' }])
+  for (const name of ['', '_2fa', '-2fa', '/2fa', 'two words', 'A2fa']) {
+    expect(() =>
+      app.ctx.imCommands.register(app.ctx, { name, description: '非法命令', execute: () => '' }),
+    ).toThrow('命令名称无效')
+  }
+})
+
 it('没有 AI 插件仍可 ping/help，且只在白名单群响应', async () => {
   const app = await setup()
   await app.connection.receive('/ping')
