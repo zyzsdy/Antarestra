@@ -41,6 +41,17 @@ export function commandRoutes(ctx: Context) {
     http.set('Cache-Control', 'no-store')
     http.body = await service().getPolicy(String(http.params.name))
   })
+  ctx.server.route(ctx, 'POST', '/im/command-aliases', ...guards, async (http) => {
+    const input = await readJson(http, 65536)
+    http.set('Cache-Control', 'no-store')
+    http.body = await service().createAlias(input.name, input.target)
+    http.status = 201
+  })
+  ctx.server.route(ctx, 'DELETE', '/im/command-aliases/:name', ...guards, async (http) => {
+    const input = await readJson(http, 4096)
+    await service().deleteAlias(String(http.params.name), input.id)
+    http.status = 204
+  })
   ctx.server.route(ctx, 'PUT', '/im/commands/:name', ...guards, async (http) => {
     const input = await readJson(http, 524288)
     http.set('Cache-Control', 'no-store')

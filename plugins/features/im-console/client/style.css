@@ -34,6 +34,11 @@
 .im-command-results {
   min-height: 180px;
 }
+.im-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .im-table table {
   width: 100%;
   border-collapse: collapse;

@@ -552,6 +552,7 @@ export class ImService extends Service<ServiceOptions> {
           },
         })
         const stages = { command: 0, message: 1, ai: 2 }
+        let forwardedMessage = message
         try {
           for (const handler of [...this.handlers.values()].sort(
             (a, b) => stages[a.stage] - stages[b.stage],
@@ -572,6 +573,7 @@ export class ImService extends Service<ServiceOptions> {
               handler.handle(
                 Object.freeze({
                   ...context,
+                  message: forwardedMessage,
                   policy,
                   signal: AbortSignal.any([context.signal, work.controller.signal]),
                 }),
@@ -585,6 +587,8 @@ export class ImService extends Service<ServiceOptions> {
               work.pending.delete(invocation)
             }
             if (result === 'consumed' || result === 'rejected') break
+            if (result && typeof result === 'object' && result.type === 'continue')
+              forwardedMessage = { ...message, segments: [...result.segments] }
           }
           await this.db()
             .updateTable('inbox')

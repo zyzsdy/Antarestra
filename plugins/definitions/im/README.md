@@ -8,6 +8,8 @@
 
 `registerHandler(owner, { id, stage, handle })` 按 `command`、`message`、`ai` 顺序执行，返回 `consumed` 或 `rejected` 时停止后续处理。命令插件负责消费禁用、无权限或参数错误的已匹配命令；普通消息处理不要求 AI 开启。卸载处理器或连接时中止对应信号，并等待正在执行的处理器结束；业务处理器应响应 `context.signal`。
 
+处理器可返回 `{ type: 'continue', segments }`，将替换后的消息内容传给后续处理器，用于命令别名等转发场景。该结果只能替换消息片段，不改变可信请求、Actor、Workspace、聊天目标及原始消息归档，也不会重新执行之前的处理器。后续处理器仍独立检查接入状态、AI 开关等业务限制。
+
 `MessageContext.request` 是保存在 WeakMap 中的进程内可信对象，可传给 RBAC 与 AI 的 `im` 请求来源。序列化、复制或自行构造同字段对象不能建立身份。异步排队后须重新执行授权；上下文不会因 `receive()` 返回失效，但连接、身份插件卸载，或成员、空间、准入策略撤销后不能再授权。
 
 ## 策略与空间

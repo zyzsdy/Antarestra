@@ -247,7 +247,13 @@ export interface MessageContext extends ImIdentity {
     options?: { idempotencyKey?: string },
   ): Promise<{ messageId?: string }>
 }
-export type HandlerResult = 'continue' | 'consumed' | 'rejected' | void
+export type HandlerResult =
+  | 'continue'
+  | 'consumed'
+  | 'rejected'
+  | void
+  /** 转发内容给后续处理器；不修改可信身份、聊天范围或已归档的原始消息。 */
+  | { type: 'continue'; segments: readonly MessageSegment[] }
 export interface MessageHandler {
   id: string
   stage: 'command' | 'message' | 'ai'

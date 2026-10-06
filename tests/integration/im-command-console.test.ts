@@ -4,6 +4,49 @@ import { cleanup } from './im-features-fixture.js'
 import { setupStickers } from './im-stickers-fixture.js'
 
 afterEach(cleanup)
+it('别名 API 保护管理权限和同源请求，创建后可独立配置权限并安全删除', async () => {
+  const { ctx, request, cookie } = await setupStickers()
+  const alias = { name: '/user1Commit', target: '/ping' }
+  expect((await request('/im/command-aliases', '', alias)).status).toBe(401)
+  expect(
+    (await request('/im/command-aliases', cookie, alias, 'POST', 'https://other.invalid')).status,
+  ).toBe(403)
+  expect(
+    (await request('/im/command-aliases', cookie, { ...alias, target: '/missing' })).status,
+  ).toBe(400)
+  expect((await request('/im/command-aliases', cookie, alias)).status).toBe(201)
+  expect((await request('/im/command-aliases', cookie, alias)).status).toBe(409)
+  const list = await (await request('/im/commands?search=user1Commit', cookie)).json()
+  expect(list.commands[0]).toMatchObject({
+    name: 'user1Commit',
+    alias: { target: '/ping', available: true },
+    revision: 0,
+  })
+  expect(
+    (await request('/im/commands/user1Commit', cookie, { policy, revision: 0 }, 'PUT')).status,
+  ).toBe(200)
+  expect((await ctx.imCommands.getPolicy('ping')).policy).not.toEqual(policy)
+  const id = list.commands[0].alias.id
+  expect((await request('/im/command-aliases/user1Commit', '', { id }, 'DELETE')).status).toBe(401)
+  expect(
+    (
+      await request(
+        '/im/command-aliases/user1Commit',
+        cookie,
+        { id },
+        'DELETE',
+        'https://other.invalid',
+      )
+    ).status,
+  ).toBe(403)
+  expect(
+    (await request('/im/command-aliases/user1Commit', cookie, { id: 'stale' }, 'DELETE')).status,
+  ).toBe(409)
+  expect((await request('/im/command-aliases/user1Commit', cookie, { id }, 'DELETE')).status).toBe(
+    204,
+  )
+  expect((await request('/im/commands/user1Commit', cookie)).status).toBe(404)
+})
 const policy = {
   access: 'bot-admin',
   group: { mode: 'whitelist', ids: ['g1'] },
@@ -25,6 +68,12 @@ it('命令权限 API 校验管理权限、同源、完整规则和修订冲突�
   const user = login.headers.get('set-cookie')!.split(';')[0]!
   expect((await request('/im/commands', user)).status).toBe(403)
   expect((await request('/im/commands/ping', user)).status).toBe(403)
+  expect(
+    (await request('/im/command-aliases', user, { name: '/pong', target: '/ping' })).status,
+  ).toBe(403)
+  expect(
+    (await request('/im/command-aliases/pong', user, { id: 'unknown' }, 'DELETE')).status,
+  ).toBe(403)
   expect((await request('/im/commands/ping', user, { policy, revision: 0 }, 'PUT')).status).toBe(
     403,
   )

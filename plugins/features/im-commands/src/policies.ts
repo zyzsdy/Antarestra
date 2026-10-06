@@ -21,6 +21,7 @@ export interface CommandSummary extends CommandPolicyState {
   name: string
   description: string
   usage?: string
+  alias?: { id: string; target: string; available: boolean }
 }
 interface Tables {
   command_policies: { name: string; policy: string; revision: number }

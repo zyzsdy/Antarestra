@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useApi } from '@antarestra/webui/api'
+import { feedbackKey } from '@antarestra/webui/client'
 import { PaginationField } from '@antarestra/webui/components'
-import { ArrowPathIcon } from '@antarestra/webui/icons'
+import { ArrowPathIcon, PlusIcon } from '@antarestra/webui/icons'
 import type { CommandPolicy, CommandSummary } from '@antarestra/plugin-im-commands'
 import CommandPolicyEditor from './CommandPolicyEditor.vue'
+import CommandAliasEditor from './CommandAliasEditor.vue'
 import './style.css'
 
 const { api, router } = useApi()
+const feedback = inject(feedbackKey)!
+const addingAlias = ref(false),
+  deletingAlias = ref(false)
+const addButton = ref<HTMLButtonElement>()
 const rows = ref<CommandSummary[]>([]),
   total = ref(0),
   prefix = ref('/')
 const loaded = ref(false),
   loading = ref(false),
   message = ref('')
-const editing = ref<CommandSummary>(),
+const editing = ref<Pick<CommandSummary, 'name'>>(),
   input = ref<HTMLInputElement>()
 const search = ref(''),
   composing = ref(false)
@@ -79,6 +85,41 @@ async function onSaved() {
   await nextTick()
   if (trigger?.isConnected) trigger.focus()
 }
+async function aliasSaved(name: string) {
+  addingAlias.value = false
+  await nextTick()
+  // 新别名默认禁用，直接进入现有权限编辑器。
+  trigger = addButton.value
+  editing.value = { name }
+  await load()
+}
+async function removeAlias(item: CommandSummary) {
+  if (!item.alias || deletingAlias.value) return
+  deletingAlias.value = true
+  try {
+    if (
+      !(await feedback.modal(
+        `删除命令别名 ${prefix.value}${item.name}？`,
+        '该别名及其独立权限将删除，目标命令不受影响。',
+      ))
+    )
+      return
+    await api(
+      `/im/command-aliases/${encodeURIComponent(item.name)}`,
+      { id: item.alias.id },
+      'DELETE',
+    )
+    feedback.toast('命令别名已删除')
+    await load()
+    deletingAlias.value = false
+    await nextTick()
+    addButton.value?.focus()
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : '命令别名删除失败'
+  } finally {
+    deletingAlias.value = false
+  }
+}
 function listSummary(list: CommandPolicy['group']) {
   return list.mode === 'whitelist'
     ? list.ids.length
@@ -107,6 +148,13 @@ onUnmounted(() => {
       <p class="im-hint">统一管理已注册指令的使用范围，保存后立即生效。</p>
       <button :disabled="loading" aria-label="刷新命令列表" title="刷新命令列表" @click="load">
         <ArrowPathIcon class="ui-icon" />
+      </button>
+      <button
+        ref="addButton"
+        :disabled="!loaded || loading || deletingAlias"
+        @click="addingAlias = true"
+      >
+        <PlusIcon class="ui-icon" />添加命令别名
       </button>
     </div>
     <p class="im-panel im-hint">
@@ -163,18 +211,31 @@ onUnmounted(() => {
                   ><small v-if="item.usage"
                     >用法：{{ prefix }}{{ item.name }} {{ item.usage }}</small
                   >
+                  <small v-if="item.alias && !item.alias.available" class="im-error"
+                    >目标命令不可用，请检查所属插件。</small
+                  >
                 </td>
                 <td>{{ item.policy.access === 'bot-admin' ? 'bot 管理员' : '普通群友' }}</td>
                 <td>{{ listSummary(item.policy.group) }}</td>
                 <td>{{ listSummary(item.policy.private) }}</td>
                 <td>
-                  <button
-                    :disabled="loading"
-                    :aria-label="`配置 ${prefix}${item.name} 权限`"
-                    @click="edit(item, $event)"
-                  >
-                    配置权限
-                  </button>
+                  <div class="im-command-actions">
+                    <button
+                      :disabled="loading"
+                      :aria-label="`配置 ${prefix}${item.name} 权限`"
+                      @click="edit(item, $event)"
+                    >
+                      配置权限
+                    </button>
+                    <button
+                      v-if="item.alias"
+                      :disabled="loading || deletingAlias"
+                      :aria-label="`删除别名 ${prefix}${item.name}`"
+                      @click="removeAlias(item)"
+                    >
+                      删除别名
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -198,6 +259,12 @@ onUnmounted(() => {
       :prefix="prefix"
       @close="editing = undefined"
       @saved="onSaved"
+    />
+    <CommandAliasEditor
+      v-if="addingAlias"
+      :prefix="prefix"
+      @close="addingAlias = false"
+      @saved="aliasSaved"
     />
   </div>
 </template>

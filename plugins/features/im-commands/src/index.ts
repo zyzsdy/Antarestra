@@ -8,6 +8,8 @@ import { defineDatabasePlugin } from '@antarestra/database'
 import { GroupAdmins, migrations, pluginId } from './admins.js'
 import { CommandPolicies, policyMigration } from './policies.js'
 import type { CommandPolicy, CommandSummary } from './policies.js'
+import { CommandAliases, aliasMigration, aliasPolicyKey } from './aliases.js'
+import type { CommandAlias } from './aliases.js'
 export type { CommandPolicy, CommandPolicyState, CommandSummary } from './policies.js'
 
 export interface Config {
@@ -78,17 +80,27 @@ export function parseArguments(input: string): string[] {
 
 export class ImCommandsService extends Service<Config> {
   private readonly entries = new Map<string, Entry>()
+  private readonly aliases = new Map<string, CommandAlias>()
+  private readonly changingAliases = new Set<string>()
+  private readonly aliasStore: CommandAliases
+  private readonly invocations = new WeakMap<MessageContext, Pick<Command, 'name' | 'permission'>>()
   readonly admins: GroupAdmins
   private readonly policies: CommandPolicies
   constructor(
     ctx: Context,
-    readonly config: Config,
+    readonly config: Config & { aliases?: CommandAlias[] },
   ) {
     super(ctx, 'imCommands')
     this.policies = new CommandPolicies(ctx)
+    this.aliasStore = new CommandAliases(ctx)
+    for (const alias of config.aliases ?? []) this.aliases.set(alias.name, alias)
     this.admins = new GroupAdmins(
       ctx,
-      async (message) => !(await this.denial({ name: 'admin', access: 'bot-admin' }, message)),
+      async (message) =>
+        !(await this.denial(
+          this.invocations.get(message) ?? { name: 'admin', access: 'bot-admin' },
+          message,
+        )),
     )
     ctx.im.registerHandler(ctx, {
       id: 'im-commands',
@@ -128,8 +140,9 @@ export class ImCommandsService extends Service<Config> {
         execute: async (message) => {
           const lines: string[] = []
           let administrator: Promise<boolean> | undefined
-          for (const { command } of this.entries.values()) {
-            const { policy } = await this.policies.get(command.name, command.access)
+          for (const command of this.directory()) {
+            if (command.alias && !command.alias.available) continue
+            const { policy } = await this.getPolicy(command.name)
             if (
               await this.denial(
                 command,
@@ -159,7 +172,12 @@ export class ImCommandsService extends Service<Config> {
     this.ctx.fiber.assertActive()
     if (!/^[a-z0-9][\w-]*$/.test(command.name) || command.name.length > 200)
       throw new Error('命令名称无效')
-    if (this.entries.has(command.name)) throw new Error(`命令重复：${command.name}`)
+    if (
+      this.entries.has(command.name) ||
+      this.aliases.has(command.name) ||
+      this.changingAliases.has(command.name)
+    )
+      throw new Error(`命令重复：${command.name}`)
     if ((command.minArgs ?? 0) < 0 || (command.maxArgs ?? Infinity) < (command.minArgs ?? 0))
       throw new Error('命令参数数量无效')
     const entry: Entry = {
@@ -177,23 +195,92 @@ export class ImCommandsService extends Service<Config> {
       }
     })
   }
-  private command(name: string) {
+  private command(
+    name: string,
+  ): Entry['command'] & { alias?: { id: string; target: string; available: boolean } } {
     this.ctx.fiber.assertActive()
+    const alias = this.aliases.get(name)
+    if (alias) {
+      const target = this.entries.get(alias.target)?.command
+      const forwarding = `${this.config.prefix}${alias.target}${alias.suffix}`
+      return {
+        name,
+        description: `命令别名 → ${forwarding}`,
+        ...(target?.permission ? { permission: target.permission } : {}),
+        alias: { id: alias.id, target: forwarding, available: !!target },
+      }
+    }
     const entry = this.entries.get(name)
     if (!entry) throw new AuthError(404, '命令不存在或所属插件已卸载，请刷新列表')
     return entry.command
   }
   async getPolicy(name: string) {
-    return this.policies.get(name, this.command(name).access)
+    return this.policies.get(this.policyKey(name), this.command(name).access)
   }
   async setPolicy(name: string, input: unknown, expected: unknown) {
     this.command(name)
-    return this.policies.set(name, input, expected)
+    return this.policies.set(this.policyKey(name), input, expected)
+  }
+  private policyKey(name: string) {
+    const alias = this.aliases.get(name)
+    return alias ? aliasPolicyKey(alias) : name
+  }
+  private directory() {
+    return [...this.entries.keys(), ...this.aliases.keys()].map((name) => this.command(name))
+  }
+  async createAlias(input: unknown, forwarding: unknown) {
+    this.ctx.fiber.assertActive()
+    if (typeof input !== 'string' || typeof forwarding !== 'string')
+      throw new AuthError(400, '请填写命令别名和转发到的命令与参数')
+    const supplied = input.trim()
+    const name = supplied.startsWith(this.config.prefix)
+      ? supplied.slice(this.config.prefix.length)
+      : supplied
+    if (!/^[a-zA-Z0-9][\w-]*$/.test(name) || name.length > 200)
+      throw new AuthError(
+        400,
+        '别名须以字母或数字开头，只能包含字母、数字、下划线和连字符，最多 200 字符',
+      )
+    if (this.entries.has(name) || this.aliases.has(name) || this.changingAliases.has(name))
+      throw new AuthError(409, '命令或别名已存在，请使用其他名称')
+    const text = forwarding.trimStart()
+    if (!text.startsWith(this.config.prefix) || text.length > 8192)
+      throw new AuthError(400, `目标命令须以 ${this.config.prefix} 开头，最多 8192 字符`)
+    const match = /^(\S+)([\s\S]*)$/.exec(text.slice(this.config.prefix.length))
+    const target = match?.[1]
+    if (!target || !this.entries.has(target) || target === name)
+      throw new AuthError(400, '目标必须是已注册的命令，不能转发到另一个别名')
+    const suffix = match?.[2] ?? ''
+    try {
+      parseArguments(suffix)
+    } catch {
+      throw new AuthError(400, '目标参数引号或转义未闭合')
+    }
+    this.changingAliases.add(name)
+    try {
+      const alias = await this.aliasStore.create(name, target, suffix)
+      this.aliases.set(name, alias)
+      return { name, ...(await this.getPolicy(name)) }
+    } finally {
+      this.changingAliases.delete(name)
+    }
+  }
+  async deleteAlias(name: string, expectedId: unknown) {
+    const alias = this.aliases.get(name)
+    if (!alias) throw new AuthError(404, '命令别名不存在，请刷新列表')
+    if (expectedId !== alias.id || this.changingAliases.has(name))
+      throw new AuthError(409, '命令别名已变化，请刷新列表')
+    this.changingAliases.add(name)
+    try {
+      await this.aliasStore.remove(alias)
+      this.aliases.delete(name)
+    } finally {
+      this.changingAliases.delete(name)
+    }
   }
   async listCommands(offset = 0, search = '') {
     this.ctx.fiber.assertActive()
-    const all = [...this.entries.values()]
-      .map(({ command }) => command)
+    const all = this.directory()
       .filter((command) =>
         `${command.name} ${command.description}`.toLowerCase().includes(search.toLowerCase()),
       )
@@ -204,7 +291,8 @@ export class ImCommandsService extends Service<Config> {
         name: command.name,
         description: command.description,
         ...(command.usage ? { usage: command.usage } : {}),
-        ...(await this.policies.get(command.name, command.access)),
+        ...(command.alias ? { alias: command.alias } : {}),
+        ...(await this.getPolicy(command.name)),
       })),
     )
     return { commands, total: all.length, offset: start, prefix: this.config.prefix }
@@ -217,7 +305,7 @@ export class ImCommandsService extends Service<Config> {
   ) {
     const chat = message.message.chat
     const current = this.ctx.im.getChatPolicy(message.connection.id, chat)
-    policy ??= (await this.policies.get(command.name, command.access)).policy
+    policy ??= (await this.policies.get(this.policyKey(command.name), command.access)).policy
     const list = policy[chat.type]
     if (
       !current.enabled ||
@@ -240,14 +328,42 @@ export class ImCommandsService extends Service<Config> {
       .filter((part) => part.type === 'text')
       .map((part) => part.text)
       .join('')
-      .trim()
+      .trimStart()
     if (!text.startsWith(this.config.prefix)) return 'continue' as const
-    const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(text.slice(this.config.prefix.length))
+    const match = /^(\S+)([\s\S]*)$/.exec(text.slice(this.config.prefix.length))
     const name = match?.[1]
     if (!name) return 'continue' as const
-    const entry = this.entries.get(name)
+    const alias = this.aliases.get(name)
+    const entry = this.entries.get(alias?.target ?? name)
+    if (alias && !entry) {
+      if (!(await this.ctx.im.authenticate(message.request))) return 'consumed' as const
+      if (!(await this.denial(this.command(name), message)))
+        await message.reply([
+          { type: 'text', text: '别名的目标命令不可用，请联系管理员检查所属插件。' },
+        ])
+      return 'consumed' as const
+    }
     if (!entry) return 'continue' as const
-    const run = this.execute(entry, message, match?.[2] ?? '')
+    const suffix = `${alias?.suffix ?? ''}${match?.[2] ?? ''}`
+    const forwarded = alias
+      ? {
+          ...message,
+          message: {
+            ...message.message,
+            segments: [
+              { type: 'text' as const, text: `${this.config.prefix}${alias.target}${suffix}` },
+              ...message.message.segments.filter((part) => part.type !== 'text'),
+            ],
+          },
+        }
+      : message
+    const run = this.execute(
+      entry,
+      forwarded,
+      suffix.trimStart(),
+      alias ? this.command(name) : entry.command,
+      !!alias,
+    )
     entry.pending.add(run)
     try {
       return await run
@@ -255,7 +371,13 @@ export class ImCommandsService extends Service<Config> {
       entry.pending.delete(run)
     }
   }
-  private async execute(entry: Entry, message: MessageContext, rawArgs: string) {
+  private async execute(
+    entry: Entry,
+    message: MessageContext,
+    rawArgs: string,
+    authority: Pick<Command, 'name' | 'access' | 'permission'>,
+    forwarded: boolean,
+  ) {
     const signal = AbortSignal.any([message.signal, entry.abort.signal])
     const command = entry.command
     let answer: string | void = undefined
@@ -263,14 +385,17 @@ export class ImCommandsService extends Service<Config> {
       signal.throwIfAborted()
       entry.owner.fiber.assertActive()
       if (!(await this.ctx.im.authenticate(message.request))) return 'consumed' as const
-      const denied = await this.denial(command, { ...message, signal })
+      const denied = await this.denial(authority, { ...message, signal })
       if (denied === 'chat') return 'consumed' as const
       if (denied === 'access') answer = '仅当前群的 bot 管理员可执行此命令；群主自动拥有该权限。'
       if (denied === 'permission') answer = '没有执行此命令的权限。'
       if (!answer) {
         signal.throwIfAborted()
         // 由其他处理器执行的入口（例如 /ai）通过检查后继续分发。
-        if (!command.execute) return 'continue' as const
+        if (!command.execute)
+          return forwarded
+            ? { type: 'continue' as const, segments: message.message.segments }
+            : ('continue' as const)
         let args: string[] | undefined
         try {
           args = parseArguments(rawArgs)
@@ -283,7 +408,14 @@ export class ImCommandsService extends Service<Config> {
           else {
             signal.throwIfAborted()
             entry.owner.fiber.assertActive()
-            answer = await command.execute({ ...message, signal, args, rawArgs })
+            const invocation = { ...message, signal, args, rawArgs }
+            // /admin 的内部复核沿用当前入口权限；不允许其他业务命令借此提升权限。
+            if (command.name === 'admin') this.invocations.set(invocation, authority)
+            try {
+              answer = await command.execute(invocation)
+            } finally {
+              this.invocations.delete(invocation)
+            }
           }
         }
       }
@@ -297,10 +429,11 @@ export class ImCommandsService extends Service<Config> {
 
 export default defineDatabasePlugin({
   name: pluginId,
-  migrations: [...migrations, policyMigration],
+  migrations: [...migrations, policyMigration, aliasMigration],
   inject: ['im', 'rbac'],
   async apply(ctx: Context, input: Partial<Config> = {}) {
     const config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
-    await ctx.plugin(ImCommandsService, config)
+    const aliases = await new CommandAliases(ctx).list()
+    await ctx.plugin(ImCommandsService, { ...config, aliases })
   },
 })
