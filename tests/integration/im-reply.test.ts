@@ -63,7 +63,15 @@ it.each(['image', 'sticker'])('%s 地址支持原始与转义的参数分隔符�
     parseReply(
       `<im_reply><${tag}>https://example.com/a.png?a=1&b=2&amp;c=%26&amp;amp;d=4&unknown;</${tag}></im_reply>`,
     ),
-  ).toEqual([[{ type: 'image', url: 'https://example.com/a.png?a=1&b=2&c=%26&amp;d=4&unknown;' }]])
+  ).toEqual([
+    [
+      {
+        type: 'image',
+        url: 'https://example.com/a.png?a=1&b=2&c=%26&amp;d=4&unknown;',
+        ...(tag === 'sticker' ? { sticker: true } : {}),
+      },
+    ],
+  ])
 })
 
 it('按顺序解析文本、图片、表情包和引用，实体仅解码一次', () => {
@@ -79,7 +87,7 @@ it('按顺序解析文本、图片、表情包和引用，实体仅解码一次'
     [{ type: 'image', url: 'https://example.com/a.png?a=1&b=2' }],
     [
       { type: 'reply', messageId: '123' },
-      { type: 'image', url: 'https://example.com/a.gif' },
+      { type: 'image', url: 'https://example.com/a.gif', sticker: true },
     ],
     [
       { type: 'reply', messageId: '456' },
@@ -268,7 +276,7 @@ it('一次运行按顺序发送独立消息，引用当前群友发言并逐条�
       { type: 'reply', messageId: 'friend' },
       { type: 'text', text: '同意你的观点' },
     ],
-    [{ type: 'image', url: 'https://example.com/b.gif' }],
+    [{ type: 'image', url: 'https://example.com/b.gif', sticker: true }],
   ])
   const job = (await app.jobs())[0]!
   const history = await app.ctx.im.history(job.workspace_id, { limit: 20 })

@@ -160,7 +160,11 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
     } else {
       const value = decode(match[3]!).trim()
       if (!value) throw new Error('IM 图片地址不能为空')
-      segments.push({ type: 'image', url: imageUrl(value, capabilities) })
+      segments.push({
+        type: 'image',
+        url: imageUrl(value, capabilities),
+        ...(match[1] === 'sticker' ? { sticker: true } : {}),
+      })
     }
     messages.push(segments)
   }

@@ -5,6 +5,7 @@ import Server from '@antarestra/plugin-server'
 import { WebSocket } from 'ws'
 import * as OneBot from '../../plugins/adapters/im-onebot/src/index.js'
 import { normalizeMessage } from '../../plugins/adapters/im-onebot/src/message.js'
+import { parseReply } from '../../plugins/features/im-ai/src/reply.js'
 
 const cleanups: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -77,6 +78,42 @@ const event = (changes: Record<string, unknown> = {}) => ({
 })
 
 describe('OneBot 11 反向 WebSocket', () => {
+  it.each(['group', 'private'] as const)(
+    '%s 图片和表情包通过 RPC 发送不同 sub_type',
+    async (type) => {
+      const app = await setup(['79338528'])
+      const socket = await app.connect()
+      const requests: { action: string; params: Record<string, unknown> }[] = []
+      socket.on('message', (raw) => {
+        const request = JSON.parse(raw.toString())
+        requests.push(request)
+        socket.send(
+          JSON.stringify({
+            echo: request.echo,
+            status: 'ok',
+            retcode: 0,
+            data: { message_id: 42 },
+          }),
+        )
+      })
+      const target = { type, id: type === 'group' ? '40894918' : '79338528' }
+      const messages = parseReply(
+        '<im_reply><image>https://example.com/a.gif</image><sticker>https://example.com/a.gif</sticker></im_reply>',
+      )
+      for (const segments of messages) await app.descriptor.send(target, segments)
+      expect(requests.map(({ action, params }) => ({ action, message: params.message }))).toEqual([
+        {
+          action: `send_${type}_msg`,
+          message: [{ type: 'image', data: { file: 'https://example.com/a.gif', sub_type: 0 } }],
+        },
+        {
+          action: `send_${type}_msg`,
+          message: [{ type: 'image', data: { file: 'https://example.com/a.gif', sub_type: 1 } }],
+        },
+      ])
+    },
+  )
+
   it('实时读取 IM 核心规则，无需重载即可放行新聊天或撤销平台操作', async () => {
     const app = await setup()
     const socket = await app.connect()

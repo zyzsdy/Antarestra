@@ -156,7 +156,7 @@ export function encodeMessage(segments: readonly MessageSegment[]) {
       case 'reply':
         return { type: 'reply', data: { id: segment.messageId } }
       case 'image':
-        return { type: 'image', data: { file: segment.url } }
+        return { type: 'image', data: { file: segment.url, sub_type: segment.sticker ? 1 : 0 } }
       case 'video':
         return { type: 'video', data: { file: segment.url } }
       case 'audio':

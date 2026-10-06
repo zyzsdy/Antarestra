@@ -50,6 +50,8 @@ export interface MediaSegment {
   type: 'image' | 'video' | 'audio' | 'file'
   url: string
   name?: string
+  /** 图片是否作为表情包发送；省略时为普通图片。 */
+  sticker?: boolean
 }
 export interface ImageResource {
   resourceId: string

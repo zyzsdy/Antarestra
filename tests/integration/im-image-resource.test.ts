@@ -116,7 +116,7 @@ it('图片和表情包解析简短资源引用并保留 ID 大小写，拒绝路
       ),
     ).toEqual([
       [{ type: 'image', url: 'resource://Photo_A' }],
-      [{ type: 'image', url: 'resource://Photo_B' }],
+      [{ type: 'image', url: 'resource://Photo_B', sticker: true }],
     ])
   }
   expect(imageResourceId('resource://Photo_A')).toBe('Photo_A')
@@ -177,6 +177,8 @@ it('AI 工具获得稳定引用，非 S3 provider 提供真正免鉴权图片 UR
   await app.connection.receive('/ai 发图')
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect(app.sent).toHaveLength(2)
+  expect(app.sent[0]!.segments[0]).not.toHaveProperty('sticker')
+  expect(app.sent[1]!.segments[0]).toHaveProperty('sticker', true)
   for (const sent of app.sent) {
     const segment = sent.segments[0]!
     if (segment.type !== 'image') throw new Error('不是图片')
