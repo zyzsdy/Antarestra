@@ -12,7 +12,7 @@ import {
   TabsTrigger,
   TabsContent,
 } from '@antarestra/webui/components'
-import { computed, inject, onMounted, onUnmounted, ref, toRaw } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { feedbackKey, refreshExtensionsKey } from '@antarestra/webui/client'
 import { PlusIcon, ArrowPathIcon } from '@antarestra/webui/icons'
 import { ApiError, useApi } from '@antarestra/webui/api'
@@ -39,6 +39,7 @@ const settings = ref<Settings>({
 const mode = ref('form')
 const search = ref('')
 const searchInput = ref<HTMLInputElement>()
+const detailsElement = ref<HTMLElement>()
 const status = ref('')
 const adding = ref(false)
 const catalog = ref<Metadata[]>([])
@@ -149,12 +150,14 @@ async function refresh() {
 }
 async function select(id: string, skipConfirm = false) {
   if (!skipConfirm && !(await discard())) return
+  const changed = selected.value !== id
   const seq = ++request
   if (id === '$loader') {
     selected.value = id
     detail.value = undefined
     settings.value = structuredClone(toRaw(snapshot.value!.loader))
     baseline.value = draft()
+    if (changed) await revealDetails()
     return
   }
   const data = await api<Detail>(`/plugin-config-panel/instances/${encodeURIComponent(id)}`)
@@ -166,6 +169,12 @@ async function select(id: string, skipConfirm = false) {
   enabled.value = data.entry.enabled
   baseline.value = draft()
   mode.value = supportsForm(data.info?.schema) ? 'form' : 'yaml'
+  if (changed) await revealDetails()
+}
+async function revealDetails() {
+  await nextTick()
+  const top = detailsElement.value?.getBoundingClientRect().top
+  if (top !== undefined && top < 16) window.scrollTo({ top: window.scrollY + top - 16 })
 }
 async function reload() {
   if (!(await discard())) return
@@ -502,7 +511,7 @@ onUnmounted(() => {
           {{ search ? '没有匹配的插件。' : '尚未添加插件配置。' }}
         </p>
       </aside>
-      <main class="details" aria-label="配置详情" :aria-busy="busy">
+      <main ref="detailsElement" class="details" aria-label="配置详情" :aria-busy="busy">
         <button
           v-if="selected"
           class="back"
@@ -779,9 +788,18 @@ onUnmounted(() => {
   border: 1px solid #e0e6ef;
   background: white;
   border-radius: 12px;
-  overflow: hidden;
+  /* 保留圆角裁剪，但不创建会阻断列表 sticky 的滚动容器。 */
+  overflow: clip;
 }
 .config-page .plugin-list {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  box-sizing: border-box;
+  /* 为控制台标题和页面操作区留出空间；短窗口仍保留可操作的列表高度。 */
+  max-height: max(160px, calc(100dvh - 220px));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: #f8fafd;
   padding: 16px;
   border-right: 1px solid #e0e6ef;
@@ -970,6 +988,10 @@ onUnmounted(() => {
   }
   .config-page .split {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .config-page .plugin-list {
+    position: static;
+    border-right: 0;
   }
   .config-page .details {
     display: none;
