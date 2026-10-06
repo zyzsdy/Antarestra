@@ -12,7 +12,7 @@ export function registerHistoryTools(
     id: 'im_recall_message',
     resultMode: 'structured',
     description:
-      '主动撤回当前 IM 聊天中本机器人已经发送的消息。message_id 必须是原始平台消息 ID，可从 im_history_query 的 messageId 或引用消息中获取，不是 AI 会话消息 ID。仅支持具备撤回能力的接入，不能撤回其他人的消息或其他聊天的消息。撤回受平台权限和时限限制；失败或结果未知时不要自动重试。撤回不删除本地历史归档。',
+      '撤回当前 IM 聊天中本机器人已发送的消息，适合收回误发或需要更正的回复。message_id 使用聊天上下文、引用消息或 im_history_query 中的原始 messageId，不是 AI 会话消息 ID。只能撤回本机器人在当前聊天的消息，且受平台权限和时限限制。失败或结果未知时不要自动重试。撤回后历史查询仍可能返回该消息。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -21,7 +21,7 @@ export function registerHistoryTools(
         message_id: {
           type: 'string',
           minLength: 1,
-          description: '本机器人已发送的原始平台消息 ID',
+          description: '本机器人在当前聊天已发送消息的原始 messageId，按字符串填写。',
         },
       },
     },
@@ -77,17 +77,42 @@ export function registerHistoryTools(
   ctx.ai.registerTool(ctx, {
     id: 'im_history_query',
     description:
-      '查询当前工作空间的群聊原始消息。可按时间范围（带时区的 ISO 时间）、发送人平台 ID 和文本关键词筛选。结果包含原始消息 ID，可用于回复或引用；媒体状态标识已存储、待重试或已过期。每页最多 200 条，使用 nextBeforeSequence 向更早消息翻页。私聊不单独归档。',
+      '查找当前群聊的历史消息，适合补充上下文、定位某人发言或取得要引用、回应、撤回的原始 messageId。可按时间、发送人和文本关键词筛选。结果包含发送者、时间、正文及媒体状态；查看图片时使用可用的资源 ID 调用 workspace_file_read。省略筛选条件读取最近消息；将 nextBeforeSequence 作为 beforeSequence 向更早消息翻页，直到返回空列表。不提供私聊历史。',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        startTime: { type: 'string', format: 'date-time' },
-        endTime: { type: 'string', format: 'date-time' },
-        senderId: { type: 'string' },
-        keyword: { type: 'string', maxLength: 1000 },
-        limit: { type: 'integer', minimum: 1, maximum: 200 },
-        beforeSequence: { type: 'integer', minimum: 0 },
+        startTime: {
+          type: 'string',
+          format: 'date-time',
+          description: '起始时间（含），使用带时区的 ISO 时间，如 2026-10-06T09:00:00+08:00。',
+        },
+        endTime: {
+          type: 'string',
+          format: 'date-time',
+          description: '结束时间（含），使用带时区的 ISO 时间，不能早于 startTime。',
+        },
+        senderId: {
+          type: 'string',
+          description:
+            '发送人的平台用户 ID，使用上下文或查询结果中的 sender.id，不是昵称或消息 ID。',
+        },
+        keyword: {
+          type: 'string',
+          maxLength: 1000,
+          description: '消息正文需包含的文字，不区分大小写。',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 200,
+          description: '最多返回的消息条数，默认 50。',
+        },
+        beforeSequence: {
+          type: 'integer',
+          minimum: 0,
+          description: '上一页的 nextBeforeSequence，原样填写；首次查询省略。',
+        },
       },
     },
     async execute(args, context) {

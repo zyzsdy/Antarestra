@@ -21,14 +21,14 @@ function parseDatetime(value: unknown): Date {
 export const datetimeTool = {
   id: 'get_datetime',
   description:
-    '获取当前日期时间、服务器当前时区和 UTC 日期时间。可传入 datetime 查询指定时刻，或用 timeZone 转换到指定时区。省略 datetime 使用当前时刻；纯日期按 UTC 零点处理，完整日期时间必须带 Z 或 UTC 偏移。返回目标时区的日期时间、该时刻的 UTC 偏移、UTC 时间及毫秒时间戳。',
+    '查询当前日期时间，或将指定时刻转换到目标时区。省略 datetime 使用当前时刻；省略 timeZone 使用服务器时区，若要回答用户当地时间请明确指定其时区。返回目标时区的 localDateTime、utcOffset、UTC 时间及毫秒时间戳；需要带时区的时间字符串时，将 localDateTime 与 utcOffset 拼接。纯日期按 UTC 零点处理，转换后可能落在前一天或后一天。',
   parameters: {
     type: 'object',
     properties: {
       datetime: {
         type: 'string',
         description:
-          '可选：YYYY-MM-DD 或 YYYY-MM-DDTHH:mm:ss[.SSS]Z / ±HH:mm，例如 2026-10-03T12:30:00+08:00。',
+          '待查询的日期或时刻；省略为现在。日期用 YYYY-MM-DD（按 UTC 零点）；完整时间须含秒和 Z 或 ±HH:mm，例如 2026-10-03T12:30:00+08:00，可带 1–3 位毫秒。',
       },
       timeZone: {
         type: 'string',

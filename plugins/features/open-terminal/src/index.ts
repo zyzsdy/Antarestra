@@ -16,7 +16,14 @@ const path = {
 const text = { type: 'string' }
 const replacement = {
   type: 'object',
-  properties: { oldText: { type: 'string', minLength: 1 }, newText: text },
+  properties: {
+    oldText: {
+      type: 'string',
+      minLength: 1,
+      description: '原文件中能唯一定位待修改位置的完整片段，须精确匹配。',
+    },
+    newText: { ...text, description: '替换后的文本；空字符串表示删除匹配片段。' },
+  },
   required: ['oldText', 'newText'],
   additionalProperties: false,
 }
@@ -31,11 +38,20 @@ export function apply(ctx: Context, input: Config) {
     {
       id: 'bash',
       description:
-        '在共享的远端 Open Terminal 中执行 Bash 命令，返回合并输出、退出码和完整输出文件路径。不超过 200 行时完整返回；超过时只返回前 100 行和后 100 行，中间明确提示截断及远端路径，使用 read 按路径分段读取完整输出。超长行另按 48 KiB 总预算裁剪。所有工作空间共用终端和文件；每次启动独立 Bash，cd、export 不跨调用保留。timeout 为可选秒数，不传则不限命令执行时间；取消会终止远端进程。',
+        '在共享远端终端执行 Bash 命令，适合运行程序、检索文件和处理数据。所有工作空间共用此终端和文件；每次调用的 cd、export 不会保留到下次，需在命令中明确工作目录和环境变量。返回输出、退出码及完整输出文件路径：不超过 200 行时返回全文，超过时仅返回前 100 行和后 100 行，另受 48 KiB 上限限制。遇到截断时用 read 按返回路径分段读取。timeout 单位为秒，省略则不设命令时限；取消会终止远端进程。',
       parameters: parameters(
         {
-          command: { type: 'string', minLength: 1 },
-          timeout: { type: 'number', exclusiveMinimum: 0, maximum: 86400 },
+          command: {
+            type: 'string',
+            minLength: 1,
+            description: '要执行的 Bash 命令；含空格的路径须正确加引号。',
+          },
+          timeout: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            maximum: 86400,
+            description: '最长执行秒数，省略则不限时。',
+          },
         },
         ['command'],
       ),
@@ -43,12 +59,22 @@ export function apply(ctx: Context, input: Config) {
     {
       id: 'read',
       description:
-        '读取共享远端文件。文本最多返回 2000 行或 50 KiB；offset 从 1 开始，limit 指定最多行数，根据返回提示继续读取。支持 PNG、JPEG、GIF、WebP 图片（最多 8 MiB），图片通过当前会话的附件服务交给模型。',
+        '读取 bash、write、edit 使用的共享远端文件，或查看 bash 保存的完整输出。文本每次最多返回 2000 行或 50 KiB；按返回提示调整 offset 继续读取，单行超出上限时用 bash 分段读取该行。也可查看 PNG、JPEG、GIF、WebP 图片，最多 8 MiB，需模型支持图片输入。工作空间附件或资源 ID 使用 workspace_file_read。',
       parameters: parameters(
         {
           path,
-          offset: { type: 'integer', minimum: 1, maximum: 2147483647 },
-          limit: { type: 'integer', minimum: 1, maximum: 2147483647 },
+          offset: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 2147483647,
+            description: '文本起始行号，从 1 开始，默认 1。',
+          },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 2147483647,
+            description: '期望读取的文本行数，默认且最多 2000 行，实际还受字节上限限制。',
+          },
         },
         ['path'],
       ),
@@ -56,20 +82,32 @@ export function apply(ctx: Context, input: Config) {
     {
       id: 'write',
       description:
-        '向共享远端文件写入 UTF-8 文本，覆盖已有内容，自动创建父目录。path 为远端路径，content 为完整文本。',
-      parameters: parameters({ path, content: text }, ['path', 'content']),
+        '在共享远端创建或完整重写 UTF-8 文本文件，父目录不存在时会自动创建。content 会覆盖已有全部内容；修改现有文件前先用 read 查看，只改局部内容时优先用 edit。',
+      parameters: parameters(
+        { path, content: { ...text, description: '写入文件的完整文本；空字符串会清空文件。' } },
+        ['path', 'content'],
+      ),
     },
     {
       id: 'edit',
       description:
-        '在共享远端精确编辑 UTF-8 文件。使用 edits 数组一次提交多处 oldText/newText 替换；每项必须在原文件中唯一匹配，且各项不能重叠，全部校验成功后才写入。也支持单次 oldText/newText。保留 BOM 和 CRLF 换行，返回差异；不进行模糊匹配。',
+        '局部修改共享远端的 UTF-8 文件。先用 read 获取当前内容，再用 oldText/newText 提交一次替换，或用 edits 提交多处替换，两种形式不能混用。每个 oldText 必须在同一份原文件中精确且唯一匹配，各处不能重叠；可增加上下文消除重复匹配。newText 为空表示删除。全部匹配成功才写入，否则文件保持原样；保留原文件 BOM 和 CRLF 换行，并返回修改差异。',
       parameters: {
         ...parameters(
           {
             path,
-            edits: { type: 'array', minItems: 1, items: replacement },
-            oldText: { type: 'string', minLength: 1 },
-            newText: text,
+            edits: {
+              type: 'array',
+              minItems: 1,
+              items: replacement,
+              description: '多处替换，均针对修改前的原文件；不要同时填写顶层 oldText/newText。',
+            },
+            oldText: {
+              type: 'string',
+              minLength: 1,
+              description: '单次替换的原文片段，须在当前文件中精确且唯一匹配。',
+            },
+            newText: { ...text, description: '单次替换的新文本；空字符串表示删除。' },
           },
           ['path'],
         ),

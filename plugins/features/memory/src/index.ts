@@ -11,8 +11,17 @@ export { MemoryService } from './service.js'
 export type { Config } from './service.js'
 export const inject = ['database', 'ai']
 export const name = 'memory'
-const identifier = { type: 'string', minLength: 1, maxLength: 200 }
-const revision = { type: 'integer', minimum: 0 }
+const identifier = {
+  type: 'string',
+  minLength: 1,
+  maxLength: 200,
+  description: '已有长期记忆的 id，可从 memory_create 或 memory_search 获取。',
+}
+const revision = {
+  type: 'integer',
+  minimum: 0,
+  description: '最近读取结果中的 revision；若报告修订冲突，重新读取并核对内容后再操作。',
+}
 const text = { type: 'string' }
 export async function apply(ctx: Context, input: Partial<Config> = {}) {
   const config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
@@ -66,10 +75,15 @@ function registerTools(ctx: Context) {
   }
   register(
     'global_memory',
-    '读写当前工作空间共享的全局记忆。get 读取文本、预算和修订号；set 替换或 clear 清空必须先读取并传 expectedRevision；append 追加。超预算会自动整理并遗忘低价值内容，始终检查返回的最终正文。全局记忆适合稳定偏好和重要事实，详细资料请用长期记忆。',
+    '维护当前工作空间跨会话共享的简短记忆，适合稳定偏好和重要事实；详细资料用 memory_create 保存。get 读取正文、容量预算和 revision；append 追加 content；set 用 content 替换全文；clear 清空。set 和 clear 须先 get，再将 revision 传入 expectedRevision。内容超出预算时可能被压缩或删减，操作后检查返回的最终正文。',
     {
-      action: { type: 'string', enum: ['get', 'set', 'append', 'clear'] },
-      content: text,
+      action: {
+        type: 'string',
+        enum: ['get', 'set', 'append', 'clear'],
+        description:
+          'get 不带其他参数；append 仅带 content；set 带 content 和 expectedRevision；clear 仅带 expectedRevision。',
+      },
+      content: { ...text, description: 'set 时为完整替换正文；append 时为新增正文。' },
       expectedRevision: revision,
     },
     ['action'],
@@ -91,18 +105,33 @@ function registerTools(ctx: Context) {
   )
   register(
     'memory_create',
-    '创建当前工作空间的长期记忆文档，记录完整文本。自动关联当前会话，返回记忆 ID 和修订号。',
-    { content: { ...text, minLength: 1 } },
+    '保存值得跨会话保留的详细资料、经验或事实，创建当前工作空间的长期记忆。先用 memory_search 检查是否已有同主题记忆，需要修订已有内容时用 memory_update。正文应包含足够背景，便于以后独立理解。返回 id 和 revision，并关联当前会话。',
+    {
+      content: {
+        ...text,
+        minLength: 1,
+        description: '要保存的完整正文，包含主题、必要背景和可复用信息。',
+      },
+    },
     ['content'],
     (args, context) => memory.create(context, String(args.content)),
   )
   register(
     'memory_read',
-    '按 ID 读取长期记忆正文和会话关联，自动关联当前会话。正文按 Unicode 字符分页，必须继续读取 nextOffset 才能获得长文全部内容。',
+    '按 id 读取当前工作空间的长期记忆，返回正文、revision 和关联会话，并关联当前会话。正文按字符分页；nextOffset 非空时将其作为 offset 继续读取，直到为 null 才表示读完。更新全文前必须读完所有页。',
     {
       id: identifier,
-      offset: revision,
-      limit: { type: 'integer', minimum: 1, maximum: 64000 },
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        description: '起始字符位置，从 0 开始，默认 0；续读使用返回的 nextOffset。',
+      },
+      limit: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 64000,
+        description: '本次最多读取的 Unicode 字符数，默认 16000。',
+      },
     },
     ['id'],
     (args, context) =>
@@ -115,10 +144,10 @@ function registerTools(ctx: Context) {
   )
   register(
     'memory_update',
-    '替换长期记忆全文；先完整读取文档并传 expectedRevision，避免覆盖并发修改。自动关联当前会话。',
+    '修订已有长期记忆，用 content 替换整篇正文。先用 memory_read 读完所有页，保留仍有效的内容，并将读取的 revision 传入 expectedRevision。修订冲突时重新读取、合并修改后再提交。成功后返回新 revision，并关联当前会话。',
     {
       id: identifier,
-      content: { ...text, minLength: 1 },
+      content: { ...text, minLength: 1, description: '修改后的完整正文，不是追加片段或差异。' },
       expectedRevision: revision,
     },
     ['id', 'content', 'expectedRevision'],
@@ -127,7 +156,7 @@ function registerTools(ctx: Context) {
   )
   register(
     'memory_forget',
-    '永久删除指定长期记忆、搜索索引和会话关联。先读取并传 expectedRevision；仅在资料应被遗忘时调用。',
+    '永久删除当前工作空间中的一篇长期记忆及其所有会话关联，之后无法再搜索或读取。先用 memory_read 确认目标，并将 revision 传入 expectedRevision。仅在整篇资料应被遗忘时使用；只需解除某个会话的关联时用 memory_link remove。',
     {
       id: identifier,
       expectedRevision: revision,
@@ -137,24 +166,50 @@ function registerTools(ctx: Context) {
   )
   register(
     'memory_search',
-    '召回当前工作空间长期记忆。中英文关键词全部匹配，返回摘要和 ID；用 memory_read 读取正文。空 query 列出最近记忆，支持 conversationId 和分页。搜索列表不会自动关联当前会话。向量模式尚未实现。',
+    '查找当前工作空间中已保存的长期记忆。支持中英文关键词，多个词须全部匹配；结果过少时减少关键词。返回 id 和正文片段，完整内容用 memory_read 获取。省略 query 或传空字符串可列出最近更新的记忆；conversationId 筛选与指定会话关联的记忆。将非空 nextOffset 作为 offset 继续翻页。搜索不会关联当前会话。',
     {
-      query: { type: 'string', maxLength: 4096 },
-      mode: { type: 'string', enum: ['text', 'vector'] },
-      conversationId: identifier,
-      offset: revision,
-      limit: { type: 'integer', minimum: 1, maximum: 100 },
+      query: {
+        type: 'string',
+        maxLength: 4096,
+        description: '搜索关键词；省略或留空列出最近更新的记忆。',
+      },
+      mode: {
+        type: 'string',
+        enum: ['text', 'vector'],
+        description: '省略或填 text；vector 当前不可用。',
+      },
+      conversationId: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 200,
+        description: '仅查找与此会话关联的记忆；省略则搜索整个当前工作空间。',
+      },
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        description: '跳过的结果条数，默认 0；翻页使用返回的 nextOffset。',
+      },
+      limit: { type: 'integer', minimum: 1, maximum: 100, description: '每页结果数，默认 20。' },
     },
     [],
     (args, context) => memory.search(context, args as Parameters<MemoryService['search']>[1]),
   )
   register(
     'memory_link',
-    '为长期记忆添加或移除会话关联。添加只允许同一工作空间现存会话，不改变创建会话记录。读取或修改会再次自动关联当前会话。',
+    '将长期记忆关联到指定会话，或解除关联。add 的目标须为当前工作空间中已有会话；remove 只解除关联，保留记忆正文，仍可在工作空间内搜索。不改变记忆最初的创建会话；以后在某会话中读取或修改记忆，会再次关联该会话。',
     {
       id: identifier,
-      conversationId: identifier,
-      action: { type: 'string', enum: ['add', 'remove'] },
+      conversationId: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 200,
+        description: '要添加或解除关联的会话 id。',
+      },
+      action: {
+        type: 'string',
+        enum: ['add', 'remove'],
+        description: 'add 添加关联；remove 解除关联。',
+      },
     },
     ['id', 'conversationId', 'action'],
     (args, context) =>

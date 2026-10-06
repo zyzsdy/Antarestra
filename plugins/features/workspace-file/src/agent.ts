@@ -134,19 +134,29 @@ export const agentFiles = {
     })
     const parameters = {
       type: 'object',
-      properties: { path: { type: 'string' } },
+      properties: {
+        path: { type: 'string', description: '当前工作空间内的目录路径，根目录填 /。' },
+      },
       required: ['path'],
       additionalProperties: false,
     }
     ctx.ai.registerTool(ctx, {
       id: 'im_prepare_image',
       description:
-        '准备当前工作空间图片或已登记的共享图片供 IM 回复使用。resourceId 或 path 只填一个，共享图片只支持 resourceId。返回的 src 可直接写入 <image>src</image> 或 <sticker>src</sticker>；本工具不发送消息。支持 PNG、JPEG、GIF、WebP，最多 8 MiB。',
+        '准备要在 IM 回复中发送的工作空间图片或共享表情包。resourceId 和 path 只填一个；共享图片必须用 resourceId。将返回的 src 原样写入回复的 <image>src</image> 或 <sticker>src</sticker>。本工具只准备图片，发送需通过最终回复完成。支持 PNG、JPEG、GIF、WebP，最多 8 MiB。',
       parameters: {
         type: 'object',
         properties: {
-          resourceId: { type: 'string', minLength: 1 },
-          path: { type: 'string', minLength: 1 },
+          resourceId: {
+            type: 'string',
+            minLength: 1,
+            description: '来自当前空间附件、工具结果、历史消息或共享表情包列表的真实图片资源 ID。',
+          },
+          path: {
+            type: 'string',
+            minLength: 1,
+            description: '当前工作空间内的图片文件路径，可从 workspace_file_list 获取。',
+          },
         },
         oneOf: [{ required: ['resourceId'] }, { required: ['path'] }],
         additionalProperties: false,
@@ -164,10 +174,14 @@ export const agentFiles = {
     })
     ctx.ai.registerTool(ctx, {
       id: 'workspace_file_list',
-      description: '列出当前工作空间目录，根目录为 /。文件路径仅在当前空间有效。',
+      description:
+        '浏览当前工作空间目录，返回直接子目录和文件的路径、类型及大小。根目录填 /；每页最多 50 项，按返回的 page 和 total 判断是否继续翻页。需要查看子目录时，再用其 path 调用本工具。这里的路径用于工作空间文件工具，与 bash、read 等工具的共享远端文件路径不同。',
       parameters: {
         ...parameters,
-        properties: { ...parameters.properties, page: { type: 'integer', minimum: 1 } },
+        properties: {
+          ...parameters.properties,
+          page: { type: 'integer', minimum: 1, description: '页码，从 1 开始，默认 1。' },
+        },
       },
       async execute(args, context) {
         return withAccess(context, (access) =>
@@ -178,12 +192,20 @@ export const agentFiles = {
     ctx.ai.registerTool(ctx, {
       id: 'workspace_file_read',
       description:
-        '读取当前工作空间文件。path 用于读取 UTF-8 文本；resourceId 可读取文本或图片，支持 IM 消息中 [图片,ID] 的资源 ID，可按需查看未自动附带的图片。两者只填一个。文本最多 1 MiB；图片支持 PNG、JPEG、GIF、WebP，最多 8 MiB，需模型支持图片输入。',
+        '读取当前工作空间的文本或查看图片。path 和 resourceId 只填一个：path 仅用于 UTF-8 文本；resourceId 可用于文本或图片，包括 IM 消息中 [图片,ID] 的资源 ID。文本最多 1 MiB；图片支持 PNG、JPEG、GIF、WebP，最多 8 MiB，需模型支持图片输入。此工具不能读取 bash 等工具使用的共享远端文件；远端文件使用 read。',
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', minLength: 1 },
-          resourceId: { type: 'string', minLength: 1 },
+          path: {
+            type: 'string',
+            minLength: 1,
+            description: '当前工作空间内的 UTF-8 文本文件路径，可从 workspace_file_list 获取。',
+          },
+          resourceId: {
+            type: 'string',
+            minLength: 1,
+            description: '附件、工具结果或历史消息中的资源 ID；查看图片时使用此参数。',
+          },
         },
         oneOf: [{ required: ['path'] }, { required: ['resourceId'] }],
         additionalProperties: false,

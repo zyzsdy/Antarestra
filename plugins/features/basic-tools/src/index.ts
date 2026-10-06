@@ -4,17 +4,24 @@ import { AiError } from '@antarestra/ai'
 import type { ConversationTodo } from '@antarestra/ai'
 import { datetimeTool } from './datetime.js'
 
-const statusSchema = { type: 'string', enum: ['pending', 'in_progress', 'completed'] }
+const statusSchema = {
+  type: 'string',
+  enum: ['pending', 'in_progress', 'completed'],
+  description: 'pending：待完成；in_progress：正在进行；completed：已实际完成。',
+}
 export const inject = ['ai']
 export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   schemaConfig(new URL('../config.schema.json', import.meta.url), config)
   ctx.ai.registerTool(ctx, datetimeTool)
   ctx.ai.registerTool(ctx, {
     id: 'rename_conversation',
-    description: '修改当前会话标题。使用简洁、准确的标题概括当前话题，一般不要超过20字。',
+    description:
+      '为当前会话设置标题。在话题明确或发生变化时，用简洁、准确的标题概括内容，建议不超过 20 字。',
     parameters: {
       type: 'object',
-      properties: { title: { type: 'string', minLength: 1, maxLength: 50 } },
+      properties: {
+        title: { type: 'string', minLength: 1, maxLength: 50, description: '新的完整会话标题。' },
+      },
       required: ['title'],
       additionalProperties: false,
     },
@@ -28,19 +35,29 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
   ctx.ai.registerTool(ctx, {
     id: 'todo',
     description:
-      '当要处理的事项较为复杂，且可以分步进行时，调用此工具生成待办计划。每轮循环中必须检查计划是否完成，并设置已完成的项目。set 创建或替换完整列表（每项使用稳定且唯一的 id）；update 修改指定项的状态；complete_all 将整个列表标记完成。pending 为待完成，in_progress 为正在进行，completed 为已完成。创建后及时更新进度，只在实际完成时标记完成。未完成列表会显示在聊天页面。',
+      '为当前会话中的复杂、多步骤任务维护待办计划。set 用 items 创建或替换整个列表；update 用 id 和 status 更新一项；complete_all 不带其他参数，将全部项目标记完成。每轮工作后检查并及时更新进度，只在实际完成时标记 completed。修改计划内容须用 set 提交完整列表，并保留未变化项目的 id。返回更新后的完整列表；尚未全部完成时会显示在聊天页面。',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['set', 'update', 'complete_all'] },
+        action: {
+          type: 'string',
+          enum: ['set', 'update', 'complete_all'],
+          description: 'set 传 items；update 传 id 和 status；complete_all 只传 action。',
+        },
         items: {
           type: 'array',
           minItems: 1,
           maxItems: 100,
+          description: '仅 set 使用：完整待办列表，会替换已有列表。',
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', minLength: 1, maxLength: 100 },
+              id: {
+                type: 'string',
+                minLength: 1,
+                maxLength: 100,
+                description: '列表内唯一且稳定的标识，后续 update 使用此值。',
+              },
               text: { type: 'string', minLength: 1, maxLength: 500 },
               status: statusSchema,
             },
@@ -48,7 +65,12 @@ export function apply(ctx: Context, config: Record<string, unknown> = {}) {
             additionalProperties: false,
           },
         },
-        id: { type: 'string', minLength: 1, maxLength: 100 },
+        id: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description: '仅 update 使用：已有待办项的 id。',
+        },
         status: statusSchema,
       },
       required: ['action'],
