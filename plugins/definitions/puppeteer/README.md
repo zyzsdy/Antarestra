@@ -10,6 +10,7 @@ plugins:
     # 省略后自动查找；Windows 路径建议使用 YAML 单引号。
     executablePath: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
     headless: true
+    # userAgent: 自定义值；省略时自动生成
     args: ['--lang=zh-CN']
     timeout: 30000
     protocolTimeout: 180000
@@ -21,6 +22,8 @@ plugins:
 ```
 
 自动查找优先复用 `@puppeteer/browsers` 维护的 Chrome 安装位置，再检查系统 Chromium 常见位置和 PATH。显式路径不可用时直接报错，不静默替换。相对路径基于服务进程工作目录。系统浏览器版本需与 Puppeteer 兼容。
+
+`userAgent` 在服务创建页面后、交给调用方前设置，同时作用于请求头和 `navigator.userAgent`；省略时保留浏览器原生 UA 中的系统信息，将 Chrome 版本替换为实际运行版本，并追加 `Anta/<根 package.json 的 version>`。无头浏览器的 `HeadlessChrome` 标识统一为 `Chrome`。系统信息遵循浏览器 UA 格式，例如 Windows 11 仍可能显示 `Windows NT 10.0`。此设置适用于 `createPage`、`withPage`、`read` 和 `screenshot` 创建的页面。
 
 浏览器在首次操作时启动，并发首次调用共用一次启动。启动失败后允许重试，浏览器断开后下次调用重新启动。未安装浏览器不会影响仅启用插件的服务启动。
 

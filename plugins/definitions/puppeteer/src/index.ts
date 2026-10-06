@@ -1,4 +1,4 @@
-import { Service } from '@antarestra/plugin-sdk'
+import { Service, browserUserAgent } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import puppeteer from 'puppeteer-core'
@@ -25,6 +25,7 @@ export type {
   SetContentWaitForOptions,
 } from 'puppeteer-core'
 export interface Config {
+  userAgent?: string
   executablePath?: string
   headless?: boolean
   args?: string[]
@@ -87,8 +88,9 @@ export class PuppeteerService extends Service {
     const launch = async () => {
       const executablePath = await findExecutable(this.config.executablePath)
       this.assertAvailable()
+      const { userAgent: _userAgent, ...launchOptions } = this.config
       const browser = await puppeteer.launch({
-        ...this.config,
+        ...launchOptions,
         executablePath,
         headless: this.config.headless ?? true,
       })
@@ -133,9 +135,15 @@ export class PuppeteerService extends Service {
     opening = (async () => {
       browser = await this.getBrowser()
       assertActive()
+      const userAgent =
+        this.config.userAgent ??
+        browserUserAgent(...(await Promise.all([browser.userAgent(), browser.version()])))
+      assertActive()
       context = await browser.createBrowserContext()
       assertActive()
       const page = await context.newPage()
+      assertActive()
+      await page.setUserAgent({ userAgent })
       assertActive()
       return page
     })()

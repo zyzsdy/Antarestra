@@ -2,6 +2,7 @@ import type { Context } from 'cordis'
 
 // 统一提供 Cordis 运行时与类型，插件不必直接依赖底层运行时包。
 export * from 'cordis'
+export { browserUserAgent } from './user-agent.js'
 
 /** 插件在 SDK 上扩展事件，由 SDK 桥接到 Cordis 的原生分发类型。 */
 export interface Events {}

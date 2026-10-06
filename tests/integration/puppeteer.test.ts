@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
 import * as plugin from '@antarestra/puppeteer'
 import type { Page } from '@antarestra/puppeteer'
+import { readFileSync } from 'node:fs'
+
+const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+const nativeUserAgent =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36'
 
 const mock = vi.hoisted(() => ({ launch: vi.fn(), executable: vi.fn() }))
 vi.mock('../../plugins/definitions/puppeteer/node_modules/puppeteer-core', () => ({
@@ -16,7 +21,7 @@ afterEach(async () => {
   vi.resetAllMocks()
 })
 function browserMock() {
-  const page = { marker: true } as unknown as Page
+  const page = { marker: true, setUserAgent: vi.fn(async () => {}) } as unknown as Page
   const scopes: { close: ReturnType<typeof vi.fn>; newPage: ReturnType<typeof vi.fn> }[] = []
   const browser = {
     connected: true,
@@ -24,6 +29,8 @@ function browserMock() {
       browser.connected = false
     }),
     once: vi.fn(),
+    userAgent: vi.fn(async () => nativeUserAgent),
+    version: vi.fn(async () => 'HeadlessChrome/154.0.8123.42'),
     createBrowserContext: vi.fn(async () => {
       const scope = { close: vi.fn(async () => {}), newPage: vi.fn(async () => page) }
       scopes.push(scope)
@@ -42,6 +49,35 @@ async function setup(config: plugin.Config = {}) {
 }
 
 describe('浏览器生命周期', () => {
+  it.each([
+    [
+      {},
+      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.8123.42 Safari/537.36 Anta/${version}`,
+    ],
+    [{ userAgent: 'Custom/1.0' }, 'Custom/1.0'],
+  ] satisfies [plugin.Config, string][])(
+    '在交给调用方前设置默认或自定义 User-Agent：%j',
+    async (config, expected) => {
+      const { page } = browserMock()
+      const { ctx } = await setup(config)
+      await ctx.puppeteer.withPage(ctx, async (value) => {
+        expect(value.setUserAgent).toHaveBeenCalledWith({ userAgent: expected })
+      })
+      expect(mock.launch.mock.calls[0]?.[0]).not.toHaveProperty('userAgent')
+      expect(page.setUserAgent).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('设置 User-Agent 失败时回收上下文，不调用页面操作', async () => {
+    const { page, scopes } = browserMock()
+    vi.mocked(page.setUserAgent).mockRejectedValueOnce(new Error('设置失败'))
+    const { ctx } = await setup()
+    const action = vi.fn()
+    await expect(ctx.puppeteer.withPage(ctx, action)).rejects.toThrow('设置失败')
+    expect(action).not.toHaveBeenCalled()
+    expect(scopes[0]?.close).toHaveBeenCalledTimes(1)
+  })
+
   it('按需单次启动，并发操作隔离页面并透传启动配置', async () => {
     const { browser, scopes, page } = browserMock()
     const { ctx, fiber } = await setup({ executablePath: '测试路径', args: ['--lang=zh-CN'] })

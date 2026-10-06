@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
 import * as plugin from '@antarestra/playwright'
 import type { Page } from '@antarestra/playwright'
+import { readFileSync } from 'node:fs'
+
+const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+const nativeUserAgent =
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36'
 
 const mock = vi.hoisted(() => ({ launch: vi.fn() }))
 vi.mock('../../plugins/definitions/playwright/node_modules/playwright-core', () => ({
@@ -22,6 +27,10 @@ function browserMock() {
       browser.connected = false
     }),
     once: vi.fn(),
+    newBrowserCDPSession: vi.fn(async () => ({
+      send: vi.fn(async () => ({ userAgent: nativeUserAgent, product: 'Chrome/154.0.8123.42' })),
+      detach: vi.fn(async () => {}),
+    })),
     newContext: vi.fn(async () => {
       const scope = {
         setDefaultTimeout: vi.fn(),
@@ -43,6 +52,38 @@ async function setup(config: plugin.Config = {}) {
 }
 
 describe('浏览器生命周期', () => {
+  it.each([
+    [
+      {},
+      `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.8123.42 Safari/537.36 Anta/${version}`,
+    ],
+    [{ userAgent: 'Custom/1.0' }, 'Custom/1.0'],
+    [{ userAgent: 'Custom/1.0', context: { userAgent: 'Context/2.0' } }, 'Context/2.0'],
+  ] satisfies [plugin.Config, string][])(
+    '为新上下文设置默认或自定义 User-Agent：%j',
+    async (config, expected) => {
+      const { browser } = browserMock()
+      const { ctx } = await setup(config)
+      await ctx.playwright.withPage(ctx, async () => {})
+      expect(browser.newContext).toHaveBeenCalledWith(
+        expect.objectContaining({ userAgent: expected }),
+      )
+      expect(browser.newBrowserCDPSession).toHaveBeenCalledTimes('userAgent' in config ? 0 : 1)
+    },
+  )
+
+  it('读取默认 User-Agent 失败也释放 CDP 会话，后续允许重试', async () => {
+    const { browser } = browserMock()
+    const session = await browser.newBrowserCDPSession()
+    session.send.mockRejectedValueOnce(new Error('读取失败'))
+    browser.newBrowserCDPSession.mockResolvedValueOnce(session)
+    const { ctx } = await setup()
+    await expect(ctx.playwright.createPage(ctx)).rejects.toThrow('读取失败')
+    expect(session.detach).toHaveBeenCalledTimes(1)
+    expect(browser.newContext).not.toHaveBeenCalled()
+    await ctx.playwright.withPage(ctx, async () => {})
+  })
+
   it('按需单次启动，并发操作隔离页面并透传启动配置', async () => {
     const { browser, scopes, page } = browserMock()
     const { ctx, fiber } = await setup({ executablePath: '测试路径', args: ['--lang=zh-CN'] })

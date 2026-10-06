@@ -1,4 +1,4 @@
-import { Service } from '@antarestra/plugin-sdk'
+import { Service, browserUserAgent } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { chromium } from 'playwright-core'
@@ -12,6 +12,7 @@ import type {
 export type { Page, Dialog, ElementHandle, Locator, Frame } from 'playwright-core'
 
 export interface Config {
+  userAgent?: string
   executablePath?: string
   channel?: string
   headless?: boolean
@@ -120,7 +121,21 @@ export class PlaywrightService extends Service {
     opening = (async () => {
       browser = await this.getBrowser()
       assertActive()
-      context = await browser.newContext(this.config.context)
+      let userAgent = this.config.context?.userAgent ?? this.config.userAgent
+      if (userAgent === undefined) {
+        const session = await browser.newBrowserCDPSession()
+        try {
+          const info = await session.send('Browser.getVersion')
+          userAgent = browserUserAgent(info.userAgent, info.product)
+        } finally {
+          await session.detach()
+        }
+        assertActive()
+      }
+      context = await browser.newContext({
+        ...this.config.context,
+        userAgent,
+      })
       context.setDefaultTimeout(this.config.actionTimeout ?? 10000)
       assertActive()
       const page = await context.newPage()
