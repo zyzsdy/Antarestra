@@ -187,4 +187,6 @@ Markdown 代码块操作由 packages/markdown 统一维护：默认显示无边�
 
 ## 插件配置集合表格
 
+模型对象字段由 config-panel 的 SchemaModel 组合共享 SelectField，按提供商、模型、思考强度纵向排列，沿用现有蓝白表单和系统字体。错误、空目录与原值不可用提示紧邻控件；按钮自然换行，窄屏保持单列，不新增全局视觉令牌。
+
 数组与动态字典由 config-panel 的 SchemaCollection 统一渲染，沿用控制台蓝白表格、系统字体、细边框与 7px 圆角。对象成员展开为列；每行保留上移、下移与删除，添加行和环境变量入口置于表格上方。窄屏在表格内部横向滚动，页面本身不溢出；敏感单元格复用 SecretInput，枚举与布尔值复用 SelectField。

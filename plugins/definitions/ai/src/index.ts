@@ -43,6 +43,8 @@ import {
 import type { Tables } from './store.js'
 import { AiError, canonical, check, compile, freeze, identifier, json, payload } from './utils.js'
 import { Running } from './runtime.js'
+import { generate } from './generate.js'
+import type { GenerateOptions, ModelOutput } from './types.js'
 import { routes } from './http.js'
 import { validateAgent, validateCommand } from './validation.js'
 import { defaultContextPolicy } from '@antarestra/contracts'
@@ -93,6 +95,7 @@ export class AiService extends Service<Config> {
     { source: string; request?: unknown; owner?: Context; providerId?: string }
   >()
   readonly running = new Map<string, Running>()
+  private readonly directCalls = new Set<{ tokens: Set<object>; cancel(): Promise<void> }>()
   private queue: Promise<unknown> = Promise.resolve()
   private closing = false
   readonly config: Config
@@ -103,6 +106,7 @@ export class AiService extends Service<Config> {
     ctx.rbac.registerPermission(ctx, 'ai.chat.use', '使用 AI 对话', ['user', 'admin'])
     ctx.effect(() => async () => {
       this.closing = true
+      await Promise.all([...this.directCalls].map((call) => call.cancel()))
       await Promise.all([...this.running.values()].map((run) => run.cancel()))
       await this.queue
     })
@@ -160,6 +164,11 @@ export class AiService extends Service<Config> {
     return result
   }
   private async removed(entry: { token: object }) {
+    await Promise.all(
+      [...this.directCalls]
+        .filter((call) => call.tokens.has(entry.token))
+        .map((call) => call.cancel()),
+    )
     await Promise.all(
       [...this.running.values()]
         .filter((run) => run.bound.tokens.has(entry.token))
@@ -365,6 +374,46 @@ export class AiService extends Service<Config> {
     const access = Object.freeze({ actorId: identity.actorId, workspaceId: identity.workspaceId })
     this.accesses.set(access, { source, request })
     return access
+  }
+  /** 已认证入口的单次文本生成；不创建 Agent、会话、工具或历史记录。 */
+  async generate(owner: Context, access: Access, options: GenerateOptions): Promise<ModelOutput> {
+    await this.verify(access)
+    owner.fiber.assertActive()
+    this.active()
+    const provider = this.providers.get(options.model.providerId)
+    const driver = this.drivers.get(provider.value.driverId)
+    const controller = new AbortController()
+    let pending: Promise<ModelOutput> | undefined
+    const call = {
+      tokens: new Set([provider.token, driver.token]),
+      async cancel() {
+        controller.abort(new AiError('cancelled', '直接模型调用已取消'))
+        await pending?.catch(() => {})
+      },
+    }
+    const release = owner.effect(() => () => call.cancel())
+    this.directCalls.add(call)
+    try {
+      pending = generate(
+        owner,
+        access,
+        options,
+        provider,
+        driver,
+        controller.signal,
+        this.config.modelIdleTimeoutMs,
+      )
+      const result = await pending
+      await this.verify(access)
+      controller.signal.throwIfAborted()
+      options.signal?.throwIfAborted()
+      owner.fiber.assertActive()
+      check(provider.active && driver.active, '模型能力已卸载')
+      return result
+    } finally {
+      this.directCalls.delete(call)
+      await release()
+    }
   }
   async verify(access: Access): Promise<RequestAccess> {
     this.active()

@@ -3,6 +3,7 @@ import { SecretInput, SelectField } from '@antarestra/webui/components'
 import type { Schema } from './types.js'
 import SchemaForm from './SchemaForm.vue'
 import SchemaCollection from './SchemaCollection.vue'
+import SchemaModel from './SchemaModel.vue'
 const props = defineProps<{
   field: Schema
   value: unknown
@@ -66,8 +67,16 @@ function sensitive(field: Schema) {
 }
 </script>
 <template>
+  <SchemaModel
+    v-if="!sensitive(field) && field['x-ai-model'] && field.type === 'object'"
+    :field="field"
+    :value="value"
+    :id="id"
+    :label="label"
+    @change="(item, remove) => emit('change', item, remove)"
+  />
   <SchemaCollection
-    v-if="
+    v-else-if="
       !sensitive(field) &&
       (field.type === 'array' || (field.type === 'object' && !field.properties)) &&
       typeof value !== 'string'

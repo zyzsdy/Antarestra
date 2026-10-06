@@ -181,3 +181,23 @@ SSE 的 `id` 为 Run 内递增序号，`event` 为事件类型，`data` 为完�
 浏览器界面始终显示原始内容。模型按钮左侧的环形提示仅在发送前后更新，Tooltip 显示预算来源；切换模型后旧快照标记“上次请求”，未发送草稿不计入。裁剪和压缩分割线位于“已处理”内，数字为完整有效上下文的估算值，不含输出预留；摘要内容不进入聊天正文和复制结果。
 
 验证组件可运行 `pnpm exec vite --config tests/fixtures/markdown-preview.config.ts --host 127.0.0.1 --port 0`，打开输出端口的 `/tests/fixtures/context-preview.html`。该页面仅使用模拟数据，不调用真实模型。
+
+## 插件直接调用模型
+
+普通服务端插件可使用 `ctx.ai.generate(owner, access, options)` 调用已注册提供商和驱动，无须注册或运行 Agent，也不创建会话、消息或运行记录。入口先使用 `ctx.ai.authorize(source, request)` 获得可信身份；不可自行构造 `Access`，核心会在调用前后重新校验 `ai.chat.use` 和工作空间。后台插件可使用既有 `authorizeBackground`。
+
+```ts
+const access = await ctx.ai.authorize('im', message.request)
+const output = await ctx.ai.generate(ctx, access, {
+  model: { providerId: 'provider', modelId: 'model' },
+  systemPrompt: '请根据给定资料回答。',
+  messages: [{ role: 'user', content: [{ type: 'text', text: '资料与问题' }] }],
+  thinking: 'high',
+  maxOutputTokens: 1000,
+  signal: message.signal,
+})
+```
+
+`messages` 可传入多轮用户及助理文本上下文；`systemPrompt` 按原样发送，不展开模板变量。`thinking` 省略或为 `null` 时使用模型默认，显式值须在模型支持列表中。`parameters` 传入驱动参数，`update` 接收流式活动、文本和思考增量，结果为 `ModelOutput`，包含文本、思考和可选用量。调用方负责上下文长度、总超时和自身业务限流。
+
+此接口仅支持文本输入和文本／思考输出，不提供附件、工具执行、扩展或历史压缩。输出截断或异常结束会拒绝请求。凭据仍只在服务端解析，沿用提供商空闲超时；调用方、提供商、驱动或 AI 核心卸载以及外部取消信号都会取消请求。驱动和凭据解析器接收 `ModelContext`，仅保证身份、空间和取消信号；普通 Agent 运行仍传入包含会话与 Agent 的 `RunContext`。

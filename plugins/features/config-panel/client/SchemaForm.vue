@@ -15,7 +15,14 @@ const fields = computed(() =>
   <div class="schema-fields">
     <p v-if="!fields.length">此插件没有可编辑的表单配置项。</p>
     <div v-for="[key, field] in fields" :key="key" class="schema-field">
-      <template v-if="field.type === 'object' && field.properties && !field.additionalProperties">
+      <template
+        v-if="
+          field.type === 'object' &&
+          field.properties &&
+          !field.additionalProperties &&
+          !field['x-ai-model']
+        "
+      >
         <fieldset>
           <legend>{{ field.title ?? key }}</legend>
           <small v-if="field.description">{{ field.description }}</small>

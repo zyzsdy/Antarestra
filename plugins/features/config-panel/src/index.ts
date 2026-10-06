@@ -4,6 +4,7 @@ import type { Operation, PanelLayout } from '@antarestra/config-loader'
 import { AuthError, readJson, textField } from '@antarestra/rbac'
 import type { HttpContext } from '@antarestra/plugin-server'
 import '@antarestra/webui'
+import type {} from '@antarestra/ai'
 import { fileURLToPath } from 'node:url'
 
 export const name = '@antarestra/plugin-config-panel'
@@ -64,6 +65,19 @@ export function apply(ctx: Context) {
   })
   route('GET', '/catalog', async (http) => {
     http.body = await manager.catalog()
+  })
+  ctx.inject(['ai'], (scope) => {
+    scope.server.route(
+      scope,
+      'GET',
+      base + '/ai-models',
+      scope.rbac.require('admin.console.view'),
+      scope.rbac.require('admin.plugins.manage'),
+      async (http) => {
+        http.set('Cache-Control', 'no-store')
+        http.body = { providers: scope.ai.capabilities().providers }
+      },
+    )
   })
   route('GET', '/instances/:id', async (http) => {
     http.body = await manager.detail(textField(http.params.id, '实例标识', 250))

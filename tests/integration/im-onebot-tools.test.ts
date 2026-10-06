@@ -70,6 +70,8 @@ async function createApp(
     driver: {
       id: 'driver',
       async generate(request, _connection, context) {
+        if (!('runId' in context) || typeof context.runId !== 'string')
+          throw new Error('此测试驱动仅支持 Agent 运行')
         requests.push(request)
         const step = steps.get(context.runId) ?? 0
         steps.set(context.runId, step + 1)

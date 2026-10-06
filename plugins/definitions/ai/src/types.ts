@@ -29,7 +29,24 @@ export interface Config {
   modelIdleTimeoutMs: number
   toolTimeoutMs: number
 }
-export interface RunContext {
+/** 单次模型调用的可信身份；不要求存在 Agent 或持久化会话。 */
+export interface ModelContext {
+  readonly actorId: string
+  readonly workspaceId: string
+  readonly signal: AbortSignal
+  readonly conversationId?: string
+}
+export interface GenerateOptions {
+  model: import('@antarestra/contracts').ModelRef
+  systemPrompt: string
+  messages: ChatMessage[]
+  thinking?: string | null
+  maxOutputTokens?: number
+  parameters?: JsonObject
+  signal?: AbortSignal
+  update?: (event: ModelUpdate) => Promise<void>
+}
+export interface RunContext extends ModelContext {
   readonly runId: string
   readonly conversationId: string
   readonly workspaceId: string
@@ -73,7 +90,7 @@ export interface Provider {
     options: JsonObject
   }[]
   idleTimeoutMs?: number
-  resolveCredential?(context: RunContext): Promise<string>
+  resolveCredential?(context: ModelContext): Promise<string>
 }
 export interface ModelOutput {
   content: ContentBlock[]
@@ -96,7 +113,7 @@ export interface ModelDriver {
       credential: string | undefined
       resources?: ReadonlyMap<string, ResolvedResource>
     },
-    context: RunContext,
+    context: ModelContext,
     update: (event: ModelUpdate) => Promise<void>,
   ): Promise<ModelOutput>
 }

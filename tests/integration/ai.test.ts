@@ -134,6 +134,151 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('直接调用已有模型，无 Agent 后端也能传递提示词、上下文和思考强度，不增加运行记录', async () => {
+    const generate = vi.fn<ModelDriver['generate']>(async () => ({
+      content: [{ type: 'text', text: '译文' }],
+      stopReason: 'stop',
+    }))
+    const app = await setup({ driver: { id: 'driver', generate } })
+    await app.backend.dispose()
+    await app.removeAgent()
+    const before = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+    const result = await app.ctx.ai.generate(app.ctx, app.access, {
+      model,
+      systemPrompt: '自定义提示词 {{不展开}}',
+      thinking: 'high',
+      maxOutputTokens: 80,
+      messages: [
+        { role: 'assistant', content: [{ type: 'text', text: '上下文' }] },
+        { role: 'user', content: [{ type: 'text', text: '待翻译' }] },
+      ],
+    })
+    expect(result.content).toEqual([{ type: 'text', text: '译文' }])
+    expect(generate).toHaveBeenCalledOnce()
+    expect(generate.mock.calls[0]![0]).toMatchObject({
+      tools: [],
+      systemPrompt: '自定义提示词 {{不展开}}',
+      thinking: 'high',
+      maxOutputTokens: 80,
+    })
+    expect(generate.mock.calls[0]![1].credential).toBe('secret-never-export')
+    expect(generate.mock.calls[0]![2]).toMatchObject({ actorId: 'actor', workspaceId: 'space' })
+    expect(generate.mock.calls[0]![2]).not.toHaveProperty('agent')
+    expect(await app.ctx.ai.getConversation(app.access, app.conversation.id)).toEqual(before)
+    await expect(
+      app.ctx.ai.generate(
+        app.ctx,
+        { actorId: 'actor', workspaceId: 'other' },
+        { model, systemPrompt: '', messages: [] },
+      ),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(
+      app.ctx.ai.generate(app.ctx, app.access, {
+        model,
+        systemPrompt: '',
+        messages: [],
+        thinking: 'unknown',
+      }),
+    ).rejects.toThrow('思考强度')
+  })
+  it.each(['owner', 'provider', 'driver', 'core', 'signal'] as const)(
+    '直接调用在 %s 取消或卸载时终止',
+    async (kind) => {
+      let signal: AbortSignal | undefined
+      const app = await setup({
+        driver: {
+          id: 'driver',
+          generate: async (_request, _connection, context) => {
+            signal = context.signal
+            return new Promise(() => {})
+          },
+        },
+      })
+      let owner!: Context
+      const fiber = await app.ctx.plugin((ctx: Context) => {
+        owner = ctx
+      })
+      const provider = app.ctx.ai.registerProvider(owner, {
+        id: 'direct',
+        title: '直接调用',
+        driverId: 'direct-driver',
+        baseUrl: '',
+        models: app.ctx.ai.capabilities().providers[0]!.models,
+      })
+      const driver = app.ctx.ai.registerDriver(owner, {
+        id: 'direct-driver',
+        generate: async (_request, _connection, context) => {
+          signal = context.signal
+          return new Promise(() => {})
+        },
+      })
+      const controller = new AbortController()
+      const pending = app.ctx.ai.generate(owner, app.access, {
+        model: { providerId: 'direct', modelId: 'model' },
+        systemPrompt: '',
+        messages: [],
+        signal: controller.signal,
+      })
+      const failure = expect(pending).rejects.toBeDefined()
+      await vi.waitFor(() => expect(signal).toBeDefined())
+      if (kind === 'owner') await fiber.dispose()
+      else if (kind === 'provider') await provider()
+      else if (kind === 'driver') await driver()
+      else if (kind === 'core') await app.core.dispose()
+      else controller.abort()
+      await failure
+      expect(signal!.aborted).toBe(true)
+    },
+  )
+  it('直接调用结束时重新检查可信空间，不返回身份已变化的结果', async () => {
+    let finish!: () => void
+    const app = await setup({
+      driver: {
+        id: 'driver',
+        generate: async () => {
+          await new Promise<void>((resolve) => {
+            finish = resolve
+          })
+          return { content: [{ type: 'text', text: '结果' }] }
+        },
+      },
+    })
+    let workspaceId = 'space'
+    app.ctx.rbac.registerRequestSource(app.ctx, 'direct-test', {
+      id: 'direct-test',
+      resolve: async () => ({ actorId: 'actor', workspaceId, roles: ['user'] }),
+    })
+    const access = await app.ctx.ai.authorize('direct-test', {})
+    const pending = app.ctx.ai.generate(app.ctx, access, { model, systemPrompt: '', messages: [] })
+    const failure = expect(pending).rejects.toMatchObject({ code: 'forbidden' })
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    workspaceId = 'other'
+    finish()
+    await failure
+  })
+  it('直接调用拒绝截断、工具输出和空闲超时', async () => {
+    const generate = vi.fn<ModelDriver['generate']>()
+    const app = await setup({
+      config: { modelIdleTimeoutMs: 20 },
+      driver: { id: 'driver', generate },
+    })
+    const request = { model, systemPrompt: '', messages: [] }
+    generate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '未完成' }],
+      stopReason: 'length',
+    })
+    await expect(app.ctx.ai.generate(app.ctx, app.access, request)).rejects.toMatchObject({
+      code: 'model_output_truncated',
+    })
+    generate.mockResolvedValueOnce({
+      content: [{ type: 'tool-call', id: 'call', name: 'forbidden', arguments: {} }],
+    })
+    await expect(app.ctx.ai.generate(app.ctx, app.access, request)).rejects.toThrow('非文本')
+    generate.mockImplementationOnce(async () => new Promise(() => {}))
+    await expect(app.ctx.ai.generate(app.ctx, app.access, request)).rejects.toMatchObject({
+      code: 'model_idle_timeout',
+    })
+  })
   it.each([false, true])(
     '截断保留内容和结束原因，不执行工具或自动续写（工具=%s）',
     async (withTool) => {

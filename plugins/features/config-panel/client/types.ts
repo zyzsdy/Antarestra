@@ -15,6 +15,7 @@ export interface Schema {
   oneOf?: Record<string, unknown>[]
   anyOf?: Record<string, unknown>[]
   ['x-sensitive']?: boolean
+  ['x-ai-model']?: boolean
   ['x-order']?: number
 }
 // 仅校验约束不改变字段结构，仍可由 properties 生成表单；校验交给服务端。
@@ -56,7 +57,10 @@ export function resolveFormSchema(
     // 引用旁只接受展示注解，避免覆盖被引用结构中的校验约束。
     if (
       Object.keys(siblings).some(
-        (key) => !['title', 'description', 'default', 'x-order', 'x-sensitive'].includes(key),
+        (key) =>
+          !['title', 'description', 'default', 'x-order', 'x-sensitive', 'x-ai-model'].includes(
+            key,
+          ),
       )
     )
       return undefined

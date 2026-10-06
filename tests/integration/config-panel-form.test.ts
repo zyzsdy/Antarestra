@@ -5,6 +5,25 @@ import {
   supportsForm,
 } from '../../plugins/features/config-panel/client/types.js'
 import type { Schema } from '../../plugins/features/config-panel/client/types.js'
+
+it('模型选择注解通过本地引用保留，仍按对象 Schema 校验', () => {
+  const schema: Schema = {
+    type: 'object',
+    properties: { model: { $ref: '#/$defs/model', 'x-ai-model': true } },
+    $defs: {
+      model: {
+        type: 'object',
+        properties: {
+          providerId: { type: 'string' },
+          modelId: { type: 'string' },
+          thinking: { type: 'string' },
+        },
+      },
+    },
+  }
+  expect(supportsForm(schema)).toBe(true)
+  expect(resolveFormSchema(schema)?.properties?.model?.['x-ai-model']).toBe(true)
+})
 import { validateConfig } from '@antarestra/plugin-sdk/schema'
 
 async function pluginSchema(directory: string): Promise<Schema> {

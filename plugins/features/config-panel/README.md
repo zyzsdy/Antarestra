@@ -67,6 +67,29 @@ Schema 使用 JSON Schema Draft 2020-12，保存在包内静态 JSON 文件，�
 
 ## API 与验证
 
+### 模型选择 Schema 注解
+
+对象字段可标记 `x-ai-model: true`，其 `properties` 使用 `providerId`、`modelId` 字符串；可选 `thinking` 字符串使表单显示模型支持的思考强度。仍使用普通 JSON Schema 校验，注解仅影响展示：
+
+```json
+{
+  "type": "object",
+  "title": "生成模型",
+  "x-ai-model": true,
+  "properties": {
+    "providerId": { "type": "string" },
+    "modelId": { "type": "string" },
+    "thinking": { "type": "string" }
+  },
+  "required": ["providerId", "modelId"],
+  "additionalProperties": false
+}
+```
+
+提供商和模型使用共享 SelectField，可搜索；切换提供商清空旧模型和强度，切换模型清空旧强度。刷新失败、空目录或原模型已移除时保留原值并提示，不自动选取替代模型。支持整个对象的环境变量引用，细粒度环境引用仍可通过 YAML 编辑。默认值、必填及校验继续遵循声明的 Schema。
+
+`GET /api/plugin-config-panel/ai-models` 需要 `admin.console.view` 和 `admin.plugins.manage`，只返回提供商标题、标识及模型元数据，不返回地址、密钥、驱动或执行函数。路由随可选 AI 服务注入和回收；缺少 AI 时其他配置功能继续工作，模型字段显示错误与刷新入口。浏览器夹具为 `/tests/fixtures/schema-model-preview.html`，使用 `markdown-preview.config.ts` 启动并注入测试目录。
+
 `/api/plugin-config-panel` 提供快照、实例详情、包发现、配置修改、布局、加载器设置、逐实例应用和操作查询。写操作携带配置版本；长操作返回 202 与任务 ID，查询结果包含 `saved`、运行状态及运行代次。任务只保存在内存，进程重启后不恢复历史任务。
 
 `POST /api/plugin-config-panel/restart` 独立校验重启权限与密码。健康响应的 `X-Antarestra-Generation` 仅用于判断进程代次变化，不表示全部插件成功。网页在恢复后重新登录查看各实例状态。

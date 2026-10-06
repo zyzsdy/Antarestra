@@ -11,7 +11,7 @@ import type {
   AgentPreset,
   JsonObject,
   RequestSnapshot,
-  RunContext,
+  ModelContext,
   RunRecord,
 } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
@@ -43,7 +43,7 @@ async function setup(
     idleTimeoutMs?: number
     system?: string
     user?: string
-    compact?: (request: RequestSnapshot, context: RunContext) => Promise<string>
+    compact?: (request: RequestSnapshot, context: ModelContext) => Promise<string>
   } = {},
 ) {
   const ctx = new Context()

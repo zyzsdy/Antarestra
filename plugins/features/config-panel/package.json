@@ -20,6 +20,7 @@
     }
   },
   "dependencies": {
+    "@antarestra/ai": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",

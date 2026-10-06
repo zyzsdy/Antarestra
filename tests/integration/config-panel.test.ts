@@ -5,6 +5,7 @@ import { resolvePlugin } from '../../apps/server/src/plugins.js'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import ai from '@antarestra/ai'
 const contexts: Context[] = []
 const directories: string[] = []
 afterEach(async () => {
@@ -13,6 +14,38 @@ afterEach(async () => {
     await rm(path, { recursive: true, force: true, maxRetries: 10 })
 })
 const password = 'panel-test-password-42'
+it('模型目录受插件管理权限保护，只返回元数据，AI 卸载后移除路由', async () => {
+  const app = await setup()
+  const fiber = await app.ctx.plugin(ai, {})
+  app.ctx.ai.registerProvider(app.ctx, {
+    id: 'provider',
+    title: '测试提供商',
+    baseUrl: 'https://private.example.invalid',
+    driverId: 'driver',
+    resolveCredential: async () => 'private-key',
+    models: [
+      {
+        id: 'model',
+        title: '测试模型',
+        contextWindow: 1000,
+        maxOutputTokens: 100,
+        thinkingLevels: ['low'],
+        input: ['text'],
+        output: ['text'],
+        tools: false,
+      },
+    ],
+  })
+  const cookie = await app.login()
+  const response = await app.request('/plugin-config-panel/ai-models', cookie)
+  expect(response.status).toBe(200)
+  const body = await response.text()
+  expect(body).toContain('测试模型')
+  expect(body).not.toContain('private')
+  expect((await app.request('/plugin-config-panel/ai-models')).status).toBe(401)
+  await fiber.dispose()
+  expect((await app.request('/plugin-config-panel/ai-models', cookie)).status).toBe(404)
+})
 async function setup(local = false) {
   const directory = await mkdtemp(join(tmpdir(), 'antarestra-panel-api-'))
   directories.push(directory)
