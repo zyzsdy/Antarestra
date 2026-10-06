@@ -22,14 +22,14 @@ plugins:
 
 ## 工具
 
-| 工具             | 主要参数与行为                                                                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `web_search`     | `query` 或 `queries` 二选一；可选 `count/page/language/country/timeRange/domains`。时间范围为 `h/d/w/m/y`，域名不包含协议。返回独立查询结果与来源链接。 |
-| `web_open`       | `url` 打开网页或 PDF，指定 `pageId` 复用页面；`action` 支持 `open/back/forward/reload/list/close`。默认直接返回页面内容。                               |
-| `web_snapshot`   | `pageId`；`view` 为 `combined/main/interactive/full`，`ref` 读取子树，`cursor` 继续读取。PDF 使用 `pdfPage`。                                           |
-| `web_find`       | `pageId/text`；可选 `caseSensitive/includeHidden/offset/limit`。返回全文命中片段、节点引用或 PDF 页码。                                                 |
-| `web_interact`   | `pageId/actions`；顺序执行最多 20 项操作，返回每步结果、执行后页面内容及页面清单。                                                                      |
-| `web_screenshot` | `pageId`；可选 `ref/fullPage/pdfPage`。默认截取视口，返回图片附件及坐标信息。                                                                           |
+| 工具             | 主要参数与行为                                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web_search`     | `query` 或 `queries` 二选一；可选 `count/page/language/country/timeRange/domains`。时间范围为 `h/d/w/m/y`，域名不包含协议。返回独立查询结果与来源链接。     |
+| `web_open`       | `url` 打开网页或 PDF，指定 `pageId` 复用页面；`action` 支持 `open/back/forward/reload/list/close`。默认直接返回页面内容。                                   |
+| `web_snapshot`   | `pageId`；`view` 为 `combined/main/interactive/full`，`ref` 读取子树，`cursor` 继续读取。PDF 使用 `pdfPage`。                                               |
+| `web_find`       | `pageId/text`；可选 `caseSensitive/includeHidden/offset/limit`。返回全文命中片段、节点引用或 PDF 页码。                                                     |
+| `web_interact`   | `pageId/actions`；顺序执行最多 20 项操作，返回每步结果、执行后页面内容及页面清单。                                                                          |
+| `web_screenshot` | `pageId/html/resourceId` 三选一；网页可选 `ref/fullPage/pdfPage`，HTML 固定整页。`saveToWorkspace` 默认 false，直接返回临时图片；true 保存并只返回资源 ID。 |
 
 打开和交互已返回页面内容，通常不必紧跟快照工具。分页游标绑定保存内容，导航和交互后使用新快照。来源标识、最终 URL、标题与获取时间保留在结果中；搜索摘要不代表实际读取的正文。
 
@@ -62,7 +62,22 @@ URL 校验目前只限制 HTTP(S) 协议及嵌入凭据，没有阻止回环、�
 
 浏览器任务按会话 FIFO 串行，包括操作及自动快照；不同会话和搜索并发。默认空闲 30 分钟回收。达到会话上限优先淘汰没有任务的最久未用会话，无可淘汰资源时报错。排队任务取消后不执行；正在执行的操作取消或超时会关闭上下文。会话删除、插件卸载、浏览器断开使旧标识失效；进程重启不恢复。
 
-工具注册 `resultMode: 'structured'` 后返回 `{ content, images?, isError? }`，普通 JSON 工具不受影响。`ctx.ai.storeToolImage(context, image)` 只接受正在执行的真实工具上下文。图片复用工作空间配额、访问权限、过期规则和聊天附件预览。
+工具注册 `resultMode: 'structured'` 后返回 `{ content, images?, isError? }`，普通 JSON 工具不受影响。`ctx.ai.storeToolImage(context, image, persist)` 只接受正在执行的真实工具上下文。省略 persist 保持既有保存行为；截图工具显式传入 `saveToWorkspace`（默认 false）。
+
+默认截图不写入工作空间，不要求文件存储服务。图片只在当前 AI 运行内存中保留，供支持图片输入的模型读取；运行结束即释放，后续运行只能看到不可用图片的文字说明，无法再次下载或发送。单次运行最多保留 32 MiB 临时图片，历史和事件只记录临时引用，不写入 Base64。
+
+`saveToWorkspace: true` 复用工作空间附件写入、配额、访问权限和过期规则，只返回 `{ resourceId }`，不附带 `images`，模型不会收到图片正文。将资源 ID 交给 `im_prepare_image`，即可在最终 IM 回复中发送图片。
+
+HTML 输入示例：
+
+```json
+{
+  "html": "<!doctype html><meta charset=\"utf-8\"><style>body{padding:40px;font-family:sans-serif}</style><h1>报告</h1><p>图文内容</p>",
+  "saveToWorkspace": true
+}
+```
+
+已有 HTML 文件使用 `{"resourceId":"实际 HTML 文件资源 ID","saveToWorkspace":true}`。通过当前真实工具上下文读取可访问的文件，要求 `text/html` 类型、UTF-8 编码，最大 16 MiB。HTML 使用独立浏览器上下文，等待页面加载、字体和图片解码后截取整页，成功、失败或取消后均关闭，不占用网页会话页面。HTML 不接受 `ref/fullPage/pdfPage`；图片、样式等外部资源须使用绝对 URL 或 data URL，相对路径不会自动映射到工作空间文件。整页最多 2400 万像素，超限返回错误。
 
 历史和事件只保存资源引用，模型请求期间解析为 Base64 图片内容。非视觉模型收到说明，附件仍保留。单张最大 8 MiB，整次上下文附件最大 32 MiB；超大截图返回错误，不静默裁切。
 

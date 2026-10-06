@@ -52,6 +52,103 @@ const image: ToolImage = {
   height: 10,
   size: 20,
 }
+it.runIf(process.env.WEB_BROWSER_TEST === '1')(
+  'HTML 文本和资源生成整页图片，保存模式仅返回资源 ID，并清理临时页面',
+  async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const html =
+      '<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#eef}article{height:1400px}footer{height:100px;background:#f00}</style><article><h1>图文文档</h1><img src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect width=%22100%22 height=%22100%22 fill=%22blue%22/%3E%3C/svg%3E"></article><footer>末尾证据</footer>'
+    const writes: boolean[] = []
+    class ImageSink extends Service {
+      constructor() {
+        super(ctx, 'ai')
+      }
+      async readToolResource(who: RunContext, id: string) {
+        if (who.workspaceId !== 'space' || id !== 'html-file') throw new Error('拒绝跨空间资源')
+        return {
+          data: Buffer.from(html).toString('base64'),
+          mimeType: 'text/html',
+          filename: '文档.html',
+        }
+      }
+      async storeToolImage(_who: RunContext, data: GeneratedImage, persist: boolean) {
+        writes.push(persist)
+        expect(data.height).toBeGreaterThanOrEqual(1500)
+        expect(Buffer.from(data.data).readUInt32BE(20)).toBe(data.height)
+        return {
+          ...image,
+          width: data.width,
+          height: data.height,
+          resourceId: persist ? 'saved-image' : 'ai-transient:test',
+        }
+      }
+    }
+    new ImageSink()
+    await ctx.plugin(playwright, { context: { viewport: { width: 800, height: 600 } } })
+    const observer = await ctx.playwright.createPage(ctx)
+    const engine = observer.page.context().browser()!
+    const baseline = engine.contexts().length
+    const browser = new BrowserTools(ctx, { timeoutMs: 10000 })
+    const result = await browser.execute('web_screenshot', { html }, context())
+    expect(result.isError, JSON.stringify(result)).not.toBe(true)
+    expect(result.images?.[0]?.height).toBeGreaterThanOrEqual(1500)
+    expect(writes).toEqual([false])
+    const saved = await browser.execute(
+      'web_screenshot',
+      { resourceId: 'html-file', saveToWorkspace: true },
+      context(),
+    )
+    expect(saved).toEqual({ content: { resourceId: 'saved-image' } })
+    expect(writes).toEqual([false, true])
+    expect(
+      (
+        await browser.execute(
+          'web_screenshot',
+          { resourceId: 'html-file' },
+          context('actor', 'other'),
+        )
+      ).isError,
+    ).toBe(true)
+    expect(
+      (await browser.execute('web_screenshot', { html, pageId: 'page' }, context())).isError,
+    ).toBe(true)
+    expect(
+      (await browser.execute('web_screenshot', { html, fullPage: false }, context())).isError,
+    ).toBe(true)
+    expect(browser.sessions.entries.size).toBe(0)
+    expect(engine.contexts().length).toBe(baseline)
+    const oversized = await browser.execute(
+      'web_screenshot',
+      { html: '<div style="width:30000px;height:1000px">超宽内容</div>' },
+      context(),
+    )
+    expect(oversized).toMatchObject({ isError: true, content: { error: 'screenshot_too_large' } })
+    expect(engine.contexts().length).toBe(baseline)
+    const server = createServer(() => {})
+    await listenForTest(server)
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('端口错误')
+    try {
+      const controller = new AbortController()
+      const pending = browser.execute(
+        'web_screenshot',
+        { html: `<img src="http://127.0.0.1:${address.port}/pending">` },
+        context('actor', 'space', controller.signal),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      controller.abort()
+      await expect(pending).rejects.toBeDefined()
+      expect(engine.contexts().length).toBe(baseline)
+      expect(writes).toEqual([false, true])
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+      await observer.close()
+    }
+  },
+  30000,
+)
 it('结构化结果校验与 Base64 图片内容转换保留调用对应内容', () => {
   expect(structuredResult({ content: { ok: true }, images: [image] }).images).toEqual([image])
   expect(() =>

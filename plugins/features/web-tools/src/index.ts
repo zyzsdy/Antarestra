@@ -229,19 +229,63 @@ export function apply(ctx: Context, input: Config = {}) {
     {
       id: 'web_screenshot',
       description:
-        '查看网页或 PDF 的实际画面，适合辨认图片文字、图表、布局或为坐标操作定位。网页默认截取当前视口；ref 可截取单个元素，fullPage=true 可截取整页；PDF 用 pdfPage 选择页码。返回图像、截图标识和坐标信息，需模型支持图片输入。坐标操作须使用当前截图；页面内容或滚动位置变化后应重新截图。',
-      parameters: object(
-        {
+        '截取网页、PDF，或将 HTML 图文文档渲染为整页图片。pageId、html、resourceId 三选一：pageId 使用已打开页面；html 传 HTML 文本；resourceId 读取当前工作空间可访问的 HTML 文件。HTML 固定截取整页，不接受 ref/fullPage/pdfPage。网页默认截取视口，可用 ref 或 fullPage；PDF 用 pdfPage。saveToWorkspace 默认 false：不保存文件，直接返回图片供视觉模型查看；true：保存到当前工作空间，只返回图片 resourceId，不返回图片内容，可供 im_prepare_image 准备发送。页面或滚动变化后坐标操作须重新截图。',
+      parameters: {
+        ...object({
           ...page,
+          html: {
+            ...string,
+            description:
+              '完整 HTML 文本，支持内联 CSS、图文混排，最大 16 MiB。图片使用绝对 URL 或 data URL，相对路径不会解析为工作空间文件。',
+          },
+          resourceId: {
+            ...string,
+            description: '可访问的 text/html 文件资源 ID，内容按 UTF-8 读取。',
+          },
+          saveToWorkspace: {
+            type: 'boolean',
+            default: false,
+            description:
+              '是否保存图片到当前工作空间；true 只返回 resourceId，false 直接向 AI 返回临时图片。',
+          },
           ref: { ...string, description: '只截取此元素；省略则截取视口或整页。' },
           fullPage: {
             type: 'boolean',
             description: 'true 截取整页，默认 false；截取 ref 元素时无需填写。',
           },
           pdfPage: { ...integer(1, 500), description: 'PDF 页码，从 1 开始，默认第 1 页。' },
-        },
-        ['pageId'],
-      ),
+        }),
+        oneOf: [
+          {
+            required: ['pageId'],
+            not: { anyOf: [{ required: ['html'] }, { required: ['resourceId'] }] },
+          },
+          {
+            required: ['html'],
+            not: {
+              anyOf: [
+                { required: ['pageId'] },
+                { required: ['resourceId'] },
+                { required: ['ref'] },
+                { required: ['fullPage'] },
+                { required: ['pdfPage'] },
+              ],
+            },
+          },
+          {
+            required: ['resourceId'],
+            not: {
+              anyOf: [
+                { required: ['pageId'] },
+                { required: ['html'] },
+                { required: ['ref'] },
+                { required: ['fullPage'] },
+                { required: ['pdfPage'] },
+              ],
+            },
+          },
+        ],
+      },
     },
   ]
   for (const definition of definitions)

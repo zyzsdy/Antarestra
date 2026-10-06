@@ -437,8 +437,14 @@ export class BrowserTools {
         x: scrollX,
         y: scrollY,
         total: document.documentElement.scrollHeight,
+        totalWidth: document.documentElement.scrollWidth,
+        scale: devicePixelRatio,
       }))
-      if (args.fullPage && viewport.width * viewport.total > 24_000_000)
+      if (
+        args.fullPage &&
+        Math.max(viewport.width, viewport.totalWidth) * viewport.total * viewport.scale ** 2 >
+          24_000_000
+      )
         throw new WebError('screenshot_too_large', '整页过大，请使用视口或元素截图')
       const element = args.ref
         ? await target(record.snapshot, String(args.ref), record.key)
@@ -465,7 +471,9 @@ export class BrowserTools {
         }))
         const cssWidth = element
           ? ((await element.boundingBox())?.width ?? after.width)
-          : after.width
+          : args.fullPage
+            ? Math.max(viewport.width, viewport.totalWidth)
+            : after.width
         const domVersion = await record.page.evaluate(
           (key) =>
             (globalThis as unknown as Record<string, { version: number }>)[key]?.version ?? 0,
@@ -493,17 +501,24 @@ export class BrowserTools {
       throw new WebError('screenshot_too_large', '截图超过 8 MiB，请使用视口或元素截图')
     let stored
     try {
-      stored = await this.ctx.ai.storeToolImage(context, {
-        ...image,
-        signal,
-        mimeType: 'image/png',
-        filename: `网页截图-${Date.now()}.png`,
-      })
+      stored = await this.ctx.ai.storeToolImage(
+        context,
+        {
+          ...image,
+          signal,
+          mimeType: 'image/png',
+          filename: `网页截图-${Date.now()}.png`,
+        },
+        args.saveToWorkspace === true,
+      )
     } catch {
       signal.throwIfAborted()
+      if (args.saveToWorkspace !== true)
+        throw new WebError('image_failed', '临时截图返回失败，请检查运行期图片总量是否超过 32 MiB')
       throw new WebError('storage_failed', '截图保存失败，请检查工作空间文件权限、配额与存储服务')
     }
     this.ctx.logger.debug('网页截图：%d 字节', image.data.byteLength)
+    if (args.saveToWorkspace === true) return { content: { resourceId: stored.resourceId } }
     return {
       images: [stored],
       content: asJson({
@@ -511,6 +526,67 @@ export class BrowserTools {
         screenshot: record.screenshot ?? null,
         pdfPage: record.pdf ? (args.pdfPage ?? 1) : null,
       }),
+    }
+  }
+  private async htmlScreenshot(args: JsonObject, context: RunContext) {
+    const signal = AbortSignal.any([
+      context.signal,
+      AbortSignal.timeout(this.config.timeoutMs ?? 60000),
+    ])
+    let html = args.html
+    if (typeof args.resourceId === 'string') {
+      const resource = await abortable(
+        this.ctx.ai.readToolResource(context, args.resourceId),
+        signal,
+      )
+      if (resource.mimeType.split(';')[0]?.trim().toLowerCase() !== 'text/html')
+        throw new WebError('invalid_html', '资源必须是 text/html 类型的 HTML 文件')
+      html = Buffer.from(resource.data, 'base64').toString('utf8')
+    }
+    if (typeof html !== 'string' || !html.trim() || Buffer.byteLength(html) > 16 * 1024 ** 2)
+      throw new WebError('invalid_html', 'HTML 内容不能为空或超过 16 MiB')
+    const handle = await this.ctx.playwright.createPage(this.ctx)
+    const close = () => {
+      void handle.close().catch(() => {})
+    }
+    signal.addEventListener('abort', close, { once: true })
+    try {
+      signal.throwIfAborted()
+      const page = handle.page
+      page.on('dialog', (dialog) => {
+        void dialog.dismiss().catch(() => {})
+      })
+      await abortable(page.setContent(html, { waitUntil: 'load' }), signal)
+      await abortable(
+        page.evaluate(async () => {
+          await document.fonts.ready
+          await Promise.all(Array.from(document.images, (image) => image.decode().catch(() => {})))
+        }),
+        signal,
+      )
+      const record: BrowserPage = {
+        id: randomUUID(),
+        page,
+        key: '__html_screenshot',
+        revision: 0,
+        slices: new Map(),
+      }
+      const result = await abortable(
+        this.screenshot(record, { ...args, fullPage: true }, context, signal),
+        signal,
+      )
+      if (args.saveToWorkspace === true) return result
+      return {
+        images: result.images!,
+        content: {
+          source: 'html',
+          width: record.screenshot!.width,
+          height: record.screenshot!.height,
+        },
+      }
+    } finally {
+      signal.removeEventListener('abort', close)
+      await handle.close()
     }
   }
   async execute(
@@ -521,6 +597,18 @@ export class BrowserTools {
     const started = Date.now()
     const progress: { results: JsonObject[]; page?: JsonObject } = { results: [] }
     try {
+      if (name === 'web_screenshot') {
+        if (['pageId', 'html', 'resourceId'].filter((key) => args[key] !== undefined).length !== 1)
+          throw new WebError('invalid_source', 'pageId、html、resourceId 必须且只能填写一个')
+        if (args.pageId === undefined) {
+          if (args.ref !== undefined || args.pdfPage !== undefined || args.fullPage !== undefined)
+            throw new WebError(
+              'invalid_source',
+              'HTML 固定截取整页，不接受 ref、pdfPage 或 fullPage',
+            )
+          return await this.htmlScreenshot(args, context)
+        }
+      }
       return await this.sessions.run(context, async (session, signal) => {
         if (name === 'web_open') return { content: asJson(await this.open(session, args, signal)) }
         const record = this.sessions.page(session, args.pageId)

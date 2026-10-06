@@ -19,6 +19,8 @@ import type {
   RunContext,
   Tool,
   ToolDraft,
+  GeneratedImage,
+  ToolImage,
 } from './types.js'
 import { abortable, AiError, canonical, check, compile, freeze, json, template } from './utils.js'
 import { budget, estimateRequest, summarizationPrompt, usageTokens } from './context.js'
@@ -36,6 +38,37 @@ export class Running {
   reply: ContentBlock[] = []
   private tools = new Map<string, Tool>()
   private toolContexts = new WeakSet<RunContext>()
+  private temporaryImages = new Map<string, ResolvedResource>()
+  private temporaryImageBytes = 0
+  temporaryImage(image: GeneratedImage): ToolImage {
+    check(
+      this.temporaryImageBytes + image.data.byteLength <= 32 * 1024 ** 2,
+      '运行期临时图片超过 32 MiB',
+    )
+    const resourceId = `ai-transient:${randomUUID()}`
+    this.temporaryImages.set(resourceId, {
+      data: Buffer.from(image.data).toString('base64'),
+      mimeType: image.mimeType,
+      filename: image.filename,
+    })
+    this.temporaryImageBytes += image.data.byteLength
+    return {
+      type: 'image',
+      resourceId,
+      mimeType: image.mimeType,
+      filename: image.filename,
+      width: image.width,
+      height: image.height,
+      size: image.data.byteLength,
+    }
+  }
+  private async resolveResource(block: Extract<ContentBlock, { resourceId: string }>) {
+    if (block.resourceId.startsWith('ai-transient:'))
+      return this.temporaryImages.get(block.resourceId)
+    const resolver = this.bound.resources?.value
+    if (!resolver?.resolve) throw new AiError('capability_unavailable', '附件内容解析器不可用', 503)
+    return resolver.resolve(block, this.context)
+  }
   private systemPrompt = ''
   private requestThinking: string | null = null
   private transcript: ChatMessage[]
@@ -202,9 +235,8 @@ export class Running {
           const { model } = this.validateSelection(this.record.model, this.requestThinking)
           if (model.input.includes('image'))
             for (const image of block.images ?? []) {
-              const resolver = this.bound.resources?.value
-              if (resolver?.resolve)
-                resources.set(image.resourceId, await resolver.resolve(image, this.context))
+              const resource = await this.resolveResource(image)
+              if (resource) resources.set(image.resourceId, resource)
             }
           return toolResultContent(block, resources)
         },
@@ -254,6 +286,7 @@ export class Running {
         error instanceof Error ? error.name : '未知异常',
       )
     } finally {
+      this.temporaryImages.clear()
       this.service.running.delete(this.record.id)
     }
   }
@@ -269,6 +302,7 @@ export class Running {
           typeof block.resourceId === 'string' && typeof block.mimeType === 'string',
           '资源引用无效',
         )
+        if (block.type === 'image' && block.resourceId.startsWith('ai-transient:')) continue
         if (!this.bound.resources)
           throw new AiError('capability_unavailable', '附件解析器不可用', 503)
         await abortable(
@@ -419,10 +453,8 @@ export class Running {
             !resources.has(block.resourceId)
           ) {
             if (block.type === 'image' && !model.input.includes('image')) continue
-            const resolver = this.bound.resources?.value
-            if (!resolver?.resolve)
-              throw new AiError('capability_unavailable', '附件内容解析器不可用', 503)
-            const resource = await abortable(resolver.resolve(block, this.context), signal)
+            const resource = await abortable(this.resolveResource(block), signal)
+            if (!resource) continue
             attachmentBytes += Buffer.byteLength(resource.data, 'base64')
             if (attachmentBytes > 32 * 1024 * 1024)
               throw new AiError(

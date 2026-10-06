@@ -233,113 +233,167 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(run.error).toBeNull()
     expect(run.messages.at(-1)?.stopReason).toBe(stopReason)
   })
-  it.each([true, false])(
-    '工具图像通过资源解析器传给模型且历史只保存引用（视觉=%s）',
-    async (imageInput) => {
-      let calls = 0
-      const stored = {
-        type: 'image' as const,
-        resourceId: 'generated',
-        mimeType: 'image/png',
-        filename: '截图.png',
-        size: 3,
-        width: 1,
-        height: 1,
-      }
-      const app = await setup({
-        imageInput,
-        agent: agent({
-          toolIds: ['plain', 'image'],
-          contextPolicy: {
-            compaction: {
-              enabled: false,
-              reserve: 1000,
-              keepRecent: 1000,
-              model: null,
-              thinking: null,
-            },
-            trimming: { enabled: false, mode: 'rounds', rounds: 3, keepFirst: true },
+  it.each([
+    [true, true],
+    [false, true],
+    [true, false],
+    [false, false],
+  ])('工具图像传给模型且历史只保存引用（视觉=%s，保存=%s）', async (imageInput, persist) => {
+    let calls = 0
+    let stored = {
+      type: 'image' as const,
+      resourceId: 'generated',
+      mimeType: 'image/png',
+      filename: '截图.png',
+      size: 3,
+      width: 1,
+      height: 1,
+    }
+    const app = await setup({
+      imageInput,
+      agent: agent({
+        toolIds: ['plain', 'image'],
+        contextPolicy: {
+          compaction: {
+            enabled: false,
+            reserve: 1000,
+            keepRecent: 1000,
+            model: null,
+            thinking: null,
           },
-        }),
-        driver: {
-          id: 'driver',
-          async generate(request, connection) {
-            if (calls++ === 0)
-              return {
-                stopReason: 'toolUse',
-                content: [
-                  { type: 'tool-call', id: 'plain', name: 'plain', arguments: {} },
-                  { type: 'tool-call', id: 'image', name: 'image', arguments: {} },
-                ],
-              }
-            expect(connection.resources?.get('generated')?.data).toBe(
-              imageInput ? 'YWJj' : undefined,
-            )
-            const results = request.messages
-              .flatMap((message) => message.content)
-              .filter((block) => block.type === 'tool-result')
-            expect(results.find((block) => block.id === 'plain')?.content).toEqual({
-              content: '普通 JSON',
-              images: [],
-            })
-            expect(results.find((block) => block.id === 'image')).toMatchObject({
-              content: { ok: true },
-              images: [stored],
-            })
-            return { content: [{ type: 'text', text: '已查看' }] }
-          },
+          trimming: { enabled: false, mode: 'rounds', rounds: 3, keepFirst: true },
         },
-      })
-      const resolver = vi.fn(async () => ({
-        data: 'YWJj',
-        mimeType: 'image/png',
-        filename: '截图.png',
-      }))
+      }),
+      driver: {
+        id: 'driver',
+        async generate(request, connection) {
+          if (calls++ === 0)
+            return {
+              stopReason: 'toolUse',
+              content: [
+                { type: 'tool-call', id: 'plain', name: 'plain', arguments: {} },
+                { type: 'tool-call', id: 'image', name: 'image', arguments: {} },
+              ],
+            }
+          expect(connection.resources?.get(stored.resourceId)?.data).toBe(
+            imageInput && (persist || calls === 2) ? 'YWJj' : undefined,
+          )
+          const results = request.messages
+            .flatMap((message) => message.content)
+            .filter((block) => block.type === 'tool-result')
+          expect(results.find((block) => block.id === 'plain')?.content).toEqual({
+            content: '普通 JSON',
+            images: [],
+          })
+          expect(results.find((block) => block.id === 'image')).toMatchObject({
+            content: { ok: true },
+            images: [stored],
+          })
+          return { content: [{ type: 'text', text: '已查看' }] }
+        },
+      },
+    })
+    const resolver = vi.fn(async () => ({
+      data: 'YWJj',
+      mimeType: 'image/png',
+      filename: '截图.png',
+    }))
+    if (persist)
       app.ctx.ai.registerResources(app.ctx, {
         validate: async () => {},
         resolve: resolver,
         storeImage: async () => stored,
       })
-      app.ctx.ai.registerTool(app.ctx, {
-        id: 'plain',
-        description: '',
-        parameters: { type: 'object' },
-        execute: async () => ({ content: '普通 JSON', images: [] }),
-      })
-      app.ctx.ai.registerTool(app.ctx, {
-        id: 'image',
-        description: '',
-        resultMode: 'structured',
-        parameters: { type: 'object' },
-        execute: async (_args, context) => {
-          await expect(
-            app.ctx.ai.storeToolImage(
-              { ...context },
-              {
-                data: Buffer.from('abc'),
-                mimeType: 'image/png',
-                filename: '截图.png',
-                width: 1,
-                height: 1,
-              },
-            ),
-          ).rejects.toMatchObject({ code: 'forbidden' })
-          const image = await app.ctx.ai.storeToolImage(context, {
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'plain',
+      description: '',
+      parameters: { type: 'object' },
+      execute: async () => ({ content: '普通 JSON', images: [] }),
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'image',
+      description: '',
+      resultMode: 'structured',
+      parameters: { type: 'object' },
+      execute: async (_args, context) => {
+        await expect(
+          app.ctx.ai.storeToolImage(
+            { ...context },
+            {
+              data: Buffer.from('abc'),
+              mimeType: 'image/png',
+              filename: '截图.png',
+              width: 1,
+              height: 1,
+            },
+          ),
+        ).rejects.toMatchObject({ code: 'forbidden' })
+        const image = await app.ctx.ai.storeToolImage(
+          context,
+          {
             data: Buffer.from('abc'),
             mimeType: 'image/png',
             filename: '截图.png',
             width: 1,
             height: 1,
-          })
-          return { content: { ok: true }, images: [image] }
+          },
+          persist,
+        )
+        stored = image
+        return { content: { ok: true }, images: [image] }
+      },
+    })
+    const run = await send(app)
+    expect(run.status).toBe('completed')
+    expect(JSON.stringify(run)).not.toContain('YWJj')
+    expect(resolver.mock.calls.length > 0).toBe(imageInput && persist)
+    if (!persist) {
+      expect(stored.resourceId).toMatch(/^ai-transient:/)
+      expect((await send(app)).status).toBe('completed')
+    }
+  })
+  it('工具读取资源使用真实上下文及运行固定的解析器，拒绝伪造上下文', async () => {
+    let calls = 0
+    const app = await setup({
+      agent: agent({ toolIds: ['read_html'] }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (calls++ === 0)
+            return {
+              stopReason: 'toolUse',
+              content: [{ type: 'tool-call', id: 'read', name: 'read_html', arguments: {} }],
+            }
+          return { content: [{ type: 'text', text: '已读取' }] }
         },
-      })
-      const run = await send(app)
-      expect(run.status).toBe('completed')
-      expect(JSON.stringify(run)).not.toContain('YWJj')
-      expect(resolver.mock.calls.length > 0).toBe(imageInput)
-    },
-  )
+      },
+    })
+    const resolve = vi.fn(async (resource, context) => {
+      expect(resource.resourceId).toBe('html-file')
+      expect(context.workspaceId).toBe(app.access.workspaceId)
+      return {
+        data: Buffer.from('<h1>文档</h1>').toString('base64'),
+        mimeType: 'text/html',
+        filename: '文档.html',
+      }
+    })
+    app.ctx.ai.registerResources(app.ctx, { validate: async () => {}, resolve })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'read_html',
+      description: '',
+      parameters: { type: 'object' },
+      async execute(_args, context) {
+        await expect(
+          app.ctx.ai.readToolResource({ ...context, workspaceId: 'other' }, 'html-file'),
+        ).rejects.toMatchObject({ code: 'forbidden' })
+        const resource = await app.ctx.ai.readToolResource(context, 'html-file')
+        expect(resource.mimeType).toBe('text/html')
+        return { ok: true }
+      },
+    })
+    expect((await send(app)).status).toBe('completed')
+    expect(resolve).toHaveBeenCalledTimes(1)
+  })
   it('主模型失败后的重新生成复用已提交摘要，重复幂等键不重复压缩', async () => {
     let compressed = 0
     let failReply = false

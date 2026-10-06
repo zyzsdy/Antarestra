@@ -102,6 +102,10 @@ export const agentFiles = {
             const images = []
             const unavailable: string[] = []
             for (const image of block.images) {
+              if (image.resourceId.startsWith('ai-transient:')) {
+                images.push(image)
+                continue
+              }
               try {
                 await withAccess(context, (access) =>
                   ctx.workspaceFile.resource(access, image.resourceId),

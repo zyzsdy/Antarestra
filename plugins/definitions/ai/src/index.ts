@@ -304,13 +304,25 @@ export class AiService extends Service<Config> {
     this.active()
     return this.resources.register(owner, 'resources', value)
   }
-  async storeToolImage(context: RunContext, image: GeneratedImage) {
+  async readToolResource(context: RunContext, resourceId: string) {
+    this.active()
+    const run = this.running.get(context.runId)
+    if (!run?.ownsToolContext(context))
+      throw new AiError('forbidden', '资源读取需要有效工具执行上下文', 403)
+    const resolver = run.bound.resources?.value
+    if (!resolver?.resolve) throw new AiError('capability_unavailable', '附件解析器不可用', 503)
+    const result = await resolver.resolve(
+      { type: 'file', resourceId, mimeType: 'text/html' },
+      context,
+    )
+    context.signal.throwIfAborted()
+    return result
+  }
+  async storeToolImage(context: RunContext, image: GeneratedImage, persist = true) {
     this.active()
     const run = this.running.get(context.runId)
     if (!run?.ownsToolContext(context))
       throw new AiError('forbidden', '图片写入需要有效工具执行上下文', 403)
-    const store = run.bound.resources?.value.storeImage
-    if (!store) throw new AiError('capability_unavailable', '图片附件存储不可用', 503)
     check(
       image.data instanceof Uint8Array &&
         image.data.byteLength > 0 &&
@@ -320,6 +332,10 @@ export class AiService extends Service<Config> {
     validateToolImages([
       { ...image, type: 'image', resourceId: 'pending', size: image.data.byteLength },
     ])
+    image.signal?.throwIfAborted()
+    if (!persist) return run.temporaryImage(image)
+    const store = run.bound.resources?.value.storeImage
+    if (!store) throw new AiError('capability_unavailable', '图片附件存储不可用', 503)
     const result = await store(image, context)
     context.signal.throwIfAborted()
     image.signal?.throwIfAborted()
