@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:net'
@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const password = 'supervisor-test-password'
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-it.each(['internal', 'external', 'development'] as const)(
+it.each(['internal', 'external', 'development', 'local-overlay'] as const)(
   '真实进程监督与重启：%s',
   async (mode) => {
     const directory = await mkdtemp(join(tmpdir(), 'antarestra restart '))
@@ -22,11 +22,11 @@ it.each(['internal', 'external', 'development'] as const)(
     await new Promise<void>((resolve) => probe.close(() => resolve()))
     await writeFile(
       config,
-      `loader: { supervision: ${mode === 'external' ? 'external' : 'internal'}, disposalTimeoutMs: 3000 }
+      `loader: { supervision: ${mode === 'external' || mode === 'local-overlay' ? 'external' : 'internal'}, disposalTimeoutMs: 3000 }
 plugins:
   database: {}
   plugin-database-kysely: { filename: ${JSON.stringify(join(directory, 'state.sqlite'))} }
-  plugin-server: { host: '127.0.0.1', port: ${port} }
+  plugin-server: { host: '127.0.0.1', port: ${mode === 'local-overlay' ? 0 : port} }
   webui: {}
   rbac: {}
   plugin-auth-local: { bootstrapEmail: admin@example.com, bootstrapPassword: ${password} }
@@ -34,6 +34,13 @@ plugins:
   plugin-config-panel: {}
 `,
     )
+    const original = await readFile(config, 'utf8')
+    if (mode === 'local-overlay') {
+      await writeFile(
+        `${config}.local`,
+        `loader: { supervision: internal }\nplugins: { plugin-server: { port: ${port} } }\n`,
+      )
+    }
     const child = spawn(
       process.execPath,
       mode === 'development'
@@ -138,6 +145,7 @@ plugins:
         expect(after.processId).not.toBe(before.processId)
         expect(child.exitCode).toBeNull()
       }
+      if (mode === 'local-overlay') expect(await readFile(config, 'utf8')).toBe(original)
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
         if (mode === 'development' && process.platform === 'win32') {

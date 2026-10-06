@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
 import { parseDocument } from 'yaml'
+import { readLayers } from './layers.js'
 
 export interface PluginEntry {
   pluginId: string
@@ -116,12 +117,7 @@ export async function readConfig(
   filename: string,
   env: Environment = process.env,
 ): Promise<PluginEntry[]> {
-  let source: string
-  try {
-    source = await readFile(filename, 'utf8')
-  } catch {
-    throw new Error(`无法读取主配置文件：${filename}`)
-  }
+  const source = (await readLayers(filename)).document.toString()
   try {
     let defaults: Environment = {}
     try {

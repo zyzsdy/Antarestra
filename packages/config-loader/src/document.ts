@@ -5,6 +5,7 @@ import { parseEnv } from 'node:util'
 import { parseDocument } from 'yaml'
 import { validateConfig } from '@antarestra/plugin-sdk/schema'
 import { parseConfig } from './config.js'
+import { readLayers, writeOverlay } from './layers.js'
 
 export interface LoaderSettings {
   initializationTimeoutMs: number
@@ -103,19 +104,23 @@ export async function environment(filename: string) {
   }
 }
 export async function readDocument(filename: string) {
-  const source = await readFile(filename, 'utf8')
+  const layers = await readLayers(filename)
+  const { document } = layers
+  const source = document.toString()
   const entries = parseConfig(source, {}, true)
-  const document = parseDocument(source, { uniqueKeys: true })
   const value = document.toJS({ maxAliasCount: 0 }) as Record<string, unknown>
   const settings = validateConfig<LoaderSettings>(loaderSchema, value.loader ?? {})
   const layout = validateLayout(value.pluginPanel ?? {})
   return {
+    ...layers,
     source,
     document,
     entries,
     settings,
     layout,
-    version: createHash('sha256').update(source).digest('hex'),
+    version: createHash('sha256')
+      .update(JSON.stringify([layers.baseSource, layers.localSource ?? null]))
+      .digest('hex'),
   }
 }
 export async function writeDocument(
@@ -126,10 +131,20 @@ export async function writeDocument(
   const current = await readDocument(filename)
   if (current.version !== version)
     throw new ManagementError(409, '配置文件已变化，请刷新后重新提交；当前草稿已保留')
+  const before = current.document.clone()
   mutate(current.document)
-  const source = current.document.toString()
-  parseConfig(source, {}, true)
-  const temporary = `${filename}.${randomUUID()}.tmp`
+  const updatedSource = current.document.toString()
+  parseConfig(updatedSource, {}, true)
+  // YAML set/setIn 可保留普通 JS 值，序列化后重新解析为统一节点供覆盖差异计算。
+  const updated = parseDocument(updatedSource)
+  const value = updated.toJS({ maxAliasCount: 0 }) as Record<string, unknown>
+  validateConfig<LoaderSettings>(loaderSchema, value.loader ?? {})
+  validateLayout(value.pluginPanel ?? {})
+  const output = current.localDocument
+    ? writeOverlay(current.baseDocument, before, updated, current.localDocument)
+    : updated
+  const source = output.toString()
+  const temporary = `${current.writeFilename}.${randomUUID()}.tmp`
   try {
     const handle = await open(temporary, 'wx', 0o600)
     try {
@@ -140,7 +155,7 @@ export async function writeDocument(
     }
     if ((await readDocument(filename)).version !== version)
       throw new ManagementError(409, '配置文件已变化，请刷新后重新提交')
-    await rename(temporary, filename)
+    await rename(temporary, current.writeFilename)
   } finally {
     await unlink(temporary).catch(() => {})
   }

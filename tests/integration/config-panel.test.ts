@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
 import * as loader from '@antarestra/config-loader'
 import { resolvePlugin } from '../../apps/server/src/plugins.js'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 const contexts: Context[] = []
@@ -13,7 +13,7 @@ afterEach(async () => {
     await rm(path, { recursive: true, force: true, maxRetries: 10 })
 })
 const password = 'panel-test-password-42'
-async function setup() {
+async function setup(local = false) {
   const directory = await mkdtemp(join(tmpdir(), 'antarestra-panel-api-'))
   directories.push(directory)
   const filename = join(directory, 'main.yml')
@@ -34,6 +34,7 @@ async function setup() {
   plugin-config-panel: {}
 `,
   )
+  if (local) await writeFile(`${filename}.local`, '{}\n')
   const ctx = new Context()
   contexts.push(ctx)
   const restart = vi.fn(async () => {})
@@ -62,35 +63,44 @@ async function setup() {
   }
   return { ctx, request, login, restart, filename }
 }
-it('删除未设置面板元数据的配置成功，任务结果直接返回新快照', async () => {
-  const app = await setup()
-  const cookie = await app.login()
-  await app.ctx.configManager.add(
-    (await app.ctx.configManager.snapshot()).version,
-    '@antarestra/plugin-logger',
-    { id: 'fixture', state: 'running', saved: false, message: '' },
-  )
-  const before = await app.ctx.configManager.snapshot()
-  const id = before.instances.find((item) => item.pluginId === 'logger')!.instanceId
-  const response = await app.request(
-    '/plugin-config-panel/instances/' + encodeURIComponent(id),
-    cookie,
-    { version: before.version },
-    'DELETE',
-  )
-  expect(response.status).toBe(202)
-  const operation = (await response.json()) as { id: string }
-  await vi.waitFor(async () => {
-    const result = await app.request('/plugin-config-panel/operations/' + operation.id, cookie)
-    const completed = (await result.json()) as {
-      state: string
-      snapshot: { version: string; instances: { instanceId: string }[] }
+it.each([false, true])(
+  '删除未设置面板元数据的配置成功，任务结果直接返回新快照（local=%s）',
+  async (local) => {
+    const app = await setup(local)
+    const original = await readFile(app.filename, 'utf8')
+    const cookie = await app.login()
+    await app.ctx.configManager.add(
+      (await app.ctx.configManager.snapshot()).version,
+      '@antarestra/plugin-logger',
+      { id: 'fixture', state: 'running', saved: false, message: '' },
+    )
+    const before = await app.ctx.configManager.snapshot()
+    if (local) {
+      expect(await readFile(app.filename, 'utf8')).toBe(original)
+      expect(await readFile(`${app.filename}.local`, 'utf8')).toContain('logger')
     }
-    expect(completed.state).toBe('completed')
-    expect(completed.snapshot.version).not.toBe(before.version)
-    expect(completed.snapshot.instances.some((item) => item.instanceId === id)).toBe(false)
-  })
-})
+    const id = before.instances.find((item) => item.pluginId === 'logger')!.instanceId
+    const response = await app.request(
+      '/plugin-config-panel/instances/' + encodeURIComponent(id),
+      cookie,
+      { version: before.version },
+      'DELETE',
+    )
+    expect(response.status).toBe(202)
+    const operation = (await response.json()) as { id: string }
+    await vi.waitFor(async () => {
+      const result = await app.request('/plugin-config-panel/operations/' + operation.id, cookie)
+      const completed = (await result.json()) as {
+        state: string
+        snapshot: { version: string; instances: { instanceId: string }[] }
+      }
+      expect(completed.state).toBe('completed')
+      expect(completed.snapshot.version).not.toBe(before.version)
+      expect(completed.snapshot.instances.some((item) => item.instanceId === id)).toBe(false)
+    })
+    if (local) expect(await readFile(app.filename, 'utf8')).toBe(original)
+  },
+)
 it('管理 API：认证、默认权限、保存任务、配置版本和敏感值边界', async () => {
   const app = await setup()
   expect((await app.request('/plugin-config-panel')).status).toBe(401)
