@@ -229,7 +229,7 @@ export function apply(ctx: Context, input: Config = {}) {
     {
       id: 'web_screenshot',
       description:
-        '截取网页、PDF，或将 HTML 图文文档渲染为整页图片。pageId、html、resourceId 三选一：pageId 使用已打开页面；html 传 HTML 文本；resourceId 读取当前工作空间可访问的 HTML 文件。HTML 固定截取整页，不接受 ref/fullPage/pdfPage。网页默认截取视口，可用 ref 或 fullPage；PDF 用 pdfPage。saveToWorkspace 默认 false：不保存文件，直接返回图片供视觉模型查看；true：保存到当前工作空间，只返回图片 resourceId，不返回图片内容，可供 im_prepare_image 准备发送。页面或滚动变化后坐标操作须重新截图。',
+        '截取网页、PDF，或将 HTML 图文文档渲染为整页图片。pageId、html、resourceId 三选一：pageId 使用已打开页面；html 传 HTML 文本；resourceId 读取当前工作空间可访问的 HTML 文件。HTML 固定截取整页，不接受 ref/fullPage/pdfPage。网页默认截取视口，可用 ref 或 fullPage；PDF 用 pdfPage。saveToWorkspace 默认 false：不保存文件，直接返回图片供视觉模型查看；true：保存到当前工作空间，只返回图片 resourceId，不返回图片内容，图片ID可以直接用于发送或输出。页面或滚动变化后坐标操作须重新截图。',
       parameters: {
         ...object({
           ...page,
