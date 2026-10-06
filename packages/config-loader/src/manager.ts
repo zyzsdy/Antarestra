@@ -4,7 +4,7 @@ import { Service } from '@antarestra/plugin-sdk'
 import type { Context, Fiber } from '@antarestra/plugin-sdk'
 import { Entry } from '@antarestra/plugin-sdk/loader'
 import { resolveConfigEnvironment, validateConfig } from '@antarestra/plugin-sdk/schema'
-import { parseDocument } from 'yaml'
+import { parseDocument, visit } from 'yaml'
 import { createInstanceId } from './config.js'
 import type { PluginEntry } from './config.js'
 import { discover, metadata } from './catalog.js'
@@ -359,6 +359,11 @@ export class ConfigManager extends Service<ManagerConfig> {
     const node = file.document.getIn(['plugins', key], true)
     const draft = file.document.clone()
     draft.contents = node as typeof draft.contents
+    visit(draft, {
+      Collection(_key, node) {
+        node.flow = node.items.length === 0
+      },
+    })
     const yaml = node ? draft.toString() : '{}'
     return { version: file.version, entry, yaml, info, impacts: this.impacts(id) }
   }

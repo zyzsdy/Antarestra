@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFile, rename, unlink, open } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
-import { parseDocument } from 'yaml'
+import { parseDocument, visit } from 'yaml'
 import { validateConfig } from '@antarestra/plugin-sdk/schema'
 import { parseConfig } from './config.js'
 import { readLayers, writeOverlay } from './layers.js'
@@ -143,6 +143,11 @@ export async function writeDocument(
   const output = current.localDocument
     ? writeOverlay(current.baseDocument, before, updated, current.localDocument)
     : updated
+  visit(output, {
+    Collection(_key, node) {
+      node.flow = node.items.length === 0
+    },
+  })
   const source = output.toString()
   const temporary = `${current.writeFilename}.${randomUUID()}.tmp`
   try {

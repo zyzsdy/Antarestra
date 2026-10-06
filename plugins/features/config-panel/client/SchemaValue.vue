@@ -128,6 +128,16 @@ function sensitive(field: Schema) {
         autocomplete="new-password"
         @update:model-value="input($event)"
       />
+      <textarea
+        v-else-if="field.type === 'string' && field['x-multiline']"
+        :id="id"
+        :aria-label="label"
+        :value="display(value)"
+        :placeholder="field.default === undefined ? '未设置' : `默认：${display(field.default)}`"
+        rows="6"
+        autocomplete="off"
+        @input="input(($event.target as HTMLTextAreaElement).value)"
+      />
       <input
         v-else
         :id="id"
@@ -166,12 +176,22 @@ function sensitive(field: Schema) {
   gap: 6px;
   min-width: 0;
 }
+.field-input textarea,
 .field-input input,
 .field-input .ui-select,
 .field-input .ui-secret-input {
   min-width: 0;
   flex: 1;
   width: 100%;
+}
+.field-input textarea {
+  min-height: 0;
+  resize: none;
+  overflow: auto;
+  font-family: inherit;
+}
+.field-input textarea + button {
+  align-self: flex-start;
 }
 .field-input > button {
   flex: none;

@@ -1,4 +1,4 @@
-import { parseDocument } from 'yaml'
+import { parseDocument, visit } from 'yaml'
 // 字典的展示顺序随 YAML 保存；避免 JavaScript 对纯数字对象键重新排序。
 const order = Symbol('配置字典键顺序')
 type OrderedRecord = Record<string, unknown> & { [order]?: string[] }
@@ -47,5 +47,10 @@ export function updateFormYaml(
   if (document.errors.length) return text
   if (remove) document.deleteIn(path)
   else document.setIn(path, toYamlValue(value))
+  visit(document, {
+    Collection(_key, node) {
+      node.flow = node.items.length === 0
+    },
+  })
   return document.toString()
 }

@@ -30,6 +30,35 @@ async function setup(source: string, resolver?: loader.PluginResolver) {
   return { ctx, filename, manager: ctx.configManager }
 }
 
+it.each([false, true])('保存流式配置为块式 YAML（本地覆盖：%s）', async (local) => {
+  const base = 'plugins:\n  "~demo": {}\n  "~untouched": { value: kept } # 保留注释\n'
+  const app = await setup(base)
+  const localFilename = join(app.filename, '..', 'main.local.yml')
+  if (local) await writeFile(localFilename, 'plugins:\n  "~demo": {}\n')
+  const config = {
+    model: { providerId: 'test', modelId: 'test-model' },
+    prompt: '第一行\n第二行',
+    termDict: [{ original: '原文', translation: '译文' }],
+    token: '$TEST_TOKEN',
+  }
+  await app.manager.save(
+    (await app.manager.snapshot()).version,
+    'demo',
+    JSON.stringify(config),
+    false,
+    '',
+    operation(),
+  )
+  const source = await readFile(local ? localFilename : app.filename, 'utf8')
+  expect(source).toMatch(/"?model"?:\n      "?providerId"?:/)
+  expect(source).toMatch(/"?termDict"?:\n      - "?original"?:/)
+  expect(source).not.toContain('{')
+  expect((await app.manager.detail('demo')).entry.config).toEqual(config)
+  expect((await app.manager.detail('demo')).yaml).toMatch(/"?model"?:\n  "?providerId"?:/)
+  if (local) expect(await readFile(app.filename, 'utf8')).toBe(base)
+  else expect(source).toContain('# 保留注释')
+})
+
 describe('配置面板管理服务', () => {
   it('运行及禁用实例均展示包标题，详情与目录包含功能描述', async () => {
     const app = await setup('plugins:\n  logger: {}\n  ~hmr: {}\n  ~missing-plugin: {}\n')

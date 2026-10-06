@@ -22,7 +22,7 @@ RBAC 固定声明 `admin.plugins.manage` 与 `admin.system.restart`，默认授�
 - 缺少服务依赖不阻止保存或删除；实例显示等待依赖，由 Cordis 在服务恢复后继续启动。
 - 服务插件重载会连带暂停和重新初始化消费者；无关实例继续运行。
 - 外部修改文件不自动应用；刷新后逐实例应用或重启。版本冲突保留草稿，不覆盖他人修改。
-- 配置写入使用原子文件替换，保留无关字段和注释；无法将文件保存与所有插件副作用组成同一事务。
+- 配置写入使用原子文件替换，集合统一保存为缩进块式 YAML，保留配置值、环境引用和注释；无法将文件保存与所有插件副作用组成同一事务。
 
 修改监听地址、禁用基础服务或设置面板本身可能失去后台入口。执行前复制新入口；必要时手动编辑启动时 `--conf` 指定的主配置并重新启动进程。
 
@@ -59,7 +59,7 @@ pluginPanel:
 }
 ```
 
-Schema 使用 JSON Schema Draft 2020-12，保存在包内静态 JSON 文件，不加载远程引用。用 `title`、`description` 描述中文表单，敏感字段用 `x-sensitive: true`。服务器使用同一 Schema 补默认值并校验，插件只补运行条件检查。SDK 的 `@antarestra/plugin-sdk/schema` 提供 `schemaConfig`、`validateConfig` 和环境变量解析适配。
+Schema 使用 JSON Schema Draft 2020-12，保存在包内静态 JSON 文件，不加载远程引用。用 `title`、`description` 描述中文表单，敏感字段用 `x-sensitive: true`。字符串字段可用 `x-multiline: true` 显示多行文本框，保留换行并支持重置；敏感字段仍优先使用遮罩输入。服务器使用同一 Schema 补默认值并校验，插件只补运行条件检查。SDK 的 `@antarestra/plugin-sdk/schema` 提供 `schemaConfig`、`validateConfig` 和环境变量解析适配。
 
 表单支持对象、基本类型、枚举、数组；数组输入采用 JSON，复杂条件或其他结构可切换 YAML，服务端仍完整校验。默认值只在运行时补齐。数字和布尔字段的环境引用严格转换，布尔值只接受 `true`、`false`。
 

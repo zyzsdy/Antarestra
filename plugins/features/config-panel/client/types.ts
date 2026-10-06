@@ -14,6 +14,7 @@ export interface Schema {
   allOf?: Record<string, unknown>[]
   oneOf?: Record<string, unknown>[]
   anyOf?: Record<string, unknown>[]
+  ['x-multiline']?: boolean
   ['x-sensitive']?: boolean
   ['x-ai-model']?: boolean
   ['x-order']?: number
@@ -58,9 +59,15 @@ export function resolveFormSchema(
     if (
       Object.keys(siblings).some(
         (key) =>
-          !['title', 'description', 'default', 'x-order', 'x-sensitive', 'x-ai-model'].includes(
-            key,
-          ),
+          ![
+            'title',
+            'description',
+            'default',
+            'x-order',
+            'x-sensitive',
+            'x-ai-model',
+            'x-multiline',
+          ].includes(key),
       )
     )
       return undefined

@@ -200,3 +200,51 @@ it('纯数字字典键的顺序经过 YAML 与表单往返仍保持，嵌套值�
   ])
   expect(roundtrip.dict).toEqual({ '3': { count: 1 }, '20': { count: 2 } })
 })
+
+it('从空映射编辑嵌套配置后生成块式 YAML，并保留换行和环境引用', () => {
+  let yaml = updateFormYaml('{}', ['model'], { providerId: 'test', modelId: 'demo' })
+  yaml = updateFormYaml(yaml, ['termDict'], [{ original: '原文', translation: '译文' }])
+  yaml = updateFormYaml(yaml, ['prompt'], '第一行\n第二行')
+  yaml = updateFormYaml(yaml, ['token'], '$TEST_TOKEN')
+  expect(yaml).toContain('model:\n  providerId: test')
+  expect(yaml).toContain('termDict:\n  - original: 原文')
+  expect(yaml).not.toContain('{')
+  expect(parseFormYaml(yaml)).toMatchObject({ prompt: '第一行\n第二行', token: '$TEST_TOKEN' })
+})
+
+it('多行注解支持本地引用、输入和重置，普通与敏感字段保持原有控件', async () => {
+  const schema: Schema = {
+    type: 'object',
+    $defs: { text: { type: 'string' } },
+    properties: {
+      prompt: { $ref: '#/$defs/text', title: '翻译提示词', 'x-multiline': true },
+      plain: { type: 'string' },
+      secret: { type: 'string', 'x-sensitive': true, 'x-multiline': true },
+    },
+  }
+  const changes: unknown[] = []
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp(SchemaForm, {
+    schema,
+    value: { prompt: '旧提示词' },
+    onChange: (...args: unknown[]) => changes.push(args),
+  })
+  app.mount(host)
+  try {
+    const textarea = host.querySelector<HTMLTextAreaElement>('#config-prompt')!
+    expect(textarea.tagName).toBe('TEXTAREA')
+    expect(textarea.value).toBe('旧提示词')
+    textarea.value = '第一行\n第二行'
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+    expect(changes.at(-1)).toEqual([['prompt'], '第一行\n第二行', undefined])
+    expect(host.querySelector('#config-plain')?.tagName).toBe('INPUT')
+    expect(host.querySelector<HTMLInputElement>('#config-secret')?.type).toBe('password')
+    host.querySelector<HTMLButtonElement>('[aria-label="移除 翻译提示词"]')!.click()
+    expect(changes.at(-1)).toEqual([['prompt'], undefined, true])
+  } finally {
+    app.unmount()
+    host.remove()
+  }
+})
