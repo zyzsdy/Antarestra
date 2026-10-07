@@ -55,6 +55,8 @@ policy:
 
 `im_history_query` 工具只能查询当前可信运行的工作空间，支持原始平台消息 ID 精确匹配、带时区的 ISO 时间范围、发送人平台 ID、文本子串关键词和向前分页。已知消息 ID 时传入 `{"messageId":"原始平台消息ID"}`，ID 按字符串填写并保留前导零，不使用用户 ID、AI 会话消息 ID 或内部归档 ID。多个筛选条件取交集，未找到时返回空列表。返回原始消息 ID、发送人、时间、连接、聊天、媒体资源 ID 与存储状态。请在 Agent 的工具范围中允许此工具；模型不能传入其他 workspace。
 
+按时间范围总结群聊时，省略 `messageId`，例如 `{"startTime":"2026-10-07T05:55:20Z","endTime":"2026-10-07T11:55:20Z","limit":200}`；`messageId` 不是查询起点，填写后只会匹配该条消息。首次查询省略 `beforeSequence`，工具也兼容将 `0` 视为首次查询；后续将返回的正数 `nextBeforeSequence` 原样传回，为 `null` 时停止。工具不会返回零游标，避免分页结束后重新读取首页。空字符串 `senderId`、`keyword` 不限制结果。此兼容只作用于 AI 工具，底层 `ctx.im.history()` 的 `beforeSequence: 0` 仍表示查询序号不大于零的记录。
+
 ## 群聊动态回复
 
 控制台的“自定义 AI 激活条件”中可开启“动态回复”，也可配置 `activation.dynamic: {}` 使用默认值：

@@ -479,6 +479,82 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
   expect(query).not.toContain('预算其他消息')
 })
 
+it('历史工具兼容首次零游标，保留精确筛选并正确结束向前分页', async () => {
+  const results: {
+    messages: { messageId: string; text: string }[]
+    nextBeforeSequence: number | null
+  }[] = []
+  const original = {
+    beforeSequence: 0,
+    endTime: '2026-10-07T11:55:20Z',
+    keyword: '',
+    limit: 200,
+    messageId: '301886401',
+    senderId: '',
+    startTime: '2026-10-07T05:55:20Z',
+  }
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    toolIds: ['im_history_query'],
+    driver: {
+      id: 'driver',
+      async generate(request) {
+        if (calls > 0) {
+          const result = request.messages
+            .flatMap((message) => message.content)
+            .find((part) => part.type === 'tool-result' && part.id === `history-${calls}`)
+          if (result?.type === 'tool-result')
+            results.push(JSON.parse(JSON.stringify(result.content)))
+        }
+        const { messageId: _messageId, ...range } = original
+        const queries = [
+          original,
+          { ...range, limit: 1 },
+          { ...range, beforeSequence: results[1]?.nextBeforeSequence ?? 1 },
+          { ...original, messageId: 'missing' },
+          { ...original, keyword: '不匹配' },
+        ]
+        const args = queries[calls++]
+        return args
+          ? {
+              content: [
+                {
+                  type: 'tool-call',
+                  id: `history-${calls}`,
+                  name: 'im_history_query',
+                  arguments: args,
+                },
+              ],
+            }
+          : { content: [{ type: 'text', text: '查询完成' }] }
+      },
+    },
+  })
+  await app.connection.receive('较早的六小时内消息', {
+    id: 'earlier',
+    timestamp: Date.parse('2026-10-07T06:00:00Z'),
+  })
+  await app.connection.receive('目标消息正文', {
+    id: original.messageId,
+    timestamp: Date.parse('2026-10-07T07:00:00Z'),
+  })
+  const workspaceId = app.messages.at(-1)!.workspaceId
+  // 底层零游标仍用于排除第一条触发消息，不改变服务接口的边界语义。
+  expect(await app.ctx.im.history(workspaceId, { beforeSequence: 0 })).toEqual([])
+  await app.connection.receive('/ai 查询', { timestamp: Date.parse('2026-10-07T12:00:00Z') })
+  await poll(() => app.sent.length).toBe(1)
+  expect(results).toHaveLength(5)
+  expect(results[0]?.messages.map((message) => message.messageId)).toEqual(['301886401'])
+  expect(results[0]?.messages[0]?.text).toContain('目标消息正文')
+  expect(results[1]?.messages.map((message) => message.messageId)).toEqual(['301886401'])
+  expect(results[1]?.nextBeforeSequence).toBe(1)
+  expect(results[2]?.messages.map((message) => message.messageId)).toEqual(['earlier'])
+  expect(results[2]?.nextBeforeSequence).toBeNull()
+  expect(results[3]).toEqual({ messages: [], nextBeforeSequence: null })
+  expect(results[4]).toEqual({ messages: [], nextBeforeSequence: null })
+})
+
 it('私聊图片进入原 AI 会话附件，不进入群归档或群媒体清理', async () => {
   const app = await setup({ ai: true, contextWindow: 100000, modelInput: ['text', 'image'] })
   await storage(app)

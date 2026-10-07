@@ -77,7 +77,7 @@ export function registerHistoryTools(
   ctx.ai.registerTool(ctx, {
     id: 'im_history_query',
     description:
-      '查找当前群聊的历史消息，适合补充上下文、定位某人发言或取得要引用、回应、撤回的原始 messageId。已知原始消息 ID 时，用 messageId 精确查找；也可按时间、发送人和文本关键词筛选，同时填写的条件取交集。未找到时返回空列表。结果包含发送者、时间、正文及媒体状态；查看图片时使用可用的资源 ID 调用 workspace_file_read。省略筛选条件读取最近消息；将 nextBeforeSequence 作为 beforeSequence 向更早消息翻页，直到返回空列表。不提供私聊历史。',
+      '查找当前群聊的历史消息，适合补充上下文、定位某人发言或取得要引用、回应、撤回的原始 messageId。查询某段时间的聊天或总结话题时，只填时间范围及必要筛选，不要填当前消息的 messageId；messageId 仅用于精确查找一条已知消息，不是查询起点。同时填写的条件取交集。未找到时返回空列表。结果包含发送者、时间、正文及媒体状态；查看图片时使用可用的资源 ID 调用 workspace_file_read。省略筛选条件读取最近消息；首次查询省略 beforeSequence（也兼容 0），之后将返回的正数 nextBeforeSequence 原样填写以向更早消息翻页；nextBeforeSequence 为 null 时停止。不提供私聊历史。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -86,7 +86,7 @@ export function registerHistoryTools(
           type: 'string',
           minLength: 1,
           description:
-            '要查找的原始平台消息 ID，使用聊天上下文、引用消息或查询结果中的 messageId，按字符串填写并保留前导零；不是用户 ID、AI 会话消息 ID 或内部归档 ID。',
+            '仅精确查找一条消息时填写；查询时间范围或总结群聊时省略。使用聊天上下文、引用消息或查询结果中的原始 messageId，按字符串填写并保留前导零；不是查询起点、用户 ID、AI 会话消息 ID 或内部归档 ID。',
         },
         startTime: {
           type: 'string',
@@ -117,7 +117,8 @@ export function registerHistoryTools(
         beforeSequence: {
           type: 'integer',
           minimum: 0,
-          description: '上一页的 nextBeforeSequence，原样填写；首次查询省略。',
+          description:
+            '首次查询省略或填 0；翻页填上一页返回的正数 nextBeforeSequence，为 null 时停止。',
         },
       },
     },
@@ -141,7 +142,9 @@ export function registerHistoryTools(
         ...(typeof args.senderId === 'string' ? { senderId: args.senderId } : {}),
         ...(typeof args.keyword === 'string' ? { keyword: args.keyword } : {}),
         ...(typeof args.limit === 'number' ? { limit: args.limit } : {}),
-        ...(typeof args.beforeSequence === 'number' ? { beforeSequence: args.beforeSequence } : {}),
+        ...(typeof args.beforeSequence === 'number' && args.beforeSequence > 0
+          ? { beforeSequence: args.beforeSequence }
+          : {}),
       })
       return {
         messages: messages.map((entry) => ({
@@ -155,7 +158,8 @@ export function registerHistoryTools(
           text: formatMessage(entry.message, entry.media),
           media: entry.media,
         })),
-        nextBeforeSequence: messages.length ? messages[0]!.sequence - 1 : null,
+        nextBeforeSequence:
+          messages.length && messages[0]!.sequence > 1 ? messages[0]!.sequence - 1 : null,
       } as unknown as Json
     },
   })
