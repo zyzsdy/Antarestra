@@ -1062,6 +1062,8 @@ export class ImService extends Service<ServiceOptions> {
   /** 服务端接口；AI 调用方必须从可信 RunContext 取得空间，不接受模型传入空间。 */
   async history(workspaceId: string, input: HistoryQuery = {}): Promise<ArchivedMessage[]> {
     let query = this.db().selectFrom('history').selectAll().where('workspace_id', '=', workspaceId)
+    if (input.messageId !== undefined)
+      query = query.where('id', '=', hash([workspaceId, input.messageId]))
     if (input.afterSequence !== undefined) query = query.where('sequence', '>', input.afterSequence)
     if (input.beforeSequence !== undefined)
       query = query.where('sequence', '<=', input.beforeSequence)

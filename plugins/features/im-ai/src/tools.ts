@@ -77,11 +77,17 @@ export function registerHistoryTools(
   ctx.ai.registerTool(ctx, {
     id: 'im_history_query',
     description:
-      '查找当前群聊的历史消息，适合补充上下文、定位某人发言或取得要引用、回应、撤回的原始 messageId。可按时间、发送人和文本关键词筛选。结果包含发送者、时间、正文及媒体状态；查看图片时使用可用的资源 ID 调用 workspace_file_read。省略筛选条件读取最近消息；将 nextBeforeSequence 作为 beforeSequence 向更早消息翻页，直到返回空列表。不提供私聊历史。',
+      '查找当前群聊的历史消息，适合补充上下文、定位某人发言或取得要引用、回应、撤回的原始 messageId。已知原始消息 ID 时，用 messageId 精确查找；也可按时间、发送人和文本关键词筛选，同时填写的条件取交集。未找到时返回空列表。结果包含发送者、时间、正文及媒体状态；查看图片时使用可用的资源 ID 调用 workspace_file_read。省略筛选条件读取最近消息；将 nextBeforeSequence 作为 beforeSequence 向更早消息翻页，直到返回空列表。不提供私聊历史。',
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
+        messageId: {
+          type: 'string',
+          minLength: 1,
+          description:
+            '要查找的原始平台消息 ID，使用聊天上下文、引用消息或查询结果中的 messageId，按字符串填写并保留前导零；不是用户 ID、AI 会话消息 ID 或内部归档 ID。',
+        },
         startTime: {
           type: 'string',
           format: 'date-time',
@@ -129,6 +135,7 @@ export function registerHistoryTools(
       if (startTime !== undefined && endTime !== undefined && startTime > endTime)
         throw new AiError('invalid_time', '开始时间不能晚于结束时间')
       const messages = await ctx.im.history(context.workspaceId, {
+        ...(typeof args.messageId === 'string' ? { messageId: args.messageId } : {}),
         ...(startTime !== undefined ? { startTime } : {}),
         ...(endTime !== undefined ? { endTime } : {}),
         ...(typeof args.senderId === 'string' ? { senderId: args.senderId } : {}),

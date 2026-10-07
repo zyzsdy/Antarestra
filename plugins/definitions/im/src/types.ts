@@ -91,6 +91,7 @@ export interface ArchivedMessage {
   media: ArchivedMedia[]
 }
 export interface HistoryQuery {
+  messageId?: string
   afterSequence?: number
   beforeSequence?: number
   startTime?: number

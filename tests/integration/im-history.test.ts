@@ -98,6 +98,39 @@ it('不依赖 AI 激活归档群文本、命令和机器人；去重并保持原
   expect(await app.ctx.im.history(app.messages.at(-1)!.workspaceId)).toEqual([])
 })
 
+it('原始消息 ID 精确查询保留前导零，组合筛选并隔离空间', async () => {
+  const app = await setup()
+  await app.connection.receive('目标消息', { id: '00123', timestamp: 1000 })
+  const workspaceId = app.messages.at(-1)!.workspaceId
+  await app.connection.receive('不同 ID', { id: '123' })
+  const other = await app.connect('foreign', '11')
+  await other.receive('其他空间同 ID', { id: '00123' })
+  await other.receive('仅其他空间可见', { id: 'foreign-only' })
+  const [message] = await app.ctx.im.history(workspaceId, { messageId: '00123' })
+  expect(message?.message.id).toBe('00123')
+  expect(message?.message.segments).toContainEqual({ type: 'text', text: '目标消息' })
+  expect(await app.ctx.im.history(workspaceId, { messageId: '00123' })).toHaveLength(1)
+  for (const messageId of ['missing', 'foreign-only', message!.id])
+    expect(await app.ctx.im.history(workspaceId, { messageId })).toEqual([])
+  expect(
+    await app.ctx.im.history(workspaceId, {
+      messageId: '00123',
+      senderId: '79338528',
+      keyword: '目标',
+      startTime: 1000,
+      endTime: 1000,
+    }),
+  ).toHaveLength(1)
+  for (const filter of [
+    { senderId: 'other' },
+    { keyword: '其他' },
+    { startTime: 1001 },
+    { endTime: 999 },
+    { beforeSequence: message!.sequence - 1 },
+  ])
+    expect(await app.ctx.im.history(workspaceId, { messageId: '00123', ...filter })).toEqual([])
+})
+
 it('未读游标与请求快照持久化，重载后不重复读取，最后消息模板不附带历史', async () => {
   const app = await setup({
     ai: true,
@@ -370,7 +403,7 @@ it('媒体失败保留记录并重试；卸载文件扩展取消并等待下载'
   expect(aborted).toBe(true)
 })
 
-it('真实工具执行按可信空间查询，拒绝模型指定外部空间并支持时间发送人关键词过滤', async () => {
+it('真实工具执行按可信空间查询，拒绝模型指定外部空间并支持消息 ID 与其他条件联合过滤', async () => {
   const requests: RequestSnapshot[] = []
   let calls = 0
   const app = await setup({
@@ -400,6 +433,7 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
                 id: 'good',
                 name: 'im_history_query',
                 arguments: {
+                  messageId: 'budget',
                   keyword: '预算',
                   senderId: '79338528',
                   startTime: '2026-10-01T00:00:00Z',
@@ -414,12 +448,16 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
     },
   })
   const other = await app.connect('foreign', '11')
-  await other.receive('预算机密', { timestamp: Date.parse('2026-10-01T01:00:00Z') })
+  await other.receive('预算机密', { id: 'budget', timestamp: Date.parse('2026-10-01T01:00:00Z') })
   await app.connection.receive('预算 123', {
     id: 'budget',
     timestamp: Date.parse('2026-10-01T02:00:00Z'),
   })
   await app.connection.receive('预算不在范围', { timestamp: Date.parse('2026-10-02T02:00:00Z') })
+  await app.connection.receive('预算其他消息', {
+    id: 'other-budget',
+    timestamp: Date.parse('2026-10-01T02:00:00Z'),
+  })
   await app.connection.receive('/ai 查询')
   await poll(() => app.sent.length).toBe(1)
   const first = (await app.jobs())[0]!
@@ -438,6 +476,7 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
   expect(query).toContain('预算 123')
   expect(query).not.toContain('预算机密')
   expect(query).not.toContain('预算不在范围')
+  expect(query).not.toContain('预算其他消息')
 })
 
 it('私聊图片进入原 AI 会话附件，不进入群归档或群媒体清理', async () => {
