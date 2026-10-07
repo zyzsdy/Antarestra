@@ -514,6 +514,8 @@ it('历史工具兼容首次零游标，保留精确筛选并正确结束向前�
           { ...range, beforeSequence: results[1]?.nextBeforeSequence ?? 1 },
           { ...original, messageId: 'missing' },
           { ...original, keyword: '不匹配' },
+          { ...original, messageId: '' },
+          range,
         ]
         const args = queries[calls++]
         return args
@@ -544,7 +546,7 @@ it('历史工具兼容首次零游标，保留精确筛选并正确结束向前�
   expect(await app.ctx.im.history(workspaceId, { beforeSequence: 0 })).toEqual([])
   await app.connection.receive('/ai 查询', { timestamp: Date.parse('2026-10-07T12:00:00Z') })
   await poll(() => app.sent.length).toBe(1)
-  expect(results).toHaveLength(5)
+  expect(results).toHaveLength(7)
   expect(results[0]?.messages.map((message) => message.messageId)).toEqual(['301886401'])
   expect(results[0]?.messages[0]?.text).toContain('目标消息正文')
   expect(results[1]?.messages.map((message) => message.messageId)).toEqual(['301886401'])
@@ -553,6 +555,8 @@ it('历史工具兼容首次零游标，保留精确筛选并正确结束向前�
   expect(results[2]?.nextBeforeSequence).toBeNull()
   expect(results[3]).toEqual({ messages: [], nextBeforeSequence: null })
   expect(results[4]).toEqual({ messages: [], nextBeforeSequence: null })
+  expect(results[5]?.messages.map((message) => message.messageId)).toEqual(['earlier', '301886401'])
+  expect(results[5]).toEqual(results[6])
 })
 
 it('私聊图片进入原 AI 会话附件，不进入群归档或群媒体清理', async () => {

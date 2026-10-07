@@ -84,9 +84,8 @@ export function registerHistoryTools(
       properties: {
         messageId: {
           type: 'string',
-          minLength: 1,
           description:
-            '仅精确查找一条消息时填写；查询时间范围或总结群聊时省略。使用聊天上下文、引用消息或查询结果中的原始 messageId，按字符串填写并保留前导零；不是查询起点、用户 ID、AI 会话消息 ID 或内部归档 ID。',
+            '仅精确查找一条消息时填写；查询时间范围或总结群聊时省略或填空字符串，空字符串视为未填写。使用聊天上下文、引用消息或查询结果中的原始 messageId，按字符串填写并保留前导零；不是查询起点、用户 ID、AI 会话消息 ID 或内部归档 ID。',
         },
         startTime: {
           type: 'string',
@@ -136,7 +135,9 @@ export function registerHistoryTools(
       if (startTime !== undefined && endTime !== undefined && startTime > endTime)
         throw new AiError('invalid_time', '开始时间不能晚于结束时间')
       const messages = await ctx.im.history(context.workspaceId, {
-        ...(typeof args.messageId === 'string' ? { messageId: args.messageId } : {}),
+        ...(typeof args.messageId === 'string' && args.messageId !== ''
+          ? { messageId: args.messageId }
+          : {}),
         ...(startTime !== undefined ? { startTime } : {}),
         ...(endTime !== undefined ? { endTime } : {}),
         ...(typeof args.senderId === 'string' ? { senderId: args.senderId } : {}),
