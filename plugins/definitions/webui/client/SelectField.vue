@@ -414,6 +414,9 @@ function keydown(event: KeyboardEvent) {
 .ui-select-content-compact {
   min-width: 220px;
 }
+.ui-select-content-compact [data-reka-select-viewport] {
+  scroll-padding-top: 36px;
+}
 .ui-select-content-compact .ui-select-option[data-highlighted] {
   outline: none;
   background: #efefec;
@@ -423,6 +426,9 @@ function keydown(event: KeyboardEvent) {
   background: #efefec;
 }
 .ui-select-content-compact .ui-select-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: #f1f2f4;
   color: #637089;
   border-radius: 4px;
