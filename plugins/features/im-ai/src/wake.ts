@@ -88,6 +88,7 @@ export function registerWakeTasks(
           usage,
           model?.input,
         )
+        snapshot.last_message = `本次为定时激活唤醒，计划任务创建时的信息为：\n${request.prompt}\n请按照此消息进行定时任务的执行。`
         snapshot.wakePrompt = request.prompt
         snapshot.im_status =
           (

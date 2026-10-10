@@ -91,6 +91,9 @@ it('IM 唤醒复用输入变量及原助理，在独立会话执行并投递到�
   const jobs = await app.jobs()
   expect(jobs).toHaveLength(2)
   const job = jobs.find((item) => item.id.startsWith('wake:'))!
+  const lastMessage = `本次为定时激活唤醒，计划任务创建时的信息为：\n${app.task.prompt}\n请按照此消息进行定时任务的执行。`
+  expect(JSON.parse(job.snapshot!).last_message).toBe(lastMessage)
+  expect(job.input).toContain(lastMessage)
   expect(job.delivery).toBe('sent')
   expect(job.conversation_id).not.toBe(app.task.source_conversation_id)
   const access = await app.ctx.ai.authorize('im', app.messages[0]!.request)
@@ -100,7 +103,7 @@ it('IM 唤醒复用输入变量及原助理，在独立会话执行并投递到�
     expect.arrayContaining([
       expect.objectContaining({
         type: 'text',
-        text: expect.stringContaining(prompt),
+        text: expect.stringContaining(lastMessage),
       }),
     ]),
   )
