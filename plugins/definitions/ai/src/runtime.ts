@@ -826,11 +826,18 @@ export class Running {
                   draft.isError = result.isError ?? false
                   if (result.images) draft.images = json(result.images)
                 } else draft.result = returned
-              } catch {
+              } catch (error) {
                 this.active()
                 batch.signal.throwIfAborted()
                 draft.isError = true
-                draft.result = { error: local.signal.aborted ? '工具执行超时' : '工具执行失败' }
+                const message =
+                  error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+                draft.result = local.signal.aborted
+                  ? { error: '工具执行超时' }
+                  : {
+                      error: message || '工具执行失败',
+                      ...(error instanceof AiError ? { code: error.code } : {}),
+                    }
               }
             }
             if (timer) clearTimeout(timer)

@@ -37,9 +37,9 @@ export default defineDatabasePlugin({
               },
               intervalSeconds: {
                 type: 'integer',
-                minimum: 60,
+                minimum: 0,
                 maximum: 31536000,
-                description: '重复间隔，单位秒；interval 时必填，once 时不要填写。',
+                description: '重复间隔，单位秒；interval 时必填且至少为 60，once 时省略或填写 0。',
               },
               reason: {
                 type: 'string',

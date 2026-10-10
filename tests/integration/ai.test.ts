@@ -1695,6 +1695,48 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     const ends = events.filter((e) => e.type === 'tool-end')
     expect(JSON.stringify(ends[0]?.data)).toContain('"id":"2"')
   })
+  it.each([
+    [new Error('外部命令退出码 2'), { error: '外部命令退出码 2' }],
+    [
+      new AiError('invalid_schedule', '一次性任务不能设置周期'),
+      { error: '一次性任务不能设置周期', code: 'invalid_schedule' },
+    ],
+    ['参数无效', { error: '参数无效' }],
+    [new Error(), { error: '工具执行失败' }],
+    [{ privateDetail: '不应序列化' }, { error: '工具执行失败' }],
+  ])('工具异常消息返回后续模型请求和历史：%j', async (failure, expected) => {
+    let received = false
+    const app = await setup({
+      agent: agent({ toolIds: ['fail'] }),
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          if (request.messages.at(-1)?.role === 'tool') {
+            expect(request.messages.at(-1)?.content).toEqual([
+              expect.objectContaining({ type: 'tool-result', isError: true, content: expected }),
+            ])
+            received = true
+            return { content: [{ type: 'text', text: '已收到错误' }] }
+          }
+          return { content: [{ type: 'tool-call', name: 'fail', id: 'failure', arguments: {} }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'fail',
+      description: '',
+      parameters: {},
+      async execute() {
+        throw failure
+      },
+    })
+    const result = await send(app)
+    expect(result.status).toBe('completed')
+    expect(received).toBe(true)
+    expect(result.messages.find((message) => message.role === 'tool')?.content).toEqual([
+      expect.objectContaining({ isError: true, content: expected }),
+    ])
+  })
   it('工具可覆盖默认超时，超时结果返回模型且继续运行', async () => {
     const app = await setup({
       config: { toolTimeoutMs: 5 },
@@ -1729,7 +1771,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     const result = await send(app)
     expect(result.status).toBe('completed')
     expect(result.messages.filter((m) => m.role === 'tool').map((m) => m.content[0])).toMatchObject(
-      [{ isError: true }, { isError: false }],
+      [{ isError: true, content: { error: '工具执行超时' } }, { isError: false }],
     )
   })
   it('模型活动续期且不设总时限，无活动超时与调用上限明确终止', async () => {
