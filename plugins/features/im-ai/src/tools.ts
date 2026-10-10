@@ -55,6 +55,8 @@ export function registerHistoryTools(
   })
   ctx.on('ai/template', async (context, draft) => {
     const input = await snapshot(context)
+    if (input?.wakePrompt && !draft.userPrompt.includes(input.wakePrompt))
+      draft.userPrompt += `\n\n定时任务指令：\n${input.wakePrompt}`
     if (input?.replyFormat?.append && !replyFormatVariable.test(context.agent.systemTemplate))
       draft.systemPrompt += `\n\n${input.replyFormat.guide}`
   })

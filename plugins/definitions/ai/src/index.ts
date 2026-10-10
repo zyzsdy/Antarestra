@@ -17,6 +17,7 @@ import type {
 } from '@antarestra/contracts'
 import type {
   Config,
+  Access,
   AgentDefinition,
   ExecutionBackend,
   Extension,
@@ -29,6 +30,8 @@ import type {
   Tool,
   GeneratedImage,
   TemplateVariable,
+  BackgroundTaskHandler,
+  BackgroundTaskGuard,
 } from './types.js'
 import { Registry } from './registry.js'
 import {
@@ -55,10 +58,6 @@ export { toolResultContent } from './tool-results.js'
 import { validateToolImages } from './tool-results.js'
 export type * from '@antarestra/contracts'
 
-export interface Access {
-  readonly actorId: string
-  readonly workspaceId: string
-}
 export interface Bound {
   templateVariables: Map<string, Registration<TemplateVariable>>
   agent: Registration<AgentPreset>
@@ -78,6 +77,8 @@ declare module '@antarestra/plugin-sdk' {
 }
 export class AiService extends Service<Config> {
   private readonly owner: Context
+  private readonly backgroundTaskHandlers = new Registry<BackgroundTaskHandler>(async () => {})
+  private readonly backgroundTaskGuards = new Registry<BackgroundTaskGuard>(async () => {})
   private readonly templateVariables = new Registry<TemplateVariable>((entry) =>
     this.removed(entry),
   )
@@ -113,6 +114,20 @@ export class AiService extends Service<Config> {
   }
   get context() {
     return this.owner
+  }
+  registerBackgroundTaskHandler(owner: Context, source: string, handler: BackgroundTaskHandler) {
+    return this.backgroundTaskHandlers.register(owner, source, handler)
+  }
+  getBackgroundTaskHandler(source: string) {
+    this.active()
+    return this.backgroundTaskHandlers.get(source).value
+  }
+  registerBackgroundTaskGuard(owner: Context, id: string, guard: BackgroundTaskGuard) {
+    return this.backgroundTaskGuards.register(owner, id, guard)
+  }
+  async verifyBackgroundTask(id: string, access: Access, conversationId: string) {
+    await this.verify(access)
+    await this.backgroundTaskGuards.get(id).value(access, conversationId)
   }
   registerTemplateVariable(owner: Context, value: TemplateVariable) {
     check(/^[\w.-]+$/.test(value.id) && value.id !== 'input', '模板变量名称无效')

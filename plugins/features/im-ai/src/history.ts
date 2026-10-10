@@ -3,6 +3,7 @@ import type { UserInput } from '@antarestra/ai'
 import { replyFormatGuide } from './reply.js'
 
 export interface InputSnapshot {
+  wakePrompt?: string
   template: string
   history_message: string
   last_message: string
@@ -39,7 +40,7 @@ function withSender(message: IncomingMessage, content: string) {
   return `发言者 ${JSON.stringify({ id: message.sender.id, name: message.sender.name ?? message.sender.id, messageId: message.id, ...(message.timestamp !== undefined ? { time: new Date(message.timestamp).toISOString() } : {}) })}：\n${content}`
 }
 export function prepareInput(
-  message: MessageContext,
+  message: Pick<MessageContext, 'message' | 'connection' | 'archived'>,
   history: ArchivedMessage[],
   policy: Readonly<ChatPolicy>,
   reason: string,

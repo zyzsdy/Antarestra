@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
-import type { Access, RunCommand } from '@antarestra/ai'
+import { AiError, type Access, type RunCommand } from '@antarestra/ai'
 import type { MessageContext, MessageSegment } from '@antarestra/im'
 import '@antarestra/plugin-im-commands'
 import { activationReason, finalText } from './messages.js'
@@ -16,6 +16,7 @@ import {
 } from './history.js'
 import { registerHistoryTools } from './tools.js'
 import { registerInspection } from './inspection.js'
+import { registerWakeTasks } from './wake.js'
 import { dynamicReplyDefaults } from '@antarestra/im/activation'
 import {
   dynamicReplyProbability,
@@ -41,6 +42,7 @@ export class ImAiService extends Service<Config> {
   private readonly workers = new Map<string, Promise<void>>()
   private readonly requests = new Map<string, MessageContext>()
   private readonly activeRuns = new Map<string, string>()
+  private readonly activeJobs = new Map<string, string>()
   private readonly deliveries = new Map<string, AbortController>()
   private readonly activatedAt = new Map<string, number[]>()
   private readonly lastActivatedAt = new Map<string, number>()
@@ -57,6 +59,13 @@ export class ImAiService extends Service<Config> {
   ) {
     super(ctx, 'imAi')
     this.ai = ctx.ai
+    registerWakeTasks(
+      ctx,
+      (workspace, operation) => this.serial(workspace, operation),
+      () => this.pump(),
+      (row) => this.cancelWake(row),
+      config.queueLimit,
+    )
     registerInspection(ctx)
     ctx.ai.registerTemplateVariable(ctx, {
       id: 'im_status',
@@ -328,6 +337,7 @@ export class ImAiService extends Service<Config> {
       : this.ai.authorizeBackground(this.ctx, 'im', row.actor_id, row.workspace_id)
   }
   private async execute(row: JobRow) {
+    this.activeJobs.set(row.workspace_id, row.id)
     const epoch = this.epochs.get(row.workspace_id) ?? 0
     const delivery = new AbortController()
     this.deliveries.set(row.workspace_id, delivery)
@@ -345,11 +355,50 @@ export class ImAiService extends Service<Config> {
       return policy
     }
     let access: Access | undefined
+    const backgroundGuard = row.command
+      ? (JSON.parse(row.command) as RunCommand).input?.variables?.backgroundTaskGuard
+      : undefined
+    const verify = async () => {
+      await this.ai.verify(access!)
+      if (typeof backgroundGuard === 'string' && row.conversation_id)
+        await this.ai.verifyBackgroundTask(backgroundGuard, access!, row.conversation_id)
+    }
     try {
       // 连接尚未上线时保留恢复任务，避免启动顺序导致丢失。
       access = await this.authorize(row)
+      const saved = await this.db
+        .selectFrom('jobs')
+        .select('status')
+        .where('id', '=', row.id)
+        .executeTakeFirst()
+      if (saved?.status === 'cancelled') return
+      await verify()
       const policy = live()
       if (row.status === 'queued' || row.status === 'running') {
+        if (backgroundGuard && row.status === 'queued' && row.snapshot && row.command) {
+          const snapshot = await refreshAttachments(
+            JSON.parse(row.snapshot) as InputSnapshot,
+            (id) => this.ctx.im.mediaAvailable(row.workspace_id, id),
+          )
+          snapshot.im_status = await this.readStatus(row.workspace_id)
+          const command = JSON.parse(row.command) as RunCommand
+          row.input = renderInput(snapshot)
+          command.input = { ...command.input, text: row.input, attachments: snapshot.attachments }
+          row.snapshot = JSON.stringify(snapshot)
+          row.command = JSON.stringify(command)
+          // 开始前固化一次；崩溃恢复时不改写已提交的幂等请求。
+          row.status = 'running'
+          await this.db
+            .updateTable('jobs')
+            .set({
+              input: row.input,
+              snapshot: row.snapshot,
+              command: row.command,
+              status: row.status,
+            })
+            .where('id', '=', row.id)
+            .execute()
+        }
         if (!row.command) {
           const agentId = policy.agentId ?? this.ai.defaultAgentId
           if (!agentId) throw new Error('尚未配置 Agent')
@@ -458,7 +507,7 @@ export class ImAiService extends Service<Config> {
       }
       if (row.answer || row.status === 'completed') {
         live()
-        await this.ai.verify(access)
+        await verify()
         if (!row.reply_plan) {
           let messages: MessageSegment[][]
           let status: string | undefined
@@ -521,7 +570,7 @@ export class ImAiService extends Service<Config> {
         try {
           for (const [index, segments] of messages.entries()) {
             live()
-            await this.ai.verify(access)
+            await verify()
             await this.ctx.im.send(target, segments, {
               // 首条沿用旧键，恢复旧任务时也不会重复发送。
               idempotencyKey: `im-ai-${row.id}${index ? `-${index}` : ''}`,
@@ -529,7 +578,7 @@ export class ImAiService extends Service<Config> {
               signal,
               beforeSend: async () => {
                 live()
-                await this.ai.verify(access!)
+                await verify()
                 // 等待可被卸载取消，直到实际投递前才记录本轮尝试。
                 if (!attemptStarted) {
                   await this.db
@@ -548,6 +597,8 @@ export class ImAiService extends Service<Config> {
             .where('id', '=', row.id)
             .execute()
         } catch (error) {
+          // 调度器重载或租约尚未恢复不消耗平台投递次数。
+          if (backgroundGuard && error instanceof AiError && error.status === 503) return
           // 未知投递结果不得自动重试，避免平台已送达而本地超时后重复发送。
           const unknown =
             !!error &&
@@ -573,9 +624,15 @@ export class ImAiService extends Service<Config> {
     } catch (error) {
       if (row.run_id) await this.ai.running.get(row.run_id)?.cancel()
       if (!this.active) return
+      const saved = await this.db
+        .selectFrom('jobs')
+        .select('status')
+        .where('id', '=', row.id)
+        .executeTakeFirst()
+      if (saved?.status === 'cancelled') return
       const unavailable =
         !!error && typeof error === 'object' && 'status' in error && error.status === 503
-      if (unavailable && !access) return
+      if (unavailable && (!access || backgroundGuard)) return
       // 已固化的投递内容不可换成另一份答案复用原有幂等键。
       if (row.reply_plan) {
         await this.db
@@ -589,7 +646,7 @@ export class ImAiService extends Service<Config> {
       if (access) {
         try {
           live()
-          await this.ai.verify(access)
+          await verify()
           canNotify = true
         } catch {
           /* 已撤销的身份与聊天不再回复。 */
@@ -608,10 +665,28 @@ export class ImAiService extends Service<Config> {
         .execute()
       this.ctx.logger.warn('IM AI 消息未完成：身份、策略或运行状态不可用')
     } finally {
+      this.activeJobs.delete(row.workspace_id)
       if (this.deliveries.get(row.workspace_id) === delivery)
         this.deliveries.delete(row.workspace_id)
       this.activeRuns.delete(row.workspace_id)
       this.requests.delete(row.id)
+    }
+  }
+  private async cancelWake(row: JobRow) {
+    const mark = () =>
+      this.db
+        .updateTable('jobs')
+        .set({ status: 'cancelled', delivery: 'sent' })
+        .where('id', '=', row.id)
+        .where('workspace_id', '=', row.workspace_id)
+        .execute()
+    await mark()
+    if (this.activeJobs.get(row.workspace_id) === row.id) {
+      this.deliveries.get(row.workspace_id)?.abort()
+      const run = this.activeRuns.get(row.workspace_id)
+      if (run) await this.ai.running.get(run)?.cancel()
+      await this.workers.get(row.workspace_id)
+      await mark()
     }
   }
   private async stop(message: MessageContext) {

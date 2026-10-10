@@ -29,6 +29,30 @@ export interface Config {
   modelIdleTimeoutMs: number
   toolTimeoutMs: number
 }
+export interface Access {
+  readonly actorId: string
+  readonly workspaceId: string
+}
+/** 可信后台调度入口；目标由来源插件按空间与原会话解析，不接受模型指定。 */
+export interface BackgroundTaskRequest {
+  conversationId: string
+  sourceConversationId: string
+  agentId: string
+  reason: string
+  prompt: string
+}
+export interface BackgroundTaskState {
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
+  runId: string | null
+  error: string | null
+}
+export interface BackgroundTaskHandler {
+  enqueue(access: Access, request: BackgroundTaskRequest, signal: AbortSignal): Promise<void>
+  inspect(access: Access, conversationId: string): Promise<BackgroundTaskState>
+  cancel(access: Access, conversationId: string): Promise<void>
+}
+/** 投递前检查持久化任务仍有效；来源插件重载后也必须重新获取。 */
+export type BackgroundTaskGuard = (access: Access, conversationId: string) => Promise<void>
 /** 单次模型调用的可信身份；不要求存在 Agent 或持久化会话。 */
 export interface ModelContext {
   readonly actorId: string
