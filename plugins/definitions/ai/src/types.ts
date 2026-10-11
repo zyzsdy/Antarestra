@@ -118,6 +118,8 @@ export interface Provider {
 }
 export interface ModelOutput {
   content: ContentBlock[]
+  /** 核心已准备内置工具产物反馈，执行后端应继续请求模型。 */
+  continue?: boolean
   usage?: JsonObject
   stopReason?: ModelStopReason
 }

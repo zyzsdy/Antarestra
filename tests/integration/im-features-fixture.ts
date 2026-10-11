@@ -19,7 +19,7 @@ import commands from '@antarestra/plugin-im-commands'
 import type { Config as CommandsConfig } from '@antarestra/plugin-im-commands'
 import type { CommandPolicy } from '@antarestra/plugin-im-commands'
 import ai from '@antarestra/ai'
-import type { AgentPreset, ModelDriver } from '@antarestra/ai'
+import type { AgentPreset, ModelDriver, Provider } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
 import imAi from '@antarestra/plugin-im-ai'
 import { pluginId } from '../../plugins/features/im-ai/src/store.js'
@@ -50,6 +50,7 @@ export async function setup(
     allowCommands?: boolean
     imConfig?: ImConfig
     driver?: ModelDriver
+    builtinTools?: Provider['builtinTools']
     queueLimit?: number
     deliveryAttempts?: number
     modelInput?: ('text' | 'image' | 'file')[]
@@ -128,6 +129,7 @@ export async function setup(
       title: '测试连接',
       baseUrl: 'https://example.invalid',
       driverId: 'driver',
+      builtinTools: options.builtinTools ?? [],
       models: [
         {
           id: 'model',

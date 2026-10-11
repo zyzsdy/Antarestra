@@ -16,6 +16,7 @@ import rbac from '@antarestra/rbac'
 import WebUI from '@antarestra/webui'
 import local from '@antarestra/plugin-auth-local'
 import ai from '@antarestra/ai'
+import type { GeneratedImage, RunContext } from '@antarestra/ai'
 import provider from '@antarestra/plugin-ai-provider'
 import type { ProviderView } from '@antarestra/plugin-ai-provider'
 import {
@@ -823,14 +824,20 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
     const payload = JSON.parse(body)
     received.push(payload)
     const hosted = (payload.tools ?? [])
-      .filter((t: { type: string }) => t.type !== 'function')
+      .filter((t: { type: string }) => t.type !== 'function' && received.length === 1)
       .map((t: { type: string }) => ({
         id: `hosted-${t.type}`,
         type: `${t.type}_call`,
         status: 'completed',
         ...(t.type === 'web_search'
           ? { action: { type: 'search', query: '测试' } }
-          : { result: 'aW1hZ2U=', output_format: 'png' }),
+          : t.type === 'image_generation'
+            ? {
+                result:
+                  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=',
+                output_format: 'png',
+              }
+            : { results: [] }),
       }))
     const message = {
       id: 'msg-test',
@@ -911,6 +918,20 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
     validateBuiltinTools([{ ...tools[0], options: { type: 'function' } }], saved.models),
   ).toThrow()
   await ctx.plugin(agentCore)
+  const storeImage = vi.fn(async (image: GeneratedImage, context: RunContext) => {
+    expect(context.workspaceId).toBe(access.workspaceId)
+    expect(ctx.ai.running.get(context.runId)?.ownsToolContext(context)).toBe(true)
+    return {
+      type: 'image' as const,
+      resourceId: 'saved-image',
+      mimeType: image.mimeType,
+      filename: image.filename,
+      size: image.data.byteLength,
+      width: image.width,
+      height: image.height,
+    }
+  })
+  ctx.ai.registerResources(ctx, { storeImage, async validate() {} })
   const execute = vi.fn(async () => '客户端结果')
   ctx.ai.registerTool(ctx, {
     id: 'local_tool',
@@ -950,7 +971,7 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
     )
     const result = await ctx.ai.getRun(access, started.id)
     expect(result.status).toBe('completed')
-    expect(result.requests).toHaveLength(1)
+    expect(result.requests).toHaveLength(id === 'allowed' ? 2 : 1)
     return result
   }
   const result = await run('allowed', model.id, [
@@ -973,7 +994,7 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
   const content = result.messages
     .filter((message) => message.role === 'assistant')
     .flatMap((message) => message.content)
-  expect(content.map((block) => block.type)).toEqual([
+  expect(content.slice(0, 5).map((block) => block.type)).toEqual([
     'text',
     'provider-tool',
     'provider-tool',
@@ -992,6 +1013,9 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
   expect(replay.completed).toEqual(content)
   expect(replyContent(content, historyToolDetails(result)).body).toBe('已完成')
   expect(execute).not.toHaveBeenCalled()
+  expect(storeImage).toHaveBeenCalledTimes(1)
+  expect(JSON.stringify(received[1])).toContain('saved-image')
+  expect(JSON.stringify(result)).not.toContain('iVBORw0KGgo')
   await run('wrong-model', 'other', ['provider:example:web_search'])
   expect(received.at(-1)?.tools ?? []).toEqual([])
   await run('not-authorized', model.id, [])

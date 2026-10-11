@@ -445,6 +445,9 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+      image-size:
+        specifier: ^2.0.4
+        version: 2.0.4
 
   plugins/definitions/database:
     dependencies:
