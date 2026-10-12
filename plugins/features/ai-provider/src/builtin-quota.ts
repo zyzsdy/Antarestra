@@ -43,8 +43,6 @@ export class BuiltinQuota {
         }))
         const blocked = remaining.filter((item) => !item.available).map((item) => item.tool.name)
         const allowed = remaining.filter((item) => item.available > 0)
-        const cap = Math.min(...allowed.map((item) => item.available))
-        const maxToolCalls = Number.isFinite(cap) ? Math.min(cap, 2147483647) : undefined
         const reservations = new Map<string, string>()
         for (const { tool } of allowed) {
           if (!tool.callsPer5Hours) continue
@@ -58,13 +56,13 @@ export class BuiltinQuota {
               provider_id: provider.id,
               tool_type: tool.type,
               created_at: new Date().toISOString(),
-              calls: maxToolCalls!,
+              // 每个在途请求预占一次，避免并发请求重复使用最后一份额度。
+              calls: 1,
             })
             .execute()
         }
         return {
           blocked,
-          maxToolCalls,
           // 只有完整响应能证明未使用的预占可释放；断线、取消和崩溃保守保留。
           finish: (counts: Map<string, number>, completed: boolean) =>
             this.lock(async () => {
@@ -73,7 +71,7 @@ export class BuiltinQuota {
                   const calls = counts.get(tool.name) ?? 0
                   const id = reservations.get(tool.name)
                   if (id) {
-                    if (!completed && calls <= maxToolCalls!) continue
+                    if (!completed && calls <= 1) continue
                     if (!calls)
                       await settle.deleteFrom('builtin_usage').where('id', '=', id).execute()
                     else

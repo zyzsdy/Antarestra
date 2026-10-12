@@ -274,7 +274,6 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
             env: {},
             onPayload: (value: unknown) => {
               const payload = files.transform(value) as Record<string, unknown>
-              if (lease?.maxToolCalls !== undefined) payload.max_tool_calls = lease.maxToolCalls
               if (builtinTools.length)
                 payload.tools = [
                   ...(Array.isArray(payload.tools) ? payload.tools : []),

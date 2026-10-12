@@ -145,20 +145,19 @@ it('内置工具额度按空间和提供商隔离，原子预占、到期恢复�
   const leases = await Promise.all([
     quota.reserve(record, 'a', ['search']),
     quota.reserve(record, 'a', ['search']),
+    quota.reserve(record, 'a', ['search']),
   ])
-  expect(leases[0]!.maxToolCalls).toBe(2)
-  expect(leases[1]!.blocked).toEqual(['search'])
+  expect(leases[0]!.blocked).toEqual([])
+  expect(leases[1]!.blocked).toEqual([])
+  expect(leases[2]!.blocked).toEqual(['search'])
   await leases[0]!.finish(new Map([['search', 1]]), true)
-  const last = await quota.reserve(record, 'a', ['search'])
-  expect(last.maxToolCalls).toBe(1)
-  await last.finish(new Map(), false)
+  await leases[1]!.finish(new Map(), false)
   expect((await quota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
   expect((await quota.reserve(record, 'b', ['search'])).blocked).toEqual([])
   expect((await quota.reserve({ ...record, id: 'other' }, 'a', ['search'])).blocked).toEqual([])
   record.builtinTools[0]!.callsPer5Hours = 0
   const unlimited = await quota.reserve(record, 'a', ['search'])
   expect(unlimited.blocked).toEqual([])
-  expect(unlimited.maxToolCalls).toBeUndefined()
   await unlimited.finish(new Map([['search', 1]]), true)
   record.builtinTools[0]!.callsPer5Hours = 3
   expect((await quota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
@@ -174,9 +173,16 @@ it('内置工具额度按空间和提供商隔离，原子预占、到期恢复�
     .set({ created_at: new Date(Date.now() - builtinWindowMs).toISOString() })
     .execute()
   const recovered = await restoredQuota.reserve(record, 'a', ['search'])
-  expect(recovered.maxToolCalls).toBe(3)
+  expect(recovered.blocked).toEqual([])
   await recovered.finish(new Map(), true)
   expect(await restoredScope().selectFrom('builtin_usage').selectAll().execute()).toEqual([])
+  // 本地限制不控制单次上游响应内部的调用数，实际返回的多次调用必须全部计入。
+  const multipleCalls = await restoredQuota.reserve(record, 'a', ['search'])
+  await multipleCalls.finish(new Map([['search', 4]]), false)
+  expect((await restoredScope().selectFrom('builtin_usage').selectAll().execute())[0]!.calls).toBe(
+    4,
+  )
+  expect((await restoredQuota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
   for (const value of [-1, 1.5, '2', null, Number.MAX_SAFE_INTEGER + 1])
     expect(() => validateBuiltinTools([{ ...tool, callsPer5Hours: value }], record.models)).toThrow(
       '非负整数',
@@ -938,7 +944,7 @@ it('思考续接信息经过项目 DTO 往返，仅回传给同一连接和模�
   ).toBeUndefined()
 })
 
-it('内置工具经 Responses 请求发送，提供商执行不会进入客户端工具循环，并受模型和 Agent 范围限制', async () => {
+it('内置工具不发送上游限额，达到本地额度后移除声明，并受模型和 Agent 范围限制', async () => {
   const { ctx, access, fiber } = await setup()
   const received: { tools?: { type: string; name?: string }[]; max_tool_calls?: number }[] = []
   const baseUrl = await remote(async (req, res) => {
@@ -946,6 +952,15 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
     for await (const chunk of req) body += chunk.toString()
     const payload = JSON.parse(body)
     received.push(payload)
+    if (Object.hasOwn(payload, 'max_tool_calls')) {
+      res.writeHead(400, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          message: 'Unsupported parameter: max_tool_calls',
+          type: 'invalid_request_error',
+        }),
+      )
+      return
+    }
     const hosted = (payload.tools ?? [])
       .filter((t: { type: string }) => t.type !== 'function' && received.length === 1)
       .map((t: { type: string }) => ({
@@ -1112,9 +1127,9 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       expect.objectContaining({ type: 'function', name: 'local_tool' }),
     ]),
   )
-  expect(received[0]?.max_tool_calls).toBe(3)
-  // added、done、completed 中的同一个调用只能计数一次。
-  expect(received[1]?.max_tool_calls).toBe(2)
+  expect(received.every((payload) => !Object.hasOwn(payload, 'max_tool_calls'))).toBe(true)
+  // added、done、completed 中的同一个调用只能计数一次，后续请求仍有额度。
+  expect(received[1]?.tools).toContainEqual({ type: 'web_search', search_context_size: 'low' })
   expect(
     result.messages.flatMap((m) => m.content).filter((b) => b.type === 'provider-tool'),
   ).toHaveLength(3)
