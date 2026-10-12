@@ -40,6 +40,11 @@ export const migrations = [
           { name: 'calls', type: 'integer', notNull: true },
         ],
       },
+    ],
+  }),
+  defineMigration({
+    id: '003_builtin_usage_indexes',
+    steps: [
       {
         kind: 'createIndex',
         table: 'builtin_usage',

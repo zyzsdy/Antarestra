@@ -38,6 +38,11 @@ import {
 } from '../../plugins/features/ai-provider/src/validation.js'
 import type { Tables } from '../../plugins/features/ai-provider/src/store.js'
 import {
+  migrations,
+  name as providerNamespace,
+} from '../../plugins/features/ai-provider/src/store.js'
+import { migrations as checkMigrations } from '../../plugins/implementations/database-kysely/src/validation.js'
+import {
   BuiltinQuota,
   builtinWindowMs,
 } from '../../plugins/features/ai-provider/src/builtin-quota.js'
@@ -67,6 +72,58 @@ const model = {
   tools: true,
   thinkingLevels: ['low', 'high'],
 }
+it('已执行原始 002 的数据库可追加索引迁移，保留提供商与额度数据', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'antarestra-quota-upgrade-'))
+  cleanups.push(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }))
+  const filename = join(directory, 'upgrade.sqlite')
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(DatabaseProvider)
+  await ctx.plugin(database, { filename })
+  // 此指纹来自已经执行原始建表迁移的数据库，防止再次修改历史。
+  expect(checkMigrations(migrations)[1]!.checksum).toBe(
+    '63caa99e360d4a6fe685f8ac9e5d397d0a878c385e61b4db3e5a809d1d819339',
+  )
+  await ctx.database.migrate(ctx, providerNamespace, migrations.slice(0, 2))
+  const db = ctx.database.scope<Tables>(ctx, providerNamespace)
+  await db
+    .insertInto('providers')
+    .values({ id: input.id, payload: JSON.stringify(validateProvider(input)) })
+    .execute()
+  const usage = {
+    id: 'preserved',
+    workspace_id: 'space',
+    provider_id: input.id,
+    tool_type: 'web_search',
+    created_at: new Date().toISOString(),
+    calls: 2,
+  }
+  await db.insertInto('builtin_usage').values(usage).execute()
+  // 重现把索引追加到 002 时的原始错误。
+  await expect(
+    ctx.database.migrate(ctx, providerNamespace, [
+      migrations[0]!,
+      {
+        id: migrations[1]!.id,
+        steps: [...migrations[1]!.steps, ...migrations[2]!.steps],
+      },
+    ]),
+  ).rejects.toThrow('迁移历史不兼容')
+  await ctx.fiber.dispose()
+  contexts.splice(contexts.indexOf(ctx), 1)
+  const restored = await setup(filename)
+  expect(restored.ctx.aiProvider.detail(input.id).name).toBe(input.name)
+  expect(
+    await restored.ctx.database
+      .scope<Tables>(restored.ctx, providerNamespace)
+      .selectFrom('builtin_usage')
+      .selectAll()
+      .execute(),
+  ).toEqual([usage])
+  await restored.fiber.dispose()
+  await restored.ctx.plugin(provider, {})
+  expect(restored.ctx.aiProvider.detail(input.id).name).toBe(input.name)
+})
 it('内置工具额度按空间和提供商隔离，原子预占、到期恢复、失败保留及 SQLite 重启恢复', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'antarestra-quota-'))
   cleanups.push(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }))
