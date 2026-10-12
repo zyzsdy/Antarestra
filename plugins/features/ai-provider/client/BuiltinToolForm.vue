@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import { CheckboxField, SelectField } from '@antarestra/webui/components'
+import { CheckboxField, SelectField, NumberField } from '@antarestra/webui/components'
 import type { ModelDefinition, JsonObject } from '@antarestra/ai'
 import type { BuiltinTool } from '../src/types.js'
 const props = defineProps<{
@@ -16,12 +16,22 @@ const draft = reactive<BuiltinTool>(
     : { name: 'web_search', type: 'web_search', modelIds: [], options: {}, enabled: true },
 )
 const options = ref(JSON.stringify(draft.options, null, 2))
-const initial = JSON.stringify({ draft, options: options.value })
+const callsPer5Hours = ref(draft.callsPer5Hours ?? 0)
+const initial = JSON.stringify({
+  draft,
+  options: options.value,
+  callsPer5Hours: callsPer5Hours.value,
+})
 const validation = ref('')
 const invalid = ref('')
 watch(
-  [draft, options],
-  () => emit('dirty', JSON.stringify({ draft, options: options.value }) !== initial),
+  [draft, options, callsPer5Hours],
+  () =>
+    emit(
+      'dirty',
+      JSON.stringify({ draft, options: options.value, callsPer5Hours: callsPer5Hours.value }) !==
+        initial,
+    ),
   { deep: true },
 )
 function save(event: Event) {
@@ -38,12 +48,20 @@ function save(event: Event) {
       throw new Error('工具名需为字母开头的 1–64 位字母、数字、下划线或短横线。')
     invalid.value = 'builtin-models'
     if (!draft.modelIds.length) throw new Error('请至少选择一个可用模型。')
+    invalid.value = 'builtin-limit'
+    if (!Number.isSafeInteger(callsPer5Hours.value) || callsPer5Hours.value < 0)
+      throw new Error('每 5 小时调用上限必须为非负整数，0 表示不限制。')
     invalid.value = 'builtin-options'
     const parsed: unknown = options.value.trim() ? JSON.parse(options.value) : {}
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
       throw new Error('工具选项需为 JSON 对象。')
     invalid.value = ''
-    emit('save', { ...draft, modelIds: [...draft.modelIds], options: parsed as JsonObject })
+    emit('save', {
+      ...draft,
+      callsPer5Hours: callsPer5Hours.value,
+      modelIds: [...draft.modelIds],
+      options: parsed as JsonObject,
+    })
   } catch (error) {
     validation.value = error instanceof Error ? error.message : '工具选项无效。'
     ;(event.target as HTMLFormElement).querySelector<HTMLElement>(`#${invalid.value}`)?.focus()
@@ -77,6 +95,20 @@ function save(event: Event) {
         aria-describedby="builtin-validation"
       />
       <label class="check"><CheckboxField v-model="draft.enabled" />启用内置工具</label>
+      <label for="builtin-limit">每 5 小时调用上限</label>
+      <NumberField
+        id="builtin-limit"
+        v-model="callsPer5Hours"
+        :min="0"
+        :max="Number.MAX_SAFE_INTEGER"
+        :disabled="busy"
+        :aria-invalid="invalid === 'builtin-limit'"
+        aria-describedby="builtin-limit-help builtin-validation"
+      />
+      <p id="builtin-limit-help" class="hint">
+        0 表示不限制。每个工作空间独立统计本工具最近 5 小时的调用，同一提供商下的模型共用额度。
+        达到上限时向 AI 提示“本工具已用完5小时调用限制”。
+      </p>
       <h3>可用模型</h3>
       <p class="hint">仅在 Agent 允许此工具且选择下列模型时生效，由提供商内部执行。</p>
       <div

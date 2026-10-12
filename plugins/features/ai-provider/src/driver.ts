@@ -23,6 +23,8 @@ import { nativeFiles } from './native-files.js'
 import { builtinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { ProviderRecord } from './types.js'
 import { builtinModels } from './catalog.js'
+import type { BuiltinQuota } from './builtin-quota.js'
+import { builtinLimitMessage } from './builtin-quota.js'
 
 const apis: Record<string, () => ProviderStreams> = {
   'openai-completions': () => lazyApi(() => import('@earendil-works/pi-ai/api/openai-completions')),
@@ -178,7 +180,7 @@ function officialBuiltinUrl(provider: ProviderRecord, baseUrl: string) {
     (model) => model.baseUrl.replace(/\/$/, '') === baseUrl.replace(/\/$/, ''),
   )
 }
-export function driver(provider: ProviderRecord): ModelDriver {
+export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDriver {
   const adapter = provider.builtin
     ? builtinProviders().find((builtin) => builtin.id === provider.builtin)
     : undefined
@@ -224,9 +226,21 @@ export function driver(provider: ProviderRecord): ModelDriver {
         headers,
         context.signal,
       )
+      let lease: Awaited<ReturnType<BuiltinQuota['reserve']>> | undefined
+      let completed = false
+      const used = new Map<string, string>()
       try {
         const files = filePayload(model.api, uploaded.ids)
-        const builtinTools = request.tools.filter((tool) => tool.providerTool)
+        const requestedTools = request.tools.filter((tool) => tool.providerTool)
+        if (requestedTools.length)
+          lease = await quota?.reserve(
+            provider,
+            context.workspaceId,
+            requestedTools.map((tool) => tool.providerTool!.name),
+          )
+        const builtinTools = requestedTools.filter(
+          (tool) => !lease?.blocked.includes(tool.providerTool!.name),
+        )
         if (
           builtinTools.length &&
           !['openai-responses', 'azure-openai-responses', 'openai-codex-responses'].includes(
@@ -239,7 +253,10 @@ export function driver(provider: ProviderRecord): ModelDriver {
         const stream = api.streamSimple(
           model,
           normalizeContext({
-            systemPrompt: request.systemPrompt,
+            systemPrompt: [
+              request.systemPrompt,
+              ...(lease?.blocked.map((name) => `内置工具 ${name}：${builtinLimitMessage}`) ?? []),
+            ].join('\n'),
             messages: messages(request, model, connection.resources ?? new Map(), files),
             tools: request.tools
               .filter((tool) => !tool.providerTool)
@@ -257,6 +274,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
             env: {},
             onPayload: (value: unknown) => {
               const payload = files.transform(value) as Record<string, unknown>
+              if (lease?.maxToolCalls !== undefined) payload.max_tool_calls = lease.maxToolCalls
               if (builtinTools.length)
                 payload.tools = [
                   ...(Array.isArray(payload.tools) ? payload.tools : []),
@@ -301,6 +319,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
                 }
                 const tool = builtinTools.find((t) => `${t.providerTool!.type}_call` === item.type)
                 if (!tool || typeof item.id !== 'string') continue
+                used.set(item.id, tool.providerTool!.name)
                 const block: Extract<ContentBlock, { type: 'provider-tool' }> = {
                   type: 'provider-tool',
                   id: item.id,
@@ -333,6 +352,7 @@ export function driver(provider: ProviderRecord): ModelDriver {
         const result = await stream.result()
         if (result.stopReason === 'error' || result.stopReason === 'aborted')
           throw failure(result.errorMessage ?? '模型请求失败或已取消')
+        completed = true
         return {
           content: orderOutput(
             [
@@ -386,7 +406,13 @@ export function driver(provider: ProviderRecord): ModelDriver {
           },
         }
       } finally {
-        await uploaded.dispose()
+        try {
+          const counts = new Map<string, number>()
+          for (const name of used.values()) counts.set(name, (counts.get(name) ?? 0) + 1)
+          await lease?.finish(counts, completed)
+        } finally {
+          await uploaded.dispose()
+        }
       }
     },
   }

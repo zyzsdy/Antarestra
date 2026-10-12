@@ -37,6 +37,10 @@ import {
   validateBuiltinTools,
 } from '../../plugins/features/ai-provider/src/validation.js'
 import type { Tables } from '../../plugins/features/ai-provider/src/store.js'
+import {
+  BuiltinQuota,
+  builtinWindowMs,
+} from '../../plugins/features/ai-provider/src/builtin-quota.js'
 const contexts: Context[] = []
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -63,6 +67,68 @@ const model = {
   tools: true,
   thinkingLevels: ['low', 'high'],
 }
+it('内置工具额度按空间和提供商隔离，原子预占、到期恢复、失败保留及 SQLite 重启恢复', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'antarestra-quota-'))
+  cleanups.push(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }))
+  const filename = join(directory, 'quota.sqlite')
+  const app = await setup(filename)
+  const record = validateProvider(input)
+  record.models = [validateModel(model)]
+  const tool = {
+    name: 'search',
+    type: 'web_search',
+    modelIds: [model.id],
+    options: {},
+    enabled: true,
+    callsPer5Hours: 2,
+  }
+  record.builtinTools = validateBuiltinTools([tool], record.models)
+  const scope = () => app.ctx.database.scope<Tables>(app.ctx, '@antarestra/plugin-ai-provider')
+  const quota = new BuiltinQuota(scope)
+  const leases = await Promise.all([
+    quota.reserve(record, 'a', ['search']),
+    quota.reserve(record, 'a', ['search']),
+  ])
+  expect(leases[0]!.maxToolCalls).toBe(2)
+  expect(leases[1]!.blocked).toEqual(['search'])
+  await leases[0]!.finish(new Map([['search', 1]]), true)
+  const last = await quota.reserve(record, 'a', ['search'])
+  expect(last.maxToolCalls).toBe(1)
+  await last.finish(new Map(), false)
+  expect((await quota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  expect((await quota.reserve(record, 'b', ['search'])).blocked).toEqual([])
+  expect((await quota.reserve({ ...record, id: 'other' }, 'a', ['search'])).blocked).toEqual([])
+  record.builtinTools[0]!.callsPer5Hours = 0
+  const unlimited = await quota.reserve(record, 'a', ['search'])
+  expect(unlimited.blocked).toEqual([])
+  expect(unlimited.maxToolCalls).toBeUndefined()
+  await unlimited.finish(new Map([['search', 1]]), true)
+  record.builtinTools[0]!.callsPer5Hours = 3
+  expect((await quota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  await app.ctx.fiber.dispose()
+  contexts.splice(contexts.indexOf(app.ctx), 1)
+  const restored = await setup(filename)
+  const restoredScope = () =>
+    restored.ctx.database.scope<Tables>(restored.ctx, '@antarestra/plugin-ai-provider')
+  const restoredQuota = new BuiltinQuota(restoredScope)
+  expect((await restoredQuota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  await restoredScope()
+    .updateTable('builtin_usage')
+    .set({ created_at: new Date(Date.now() - builtinWindowMs).toISOString() })
+    .execute()
+  const recovered = await restoredQuota.reserve(record, 'a', ['search'])
+  expect(recovered.maxToolCalls).toBe(3)
+  await recovered.finish(new Map(), true)
+  expect(await restoredScope().selectFrom('builtin_usage').selectAll().execute()).toEqual([])
+  for (const value of [-1, 1.5, '2', null, Number.MAX_SAFE_INTEGER + 1])
+    expect(() => validateBuiltinTools([{ ...tool, callsPer5Hours: value }], record.models)).toThrow(
+      '非负整数',
+    )
+  expect(
+    validateBuiltinTools([{ ...tool, callsPer5Hours: undefined }], record.models)[0]!
+      .callsPer5Hours,
+  ).toBe(0)
+})
 it.each(['openai-completions', 'openai-responses', 'anthropic-messages'])(
   '工具图片通过 %s 的真实 HTTP 请求发送 Base64 图像',
   async (api) => {
@@ -817,7 +883,7 @@ it('思考续接信息经过项目 DTO 往返，仅回传给同一连接和模�
 
 it('内置工具经 Responses 请求发送，提供商执行不会进入客户端工具循环，并受模型和 Agent 范围限制', async () => {
   const { ctx, access, fiber } = await setup()
-  const received: { tools?: { type: string; name?: string }[] }[] = []
+  const received: { tools?: { type: string; name?: string }[]; max_tool_calls?: number }[] = []
   const baseUrl = await remote(async (req, res) => {
     let body = ''
     for await (const chunk of req) body += chunk.toString()
@@ -887,6 +953,7 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       type: 'web_search',
       modelIds: [model.id],
       enabled: true,
+      callsPer5Hours: 3,
       options: { search_context_size: 'low' },
     },
     {
@@ -988,6 +1055,9 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       expect.objectContaining({ type: 'function', name: 'local_tool' }),
     ]),
   )
+  expect(received[0]?.max_tool_calls).toBe(3)
+  // added、done、completed 中的同一个调用只能计数一次。
+  expect(received[1]?.max_tool_calls).toBe(2)
   expect(
     result.messages.flatMap((m) => m.content).filter((b) => b.type === 'provider-tool'),
   ).toHaveLength(3)
@@ -1020,6 +1090,13 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
   expect(received.at(-1)?.tools ?? []).toEqual([])
   await run('not-authorized', model.id, [])
   expect(received.at(-1)?.tools ?? []).toEqual([])
+  saved = await ctx.aiProvider.builtinTools(input.id, {
+    revision: saved.revision,
+    tools: tools.map((tool) => ({ ...tool, callsPer5Hours: 1 })),
+  })
+  await run('limited', model.id, ['provider:example:web_search'])
+  expect(received.at(-1)?.tools ?? []).toEqual([])
+  expect(JSON.stringify(received.at(-1))).toContain('本工具已用完5小时调用限制')
   await ctx.aiProvider.builtinTools(input.id, {
     revision: saved.revision,
     tools: tools.map((tool) => ({ ...tool, enabled: false })),

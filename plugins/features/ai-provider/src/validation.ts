@@ -19,6 +19,13 @@ export function validateBuiltinTools(value: unknown, models: ModelDefinition[]):
       '内置工具类型需为 1–100 位标识，不能使用客户端 function 或 custom 类型',
     )
     check(typeof v.enabled === 'boolean', '启用状态无效')
+    const callsPer5Hours = v.callsPer5Hours === undefined ? 0 : v.callsPer5Hours
+    check(
+      typeof callsPer5Hours === 'number' &&
+        Number.isSafeInteger(callsPer5Hours) &&
+        callsPer5Hours >= 0,
+      '每 5 小时调用上限必须为非负整数，0 表示不限制',
+    )
     check(
       Array.isArray(v.modelIds) &&
         v.modelIds.length > 0 &&
@@ -35,6 +42,7 @@ export function validateBuiltinTools(value: unknown, models: ModelDefinition[]):
       name,
       type,
       enabled: v.enabled,
+      callsPer5Hours,
       modelIds: [...new Set(v.modelIds as string[])],
       options,
     } as BuiltinTool
