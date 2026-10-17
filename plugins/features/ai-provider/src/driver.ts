@@ -78,14 +78,14 @@ function messages(
     } else if (message.role === 'assistant') {
       const content: Extract<Message, { role: 'assistant' }>['content'] = []
       for (const block of message.content) {
+        const continuation = 'continuation' in block ? block.continuation : undefined
+        const signature =
+          continuation?.model.providerId === request.model.providerId &&
+          continuation.model.modelId === request.model.modelId &&
+          continuation.driverId === `ai-provider:${request.model.providerId}`
+            ? continuation.signature
+            : undefined
         if (block.type === 'text' || block.type === 'thinking') {
-          const continuation = block.continuation
-          const signature =
-            continuation?.model.providerId === request.model.providerId &&
-            continuation.model.modelId === request.model.modelId &&
-            continuation.driverId === `ai-provider:${request.model.providerId}`
-              ? continuation.signature
-              : undefined
           if (block.type === 'text')
             content.push({
               type: 'text',
@@ -106,6 +106,7 @@ function messages(
             id: block.id,
             name: block.name,
             arguments: block.arguments,
+            ...(signature ? { thoughtSignature: signature } : {}),
           })
         }
       }
@@ -366,6 +367,15 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
                       id: block.id,
                       name: block.name,
                       arguments: block.arguments as JsonObject,
+                      ...(block.thoughtSignature
+                        ? {
+                            continuation: {
+                              model: request.model,
+                              driverId: `ai-provider:${provider.id}`,
+                              signature: block.thoughtSignature,
+                            },
+                          }
+                        : {}),
                     }
                   : block.type === 'thinking'
                     ? {

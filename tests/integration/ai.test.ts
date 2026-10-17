@@ -155,16 +155,28 @@ describe('AI 核心与实际 SQLite 数据库', () => {
   })
   it('模型请求重试不重跑已执行工具，不重复保存输入与回复', async () => {
     let calls = 0
+    const continuation = { model, driverId: 'driver', signature: '测试工具续接签名' }
     const execute = vi.fn(async () => ({ saved: true }))
     const app = await setup({
       config: { maxModelRetries: 1, maxModelCalls: 2 },
       agent: agent({ toolIds: ['save'] }),
       driver: {
         id: 'driver',
-        async generate() {
+        async generate(request) {
           calls++
           if (calls === 1)
-            return { content: [{ type: 'tool-call', id: 'call', name: 'save', arguments: {} }] }
+            return {
+              content: [
+                { type: 'tool-call', id: 'call', name: 'save', arguments: {}, continuation },
+              ],
+            }
+          expect(request.messages.flatMap((message) => message.content)).toContainEqual({
+            type: 'tool-call',
+            id: 'call',
+            name: 'save',
+            arguments: {},
+            continuation,
+          })
           if (calls === 2) throw new AiError('provider_request_failed', 'HTTP 503')
           return { content: [{ type: 'text', text: '完成' }] }
         },
@@ -183,6 +195,20 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(run.requests).toHaveLength(2)
     expect(run.messages.filter((m) => m.role === 'user')).toHaveLength(1)
     expect(run.messages.at(-1)?.content).toEqual([{ type: 'text', text: '完成' }])
+    const stored = await app.ctx.database
+      .scope<Tables>(app.ctx, '@antarestra/ai')
+      .selectFrom('runs')
+      .select('payload')
+      .where('id', '=', run.id)
+      .executeTakeFirstOrThrow()
+    expect(JSON.parse(stored.payload).messages).toEqual(run.messages)
+    expect(run.messages.flatMap((message) => message.content)).toContainEqual({
+      type: 'tool-call',
+      id: 'call',
+      name: 'save',
+      arguments: {},
+      continuation,
+    })
   })
 
   it.each([0, 1, 2])(

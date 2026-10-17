@@ -169,3 +169,64 @@ it.each(['opencode-go', 'google-vertex'])(
     await disconnected.promise
   },
 )
+
+it.each(
+  ['opencode-go', 'google-vertex'].flatMap((kind) =>
+    ['same', 'provider', 'model', 'driver'].map((scope) => ({ kind, scope })),
+  ),
+)('$kind 工具调用签名持久化后仅回传给原连接、模型和驱动（$scope）', async ({ kind, scope }) => {
+  const signature = Buffer.from('测试工具调用续接签名').toString('base64')
+  const received: { contents: { parts: Record<string, unknown>[] }[] }[] = []
+  const app = await fixture(kind, async (req, res) => {
+    let body = ''
+    for await (const chunk of req) body += chunk.toString()
+    received.push(JSON.parse(body))
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.end(
+      `data: ${JSON.stringify({
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts:
+                received.length === 1
+                  ? [{ functionCall: { name: 'probe', args: {} }, thoughtSignature: signature }]
+                  : [{ text: '测试成功' }],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+      })}\n\n`,
+    )
+  })
+  app.request.tools = [
+    { id: 'probe', description: '测试工具', parameters: { type: 'object', properties: {} } },
+  ]
+  const first = await app.generate()
+  expect(first.stopReason).toBe('toolUse')
+  expect(first.content[0]).toMatchObject({
+    type: 'tool-call',
+    name: 'probe',
+    continuation: { model: app.request.model, driverId: `ai-provider:${kind}`, signature },
+  })
+  // 模拟核心 JSON 持久化及下一轮上下文恢复。
+  const saved: typeof first.content = JSON.parse(JSON.stringify(first.content))
+  const call = saved.find((block) => block.type === 'tool-call')!
+  if (scope === 'provider') call.continuation!.model.providerId = 'another-provider'
+  if (scope === 'model') call.continuation!.model.modelId = 'another-model'
+  if (scope === 'driver') call.continuation!.driverId = 'another-driver'
+  app.request.messages.push(
+    { role: 'assistant', content: saved },
+    {
+      role: 'tool',
+      content: [{ type: 'tool-result', id: call.id, content: 'OK', isError: false }],
+    },
+  )
+  expect((await app.generate()).stopReason).toBe('stop')
+  const part = received[1]!.contents
+    .flatMap((message) => message.parts)
+    .find((part) => part.functionCall)!
+  expect(part.functionCall).toMatchObject({ name: 'probe', args: {} })
+  if (scope === 'same') expect(part.thoughtSignature).toBe(signature)
+  else expect(part).not.toHaveProperty('thoughtSignature')
+})
