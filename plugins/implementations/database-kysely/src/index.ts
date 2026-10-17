@@ -24,7 +24,7 @@ class Backend implements DatabaseBackend {
   private readonly db: Kysely<object>
   private queue: Promise<void> = Promise.resolve()
   private closing: Promise<void> | undefined
-  private readonly owners = new WeakMap<Context, () => void>()
+  private readonly owners = new WeakMap<Context['fiber'], () => void>()
   private readonly extraBackends = new Set<Backend>()
 
   constructor(
@@ -40,20 +40,23 @@ class Backend implements DatabaseBackend {
 
   private guard(ctx: Context): () => void {
     this.assertActive()
-    ctx.fiber.assertActive()
-    let guard = this.owners.get(ctx)
+    // Cordis 服务代理会生成新的影子 Context；所属 Fiber 才是稳定的生命周期标识。
+    const owner = ctx.fiber
+    owner.assertActive()
+    let guard = this.owners.get(owner)
     if (!guard) {
       let active = true
-      ctx.effect(() => () => {
-        active = false
-        this.owners.delete(ctx)
-      })
       guard = () => {
         this.assertActive()
         if (!active) throw new Error('数据库查询所属插件已卸载')
-        ctx.fiber.assertActive()
+        owner.assertActive()
       }
-      this.owners.set(ctx, guard)
+      owner.effect(() => () => {
+        // 同一 Fiber 因依赖恢复重新启动后，旧 guard 仍然必须失效。
+        active = false
+        if (this.owners.get(owner) === guard) this.owners.delete(owner)
+      })
+      this.owners.set(owner, guard)
     }
     return guard
   }

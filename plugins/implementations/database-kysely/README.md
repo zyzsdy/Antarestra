@@ -40,11 +40,15 @@ SQLite 不能配置 `url`，网络数据库不能配置 `filename`，未知配�
 
 ## 测试
 
+数据库 guard 按所属 Cordis Fiber 复用，服务代理生成的不同影子上下文不会重复注册卸载回调。所属生命周期结束后，旧 scope 和已经创建的查询都会失效；即使同一 Fiber 因依赖恢复重新启用，旧 guard 也不会复活。不同 Fiber 的卸载互不影响，各插件的表命名空间仍独立处理。
+
 ```powershell
-pnpm exec vitest run tests/integration/database.test.ts
+pnpm exec vitest run tests/integration/database.test.ts tests/integration/database-guard.test.ts --maxWorkers=1
 ```
 
 默认运行真实 SQLite 测试。使用预先建立的专用测试数据库，将连接串注入 `ANTARESTRA_TEST_POSTGRES` 与／或 `ANTARESTRA_TEST_MYSQL`，再运行同一命令。不要将连接串提交到仓库。测试不使用 root；只需要测试数据库所属账号。
+
+`database-guard.test.ts` 使用 SQLite 内存数据库和真实 Cordis 服务代理，覆盖一万次 scope 调用、重复事务、独立卸载、显式重新挂载及同一 Fiber 的依赖恢复。通过公开的 `fiber.getEffects()` 验证回调数量保持稳定，不依赖 GC 时机或堆大小阈值。
 
 网络测试以随机 `test-UUID` 插件标识创建表，并有意留下失败或中断的迁移供断言；它们不会清空整个数据库。请使用专用测试库，完成后由测试库管理员清理本次测试命名空间。SQLite 测试临时文件会自动回收。
 
