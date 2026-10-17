@@ -339,20 +339,20 @@ importers:
   packages/plugin-sdk:
     dependencies:
       '@cordisjs/plugin-hmr':
-        specifier: ^1.1.0
-        version: 1.1.0(@cordisjs/plugin-timer@1.1.3(cordis@4.0.0-rc.10))(cordis@4.0.0-rc.10)
+        specifier: ^1.1.1
+        version: 1.1.1(@cordisjs/plugin-timer@1.1.4(cordis@4.0.0-rc.11))(cordis@4.0.0-rc.11)
       '@cordisjs/plugin-loader':
-        specifier: 1.0.0-rc.7
-        version: 1.0.0-rc.7(cordis@4.0.0-rc.10)
+        specifier: 1.0.0-rc.8
+        version: 1.0.0-rc.8(cordis@4.0.0-rc.11)
       '@cordisjs/plugin-timer':
-        specifier: ^1.1.3
-        version: 1.1.3(cordis@4.0.0-rc.10)
+        specifier: ^1.1.4
+        version: 1.1.4(cordis@4.0.0-rc.11)
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
       cordis:
-        specifier: 4.0.0-rc.10
-        version: 4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7)
+        specifier: 4.0.0-rc.11
+        version: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
 
   plugins/adapters/im-feishu:
     dependencies:
@@ -465,7 +465,7 @@ importers:
         version: link:../../../packages/plugin-sdk
       '@cordisjs/plugin-http':
         specifier: ^1.5.2
-        version: 1.5.2(cordis@4.0.0-rc.10)(undici@8.11.2)
+        version: 1.5.2(cordis@4.0.0-rc.11)(undici@8.11.2)
       undici:
         specifier: ^8.11.2
         version: 8.11.2
@@ -1351,11 +1351,11 @@ packages:
   '@cordisjs/fetch-file@1.0.3':
     resolution: {integrity: sha512-Uo4OFSvfMlBuPNR/7qzzWs5ltnoeuU7eA2eJt5kke8TJ7SKs/IXnsZVT29nSzecg6xs+gS/fuQAZ5T8G9oYxVQ==}
 
-  '@cordisjs/plugin-hmr@1.1.0':
-    resolution: {integrity: sha512-fDSnKe2Pr2Y38WZjDgqarn7YdPrS2EsORziivmdGiMDhTohnodt/NjzWEnIwJKMH6iydZzZD/zAyoObAhbQVbg==}
+  '@cordisjs/plugin-hmr@1.1.1':
+    resolution: {integrity: sha512-JGAa52x4A8UFXHVjOuRDnLS5tAIr+gRWMiETbT7Xmp26XwI1K0deMd98ytGAfau3SJpGLdaFH0BvE5aWEnrz8g==}
     peerDependencies:
-      '@cordisjs/plugin-timer': ^1.1.3
-      cordis: ^4.0.0-rc.10
+      '@cordisjs/plugin-timer': ^1.1.4
+      cordis: ^4.0.0-rc.11
 
   '@cordisjs/plugin-http@1.5.2':
     resolution: {integrity: sha512-t8O3JbZ/Ir+9AYhN1fyFKmIiWzKkR6hJC/Qd2XW7f9aBxkKqrbP/vtxHj4+GV2lSEYDFqb0nDN2jUSDhhWPQjQ==}
@@ -1366,19 +1366,19 @@ packages:
       undici:
         optional: true
 
-  '@cordisjs/plugin-loader@1.0.0-rc.7':
-    resolution: {integrity: sha512-7LB6n93zCwKnRzLiE11YCtpRJrNiOvtPrtA3McHy/bpcnml7VulvaVPHoFA39Je2MYQT1LxuNVLrUdO3bzudYQ==}
+  '@cordisjs/plugin-loader@1.0.0-rc.8':
+    resolution: {integrity: sha512-KK/tN3OjkK0VJjL1aEQCVK2e2+pqW1F3KHtU5XPZbzZ99HN/kz3yHNTTxSjOGn33WjnL9wdMPHHXQfuHzVeG/A==}
     peerDependencies:
-      cordis: ^4.0.0-rc.10
+      cordis: ^4.0.0-rc.11
       node-addon-require-builtin: ^0.1.0
     peerDependenciesMeta:
       node-addon-require-builtin:
         optional: true
 
-  '@cordisjs/plugin-timer@1.1.3':
-    resolution: {integrity: sha512-7Erst7zmu/25L0Xp0a/fkKIW3kDAI4mXQVctLrfzLRCcCy9H4BxzhVWlnKN5xA0Byy/2CooHbpA48hRebezwog==}
+  '@cordisjs/plugin-timer@1.1.4':
+    resolution: {integrity: sha512-hxm4MmT0hrNzue05EE30We2WYVTTR6g2Nj5kYDu4EWzM9B7JgrUQg8qfUvG03rzB+59uJJywm8u/9OeJXhYIcg==}
     peerDependencies:
-      cordis: ^4.0.0-rc.9
+      cordis: ^4.0.0-rc.11
 
   '@csstools/color-helpers@6.1.2':
     resolution: {integrity: sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==}
@@ -2455,12 +2455,12 @@ packages:
     resolution: {integrity: sha512-8BIbcC6tPZMv2/PD4PrB3CtKks7LmAWhA7FRZK/6/b/WJ2RUz00KCga7gq50S4/RhZ22kxefRFGgsuts0v3eoA==}
     engines: {node: '>= 0.8'}
 
-  cordis@4.0.0-rc.10:
-    resolution: {integrity: sha512-xG90nPNQxR272cC4lR/m5LHevegIJvdddQBlKdEAdGz3n+zgH5lsgkg8o9fc2P3T/f+pO5D7FN1HZvkNBiABnw==}
+  cordis@4.0.0-rc.11:
+    resolution: {integrity: sha512-03PHbcYJzp84XRKnW7jd17g26bPvG5UvSyhyjxGIu/1VQs3bweNMACo3t1W0ikzoZ7q+wytHyk8jJsaIQOkPkA==}
     hasBin: true
     peerDependencies:
-      '@cordisjs/plugin-include': ^1.1.0
-      '@cordisjs/plugin-loader': ^1.0.0-rc.7
+      '@cordisjs/plugin-include': ^1.1.1
+      '@cordisjs/plugin-loader': ^1.0.0-rc.8
     peerDependenciesMeta:
       '@cordisjs/plugin-include':
         optional: true
@@ -4299,20 +4299,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@cordisjs/plugin-hmr@1.1.0(@cordisjs/plugin-timer@1.1.3(cordis@4.0.0-rc.10))(cordis@4.0.0-rc.10)':
+  '@cordisjs/plugin-hmr@1.1.1(@cordisjs/plugin-timer@1.1.4(cordis@4.0.0-rc.11))(cordis@4.0.0-rc.11)':
     dependencies:
       '@babel/code-frame': 7.29.7
-      '@cordisjs/plugin-timer': 1.1.3(cordis@4.0.0-rc.10)
+      '@cordisjs/plugin-timer': 1.1.4(cordis@4.0.0-rc.11)
       chokidar: 4.0.3
-      cordis: 4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7)
+      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
       cosmokit: 1.8.1
       picomatch: 4.0.7
       schemastery: 3.18.0
 
-  '@cordisjs/plugin-http@1.5.2(cordis@4.0.0-rc.10)(undici@8.11.2)':
+  '@cordisjs/plugin-http@1.5.2(cordis@4.0.0-rc.11)(undici@8.11.2)':
     dependencies:
       '@cordisjs/fetch-file': 1.0.3
-      cordis: 4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7)
+      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
       cosmokit: 1.8.1
       schemastery: 3.18.0
     optionalDependencies:
@@ -4320,14 +4320,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@cordisjs/plugin-loader@1.0.0-rc.7(cordis@4.0.0-rc.10)':
+  '@cordisjs/plugin-loader@1.0.0-rc.8(cordis@4.0.0-rc.11)':
     dependencies:
-      cordis: 4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7)
+      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
       cosmokit: 1.8.1
 
-  '@cordisjs/plugin-timer@1.1.3(cordis@4.0.0-rc.10)':
+  '@cordisjs/plugin-timer@1.1.4(cordis@4.0.0-rc.11)':
     dependencies:
-      cordis: 4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7)
+      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
       cosmokit: 1.8.1
 
   '@csstools/color-helpers@6.1.2': {}
@@ -5395,12 +5395,12 @@ snapshots:
       depd: 2.0.0
       keygrip: 1.1.0
 
-  cordis@4.0.0-rc.10(@cordisjs/plugin-loader@1.0.0-rc.7):
+  cordis@4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8):
     dependencies:
       '@standard-schema/spec': 1.1.0
       cosmokit: 1.8.1
     optionalDependencies:
-      '@cordisjs/plugin-loader': 1.0.0-rc.7(cordis@4.0.0-rc.10)
+      '@cordisjs/plugin-loader': 1.0.0-rc.8(cordis@4.0.0-rc.11)
 
   cose-base@1.0.3:
     dependencies:

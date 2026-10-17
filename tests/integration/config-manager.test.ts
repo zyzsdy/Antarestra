@@ -104,6 +104,9 @@ describe('配置面板管理服务', () => {
         (await app.manager.snapshot()).instances.every((item) => item.status === 'active'),
       ).toBe(true),
     )
+    expect(app.manager.impacts('provider')).toEqual(['consumer'])
+    expect((await app.manager.detail('provider')).impacts).toEqual(['consumer'])
+    expect(app.manager.impacts('consumer')).toEqual([])
     await app.manager.remove((await app.manager.snapshot()).version, 'provider', operation())
     await vi.waitFor(() => expect(cleaned).toHaveBeenCalledOnce())
     expect((await app.manager.snapshot()).instances[0]?.status).toBe('waiting')

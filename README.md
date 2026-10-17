@@ -49,7 +49,7 @@ pnpm build
 - [架构与边界](docs/architecture.md)、[领域词汇](CONTEXT.md)、[AI 核心决策](docs/adr/0001-ai-core.md)。
 - [协作约定](AGENTS.md)、[界面规范](DESIGN.md)、[交互契约](UX-CONTRACT.md)。
 
-新增 WebUI 插件使用 `pnpm create:webui <名称>`。依赖统一通过 `pnpm add` / `pnpm remove` 管理；插件从 `@antarestra/plugin-sdk` 导入 Cordis，当前固定为 `cordis@4.0.0-rc.10`。
+新增 WebUI 插件使用 `pnpm create:webui <名称>`。依赖统一通过 `pnpm add` / `pnpm remove` 管理；插件从 `@antarestra/plugin-sdk` 导入 Cordis，当前固定为 `cordis@4.0.0-rc.11`。
 
 ## 当前边界
 
