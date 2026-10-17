@@ -60,6 +60,7 @@ it.each([false, true])('保存流式配置为块式 YAML（本地覆盖：%s）'
 })
 
 describe('配置面板管理服务', () => {
+  // 真实依赖目录扫描在全量并发时可能超过默认 5 秒；此处验证功能而非扫描性能。
   it('运行及禁用实例均展示包标题，详情与目录包含功能描述', async () => {
     const app = await setup('plugins:\n  logger: {}\n  ~hmr: {}\n  ~missing-plugin: {}\n')
     const items = (await app.manager.snapshot()).instances
@@ -74,7 +75,7 @@ describe('配置面板管理服务', () => {
       title: detail.info?.title,
       description: detail.info?.description,
     })
-  })
+  }, 20_000)
   it.each(['', 'pluginPanel: {}\n', 'pluginPanel: { instances: {} }\n'])(
     '删除配置允许缺少面板元数据：%s',
     async (layout) => {
@@ -219,7 +220,7 @@ describe('配置面板管理服务', () => {
     await expect(
       app.manager.add(snapshot.version, '@antarestra/plugin-server', operation()),
     ).rejects.toThrow('仅允许')
-  })
+  }, 20_000)
   it.each([
     ['antarestra-plugin-example', false, 'example', false],
     ['@antarestra/plugin-example', false, 'example', false],

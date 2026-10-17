@@ -5,6 +5,7 @@ import WebUI from '@antarestra/webui'
 import type { EntryManifest } from '@antarestra/webui'
 import { WebSocket } from 'ws'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { applyWebHmr } from '../../plugins/features/hmr/src/webui.js'
@@ -15,7 +16,8 @@ afterEach(async () => {
 })
 
 async function setup(excludeAssets = false) {
-  const directory = await mkdtemp(join(tmpdir(), '前端 HMR '))
+  // Windows 文件监视器使用真实长路径，避免 TEMP 的 8.3 别名导致原生进程崩溃。
+  const directory = await mkdtemp(join(realpathSync.native(tmpdir()), '前端 HMR '))
   cleanups.push(() => rm(directory, { recursive: true, force: true }))
   await writeFile(join(directory, 'index.js'), "export { default } from './component.js'")
   await writeFile(join(directory, 'component.js'), 'export default () => "初始"')

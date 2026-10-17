@@ -34,7 +34,6 @@ Antarestra/
 │  └─ adapters/
 │     └─ …                         # HTTP Server、OneBot 与飞书入口
 ├─ tests/integration/             # Cordis 插件与资源生命周期测试
-├─ .github/workflows/             # Windows / Linux 检查流程
 ├─ pnpm-workspace.yaml            # 工作区范围与明确允许的构建脚本
 ├─ pnpm-lock.yaml                 # 必须提交的依赖锁文件
 ├─ antarestra.yml                  # 默认主配置
@@ -87,7 +86,7 @@ Antarestra/
 - 模块解析使用 Bundler，以兼容 Cordis 4 当前声明文件中的扩展名省略。服务端自己编写的相对导入仍使用 `.js` 扩展名，确保编译后可直接由 Node 执行。
 - 内部包的默认运行导出与类型导出指向 `dist`，`development` 条件指向源码。tsx watch 和 Vitest 使用该条件，开发与测试无需先手动构建。
 - 新建服务端工作区包时同步设置清单、导出、构建脚本和项目引用。依赖写入所属包，避免偶然依赖根目录提升的模块。
-- 当前 CI 同时检查 Windows 和 Linux；增加 CI 平台声明前，区分本机验证与远端执行结果。
+- 仓库不配置 GitHub Actions 自动验证；推送和 Pull Request 不触发仓库检查。验证结果需注明实际执行的平台，不将本机结果表述为跨平台验证。
 
 ## 插件边界与生命周期
 
@@ -110,9 +109,11 @@ Antarestra/
 
 ## 验证与提交
 
-初始化的完整检查为 `pnpm check`，另用 `pnpm start` 验证编译产物。后续变更运行相关检查；插件生命周期改动应覆盖独立卸载、依赖变化和资源清理，租户功能改动应覆盖跨空间拒绝访问。
+除非用户明确要求全量测试，开发中只执行受影响的单个插件，或其关联、依赖插件的测试，不执行全量测试。修改共享包时，根据实际引用关系选择受影响插件的测试文件。根目录使用 `pnpm exec vitest run <测试文件...>` 明确限定范围；不得运行不带文件范围的 `pnpm test`、`vitest run`，也不得通过 `pnpm check` 间接触发全量测试。格式、类型和构建检查同样按变更需要选择范围。
 
-默认启用 `plugin-server`，健康接口为 `/api/health`，默认监听 `0.0.0.0:14451`。CI 使用 `node scripts/smoke-server.mjs` 验证编译产物并回收子进程，避免持续监听阻塞流水线。Server 消费插件使用 `inject: ['server']`，通过带所属上下文的 `use`、`route`、`static` 注册能力；API 路径由 server 统一添加 `/api`。
+用户明确要求完整检查时可执行 `pnpm check`；只要求全量测试时执行 `pnpm test`。插件生命周期改动应覆盖独立卸载、依赖变化和资源清理，租户功能改动应覆盖跨空间拒绝访问。
+
+默认启用 `plugin-server`，健康接口为 `/api/health`，默认监听 `0.0.0.0:14451`。需要验证服务端编译产物时，可运行 `node scripts/smoke-server.mjs`，该脚本会回收子进程，避免持续监听阻塞命令。Server 消费插件使用 `inject: ['server']`，通过带所属上下文的 `use`、`route`、`static` 注册能力；API 路径由 server 统一添加 `/api`。
 
 用户权限基础位于 `plugins/definitions/rbac`，本地认证位于 `plugins/implementations/auth-local`。需要授权的 HTTP 业务插件同时注入 `rbac` 和 `server`，声明权限后通过 `ctx.rbac.require()` 检查；空间范围必须由服务端解析，`system` 不覆盖工作空间。local 页面通过 WebUI 客户端扩展注册，默认位于 `/auth/user/`，初始管理员通过 bootstrap 配置显式创建，密码应使用环境引用。多个插件联合写入使用 `ctx.database.transaction()`，每个插件在事务中通过自己的服务操作自己的命名空间。数据库切换和本地开发库说明见 [启动与开发指南](docs/development.md)。
 

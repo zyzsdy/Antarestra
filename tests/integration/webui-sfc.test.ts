@@ -1,7 +1,7 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'vite'
 import { describe, expect, it, vi } from 'vitest'
 import { defineWebUIConfig } from '@antarestra/webui/vite'
@@ -81,7 +81,7 @@ describe('WebUI SFC 构建', () => {
         }
         expect(pages).toHaveLength(1)
         expect(links).toHaveLength(1)
-        expect(links[0]!.href).toBe(pathToFileURL(join(outDir, 'style.css')).href)
+        expect(fileURLToPath(links[0]!.href)).toBe(join(outDir, 'style.css'))
         for (const dispose of effects.reverse()) dispose()
         expect(links[0]!.remove).toHaveBeenCalledTimes(1)
         vi.unstubAllGlobals()

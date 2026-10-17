@@ -121,6 +121,8 @@ pnpm --filter @antarestra/plugin-chat-webui dev
 | `node scripts/smoke-server.mjs` | 在临时端口验证编译后的 Server 并回收子进程   |
 | `pnpm create:webui <名称>`      | 从标准模板创建 WebUI 插件                    |
 
+默认只运行受影响插件及其关联、依赖插件的测试，使用 `pnpm exec vitest run <测试文件...>` 指定范围。除非用户明确要求，不运行全量 `pnpm test` 或包含全量测试的 `pnpm check`。仓库已移除 GitHub Actions，推送和 Pull Request 不自动执行验证。
+
 Windows 遇到临时路径或文件监视器问题时，可将 `TEMP` / `TMP` 设为仓库内绝对路径，再使用 `pnpm exec vitest run <测试文件> --maxWorkers=1` 排查。必须区分实际回归与单独复现结果，不把跳过的外部测试算作通过。
 
 依赖变更通过包管理器命令完成，例如 `pnpm --filter @antarestra/webui add 包名`、`pnpm add -Dw 包名`。提交前检查差异、运行相关验证并使用简体中文提交概要；不自动推送。完整约定见 [AGENTS.md](../AGENTS.md)。

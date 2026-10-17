@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -9,7 +10,8 @@ import * as configLoader from '@antarestra/config-loader'
 const { createPluginResolver, loadPlugins } = configLoader
 const managed = process.env.ANTARESTRA_TEST_MANAGED_HMR === '1'
 
-const directory = await mkdtemp(join(tmpdir(), 'antarestra hmr '))
+// Windows TEMP 可能使用 8.3 短路径，真实路径可避免 libuv 文件监视器断言崩溃。
+const directory = await mkdtemp(join(realpathSync.native(tmpdir()), 'antarestra hmr '))
 const ctx = new Context()
 ctx.logger.exporter({ export: (message) => console.log(message) })
 const state = (globalThis.hmrTest = { active: new Map(), starts: new Map(), cleanups: new Map() })
