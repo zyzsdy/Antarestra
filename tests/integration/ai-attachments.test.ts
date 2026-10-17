@@ -1,8 +1,29 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { filePayload } from '../../plugins/features/ai-provider/src/attachments.js'
 import { nativeFiles } from '../../plugins/features/ai-provider/src/native-files.js'
 import { createServer } from 'node:http'
 const pdf = { filename: '说明.pdf', mimeType: 'application/pdf', data: 'aGVsbG8=' }
+it.each([false, true])('附件转换保留 SDK 取消信号和非普通对象（包含附件：%s）', (attached) => {
+  const files = filePayload('google-generative-ai')
+  const controller = new AbortController()
+  const onAbort = vi.fn()
+  const headers = new Headers({ 'x-test': 'preserved' })
+  const payload = {
+    contents: [{ parts: [attached ? files.placeholder(pdf) : { text: '测试' }] }],
+    config: { abortSignal: controller.signal, headers },
+  }
+  const transformed = files.transform(payload) as typeof payload
+  expect(transformed.config.abortSignal).toBe(controller.signal)
+  expect(transformed.config.headers).toBe(headers)
+  transformed.config.abortSignal.addEventListener('abort', onAbort)
+  controller.abort('取消测试')
+  expect(onAbort).toHaveBeenCalledOnce()
+  expect(transformed.config.abortSignal.reason).toBe('取消测试')
+  expect(transformed.contents[0]!.parts).toEqual([
+    attached ? { inlineData: { mimeType: pdf.mimeType, data: pdf.data } } : { text: '测试' },
+  ])
+  if (attached) expect(payload.contents[0]!.parts[0]!.text).toMatch(/^antarestra-attachment:/)
+})
 it('办公文档通过官方 SDK 上传，使用 file_id 并在完成或部分失败时删除远端副本', async () => {
   const requests: { method: string; url: string; body: string }[] = []
   let fail = false

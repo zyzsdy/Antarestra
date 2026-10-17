@@ -30,6 +30,8 @@ pi-ai 1.3.0 将 opencode-go 的内置地址更新为 `https://opencode.ai/infere
 
 图片与文件经 AI 资源解析器校验空间并读取内容。图片转换为模型输入；PDF、UTF-8 文本和其他文档按目标协议转换，OpenAI Responses 的部分二进制办公文档通过 Files API 上传。协议、模型能力或资源大小不支持时明确报错，不只检查附件引用。具体支持范围、远端清理及大小限制见[聊天附件](../chat-webui/README.md#图片与文件附件)。OAuth 登录、云账号凭据流程及 Agent 执行后端不属于本插件；选择需要这些认证方式的提供商不会自动创建对应登录流程。
 
+附件 payload 转换仅递归处理数组和普通数据对象，保留 SDK 的 `AbortSignal` 等运行时对象。Google Generative AI、Vertex 以及 opencode-go 的 Gemini 模型均依赖这一约束；即使没有附件，也不能将请求取消信号复制成普通对象。`tests/integration/provider-google.test.ts` 使用真实 SDK 和本地 HTTP 模拟服务验证纯文本、PDF 流式响应及请求取消，覆盖 opencode-go 内置协议选择和会话请求头，不代表外部模型服务验证。
+
 `tests/integration/ai-provider.test.ts` 覆盖鉴权、密钥边界、修订冲突、模型校验、SQLite 文件重启恢复、卸载和依赖恢复，以及本地 HTTP 模拟目录和 OpenAI 兼容流。模拟服务测试不代表外部真实模型集成验证。
 
 模型返回的文本/思考续接签名随项目 DTO 持久化；下一轮只向同一连接、模型及驱动回传，避免思考模型的历史转换丢失协议字段。客户端不展示这些不透明字段。

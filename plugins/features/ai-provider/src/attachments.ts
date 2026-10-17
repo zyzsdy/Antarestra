@@ -53,6 +53,9 @@ export function filePayload(api: string, remoteIds: ReadonlyMap<string, string> 
   function transform(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(transform)
     if (!value || typeof value !== 'object') return value
+    // Google SDK 的 payload 包含 AbortSignal；只遍历普通数据对象，保留运行时对象。
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== Object.prototype && prototype !== null) return value
     const object = value as Record<string, unknown>
     if (typeof object.text === 'string' && files.has(object.text)) return files.get(object.text)
     return Object.fromEntries(Object.entries(object).map(([key, child]) => [key, transform(child)]))

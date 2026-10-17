@@ -7,8 +7,6 @@ import type { RequestSnapshot, RunContext } from '@antarestra/ai'
 import { driver, resolveModel } from '../../plugins/features/ai-provider/src/driver.js'
 import { providerRequestHeaders } from '../../plugins/features/ai-provider/src/user-agent.js'
 import { validateProvider } from '../../plugins/features/ai-provider/src/validation.js'
-import type { ProviderStreams } from '../../plugins/features/ai-provider/node_modules/@earendil-works/pi-ai/dist/types.js'
-import { normalizeContext } from '../../plugins/features/ai-provider/node_modules/@earendil-works/pi-ai/dist/index.js'
 
 const { version } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -143,35 +141,9 @@ it.each(
   const baseUrl = `http://127.0.0.1:${address.port}`
   const record = provider(api, baseUrl)
   if (header) record.headers[header] = 'CustomClient/1.0'
-  if (api === 'google-generative-ai' || api === 'google-vertex') {
-    // 独立验证 Google 适配器；现有附件转换会破坏 AbortSignal，与 UA 无关。
-    const adapter: ProviderStreams =
-      api === 'google-generative-ai'
-        ? await import('../../plugins/features/ai-provider/node_modules/@earendil-works/pi-ai/dist/api/google-generative-ai.js')
-        : await import('../../plugins/features/ai-provider/node_modules/@earendil-works/pi-ai/dist/api/google-vertex.js')
-    const model = resolveModel(record, record.models[0]!, baseUrl)
-    const stream = adapter.streamSimple(
-      model,
-      normalizeContext({ messages: [{ role: 'user', content: '测试', timestamp: 0 }] }),
-      {
-        apiKey: 'test-key',
-        headers: providerRequestHeaders(model, 'test-key', record.headers),
-        signal: context.signal,
-        maxRetries: 0,
-        env: {},
-      },
-    )
-    expect((await stream.result()).stopReason).toBe('error')
-  } else {
-    await expect(
-      driver(record).generate(
-        request,
-        { baseUrl, credential: 'test-key' },
-        context,
-        async () => {},
-      ),
-    ).rejects.toMatchObject({ code: 'provider_request_failed' })
-  }
+  await expect(
+    driver(record).generate(request, { baseUrl, credential: 'test-key' }, context, async () => {}),
+  ).rejects.toMatchObject({ code: 'provider_request_failed' })
   expect(received).toEqual([header ? 'CustomClient/1.0' : expectedUserAgent])
   if (api === 'anthropic-messages') {
     received.length = 0
