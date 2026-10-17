@@ -31,6 +31,7 @@ export interface Config {
   pollIntervalMs: number
   queueLimit: number
   deliveryAttempts: number
+  autoResetUnavailableConversation: boolean
 }
 declare module '@antarestra/plugin-sdk' {
   interface Context {
@@ -407,6 +408,27 @@ export class ImAiService extends Service<Config> {
             .selectAll()
             .where('workspace_id', '=', row.workspace_id)
             .executeTakeFirst()
+          if (
+            session &&
+            session.agent_id === agentId &&
+            this.config.autoResetUnavailableConversation
+          ) {
+            try {
+              const state = await this.ai.getConversation(access, session.conversation_id)
+              const last = state.path.at(-1)
+              const unavailable =
+                state.conversation.archivedAt !== null ||
+                (!state.conversation.activeRunId &&
+                  !!last &&
+                  (last.role === 'user' ||
+                    (await this.ai.getRun(access, last.runId)).status !== 'completed'))
+              if (unavailable) session = undefined
+            } catch (error) {
+              // 只有已删除的会话可以替换；授权、数据库及配置错误仍交给原处理流程。
+              if (!(error instanceof AiError) || error.code !== 'not_found') throw error
+              session = undefined
+            }
+          }
           if (!session || session.agent_id !== agentId) {
             const conversation = await this.ai.createConversation(access, agentId, 'IM 对话')
             live()
@@ -492,9 +514,12 @@ export class ImAiService extends Service<Config> {
             ? finalText(current)
             : current.status === 'cancelled'
               ? null
-              : current.error?.code === 'model_output_truncated'
-                ? '模型达到输出上限，回复未完整生成。请使用 /reset 开始新的对话后重试。'
-                : 'AI 运行失败，请使用 /reset 开始新的对话后重试。'
+              : (current.error?.code === 'model_output_truncated'
+                  ? '模型达到输出上限，回复未完整生成。'
+                  : 'AI 运行失败。') +
+                (this.config.autoResetUnavailableConversation
+                  ? '下次消息将自动开始新的对话，请重新发送需要处理的内容。'
+                  : '请使用 /reset 开始新的对话后重试。')
         await this.db
           .updateTable('jobs')
           .set({
@@ -658,12 +683,18 @@ export class ImAiService extends Service<Config> {
           status: 'failed',
           delivery: canNotify ? 'pending' : 'failed',
           answer: canNotify
-            ? 'AI 暂时无法处理此消息，请检查 Agent 配置，或使用 /reset 后重试。'
+            ? this.config.autoResetUnavailableConversation
+              ? 'AI 暂时无法处理此消息，请检查 Agent 配置后重试。'
+              : 'AI 暂时无法处理此消息，请检查 Agent 配置，或使用 /reset 后重试。'
             : null,
         })
         .where('id', '=', row.id)
         .execute()
-      this.ctx.logger.warn('IM AI 消息未完成：身份、策略或运行状态不可用')
+      this.ctx.logger.warn(
+        'IM AI 消息未完成（任务 %s）：%s',
+        row.id,
+        error instanceof AiError ? `${error.code}: ${error.message}` : '身份、策略或运行状态不可用',
+      )
     } finally {
       this.activeJobs.delete(row.workspace_id)
       if (this.deliveries.get(row.workspace_id) === delivery)

@@ -271,6 +271,8 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
             headers,
             ...(builtin ? { sessionId: context.conversationId } : {}),
             signal: context.signal,
+            // 重试统一由 AI 核心控制，避免驱动与入口叠加重试次数。
+            maxRetries: 0,
             env: {},
             onPayload: (value: unknown) => {
               const payload = files.transform(value) as Record<string, unknown>

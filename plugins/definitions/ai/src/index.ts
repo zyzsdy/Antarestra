@@ -417,6 +417,7 @@ export class AiService extends Service<Config> {
         driver,
         controller.signal,
         this.config.modelIdleTimeoutMs,
+        this.config.maxModelRetries,
       )
       const result = await pending
       await this.verify(access)

@@ -462,6 +462,56 @@ async function remote(handler: RequestListener) {
   if (!address || typeof address === 'string') throw new Error('监听失败')
   return `http://127.0.0.1:${address.port}`
 }
+
+it('真实 HTTP 503 经模型驱动由核心重试，直接调用成功且仅输出一次', async () => {
+  let calls = 0
+  const baseUrl = await remote((_req, res) => {
+    calls++
+    if (calls === 1) {
+      res.writeHead(503, { 'content-type': 'application/json' })
+      res.end(
+        JSON.stringify({
+          error: { message: 'Service temporarily unavailable', type: 'api_error' },
+        }),
+      )
+      return
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.end(
+      'data: ' +
+        JSON.stringify({
+          id: 'response',
+          object: 'chat.completion.chunk',
+          model: 'test-model',
+          choices: [
+            { index: 0, delta: { role: 'assistant', content: '恢复成功' }, finish_reason: null },
+          ],
+        }) +
+        '\n\n' +
+        'data: ' +
+        JSON.stringify({
+          id: 'response',
+          object: 'chat.completion.chunk',
+          model: 'test-model',
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        }) +
+        '\n\ndata: [DONE]\n\n',
+    )
+  })
+  const app = await setup()
+  const saved = await app.ctx.aiProvider.save({ ...input, baseUrl })
+  await app.ctx.aiProvider.models(input.id, { revision: saved.revision, models: [model] })
+  const update = vi.fn()
+  const result = await app.ctx.ai.generate(app.ctx, app.access, {
+    model: { providerId: input.id, modelId: model.id },
+    systemPrompt: '',
+    messages: [{ role: 'user', content: [{ type: 'text', text: '问题' }] }],
+    update,
+  })
+  expect(result.content).toEqual([{ type: 'text', text: '恢复成功' }])
+  expect(calls).toBe(2)
+  expect(update.mock.calls.filter(([event]) => event.type === 'delta')).toHaveLength(1)
+})
 it.each(['anthropic-messages', 'openai-completions', 'openai-responses'])(
   'opencode-go 内置目录包含所有协议的模型（当前接口 %s）',
   async (api) => {

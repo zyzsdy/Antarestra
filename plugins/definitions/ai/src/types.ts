@@ -26,6 +26,7 @@ export type {
 } from '@antarestra/contracts'
 export interface Config {
   maxModelCalls: number
+  maxModelRetries: number
   modelIdleTimeoutMs: number
   toolTimeoutMs: number
 }

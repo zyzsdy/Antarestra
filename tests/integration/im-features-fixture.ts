@@ -45,6 +45,8 @@ export async function cleanup() {
 export async function setup(
   options: {
     ai?: boolean
+    aiConfig?: Partial<import('@antarestra/ai').Config>
+    autoResetUnavailableConversation?: boolean
     commands?: Partial<CommandsConfig>
     /** 其他功能测试显式放行测试指令；权限专项关闭后验证生产默认值。 */
     allowCommands?: boolean
@@ -123,7 +125,7 @@ export async function setup(
   const aiState = { calls: 0 }
   let aiPlugin: Awaited<ReturnType<typeof ctx.plugin>> | undefined
   if (options.ai) {
-    await ctx.plugin(ai, {})
+    await ctx.plugin(ai, options.aiConfig ?? {})
     ctx.ai.registerProvider(ctx, {
       id: 'provider',
       title: '测试连接',
@@ -188,6 +190,9 @@ export async function setup(
       pollIntervalMs: 20,
       queueLimit: options.queueLimit ?? 5,
       deliveryAttempts: options.deliveryAttempts ?? 2,
+      ...(options.autoResetUnavailableConversation === undefined
+        ? {}
+        : { autoResetUnavailableConversation: options.autoResetUnavailableConversation }),
     })
   }
   if (options.allowCommands !== false) {

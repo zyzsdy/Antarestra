@@ -64,7 +64,11 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value) ?? 'null'
 }
 export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(signal.reason)
+  if (signal.aborted) {
+    // 请求已创建后才发现取消时，仍须接管它的拒绝，避免重试/卸载产生未处理异常。
+    void promise.catch(() => {})
+    return Promise.reject(signal.reason)
+  }
   return new Promise<T>((resolve, reject) => {
     const abort = () => reject(signal.reason)
     signal.addEventListener('abort', abort, { once: true })

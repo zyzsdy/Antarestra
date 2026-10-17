@@ -26,6 +26,7 @@ import { abortable, AiError, canonical, check, compile, freeze, json, template }
 import { budget, estimateRequest, summarizationPrompt, usageTokens } from './context.js'
 import { prepareContext } from './context-manager.js'
 import { ProviderImages } from './provider-images.js'
+import { generateWithRetry } from './retry.js'
 import {
   messageResources,
   structuredResult,
@@ -484,43 +485,56 @@ export class Running {
             resources.set(block.resourceId, resource)
           }
       const output = await abortable(
-        driver.generate(
-          request,
-          { baseUrl: provider.baseUrl, credential, resources },
-          { ...this.context, signal },
-          async (update) => {
-            this.active()
-            signal.throwIfAborted()
-            touch()
-            if (update.type === 'provider-tool') {
-              let block = update.content
-              check(
-                request.tools.some((tool) => tool.providerTool?.name === block.name),
-                '提供商调用了未授权的内置工具',
-              )
-              block = await this.providerImages.receive(block, signal)
+        generateWithRetry(
+          driver,
+          [
+            request,
+            { baseUrl: provider.baseUrl, credential, resources },
+            { ...this.context, signal },
+            async (update) => {
               this.active()
               signal.throwIfAborted()
-              const existing = this.record.messages
-                .flatMap((message) => message.content)
-                .find((item) => item.type === 'provider-tool' && item.id === block.id)
-              if (existing) Object.assign(existing, json(block))
-              else this.record.messages.push({ role: 'assistant', content: [json(block)] })
-              const replyBlock = this.reply.find(
-                (item) => item.type === 'provider-tool' && item.id === block.id,
-              )
-              if (replyBlock) Object.assign(replyBlock, json(block))
-              else this.reply.push(json(block))
-              await this.service.persist(this, 'provider-tool', json(block))
-            }
-            if (update.type === 'delta') {
-              check(
-                typeof update.text === 'string' && ['text', 'thinking'].includes(update.kind),
-                '增量格式无效',
-              )
-              this.reply.push({ type: update.kind, text: update.text })
-              await this.service.persist(this, 'message-delta', update)
-            }
+              touch()
+              if (update.type === 'provider-tool') {
+                let block = update.content
+                check(
+                  request.tools.some((tool) => tool.providerTool?.name === block.name),
+                  '提供商调用了未授权的内置工具',
+                )
+                block = await this.providerImages.receive(block, signal)
+                this.active()
+                signal.throwIfAborted()
+                const existing = this.record.messages
+                  .flatMap((message) => message.content)
+                  .find((item) => item.type === 'provider-tool' && item.id === block.id)
+                if (existing) Object.assign(existing, json(block))
+                else this.record.messages.push({ role: 'assistant', content: [json(block)] })
+                const replyBlock = this.reply.find(
+                  (item) => item.type === 'provider-tool' && item.id === block.id,
+                )
+                if (replyBlock) Object.assign(replyBlock, json(block))
+                else this.reply.push(json(block))
+                await this.service.persist(this, 'provider-tool', json(block))
+              }
+              if (update.type === 'delta') {
+                check(
+                  typeof update.text === 'string' && ['text', 'thinking'].includes(update.kind),
+                  '增量格式无效',
+                )
+                this.reply.push({ type: update.kind, text: update.text })
+                await this.service.persist(this, 'message-delta', update)
+              }
+            },
+          ],
+          this.service.config.maxModelRetries,
+          async (attempt) => {
+            if (timer) clearTimeout(timer)
+            this.service.context.logger.warn(
+              '模型请求暂时失败，准备重试（运行 %s，第 %s/%s 次）',
+              this.record.id,
+              attempt,
+              this.service.config.maxModelRetries,
+            )
           },
         ),
         signal,
@@ -784,14 +798,27 @@ export class Running {
           ? await abortable(provider.resolveCredential({ ...this.context, signal }), signal)
           : undefined
         const result = await abortable(
-          driver.generate(
-            request,
-            { baseUrl: provider.baseUrl, credential },
-            { ...this.context, signal },
-            async () => {
-              this.active()
-              signal.throwIfAborted()
-              touch()
+          generateWithRetry(
+            driver,
+            [
+              request,
+              { baseUrl: provider.baseUrl, credential },
+              { ...this.context, signal },
+              async () => {
+                this.active()
+                signal.throwIfAborted()
+                touch()
+              },
+            ],
+            this.service.config.maxModelRetries,
+            async (attempt) => {
+              if (timer) clearTimeout(timer)
+              this.service.context.logger.warn(
+                '辅助模型请求暂时失败，准备重试（运行 %s，第 %s/%s 次）',
+                this.record.id,
+                attempt,
+                this.service.config.maxModelRetries,
+              )
             },
           ),
           signal,
