@@ -512,12 +512,19 @@ it('真实 HTTP 503 经模型驱动由核心重试，直接调用成功且仅输
   expect(calls).toBe(2)
   expect(update.mock.calls.filter(([event]) => event.type === 'delta')).toHaveLength(1)
 })
-it.each(['anthropic-messages', 'openai-completions', 'openai-responses'])(
+it.each(['anthropic-messages', 'openai-completions', 'openai-responses', 'google-generative-ai'])(
   'opencode-go 内置目录包含所有协议的模型（当前接口 %s）',
   async (api) => {
     const record = validateProvider({ ...input, builtin: 'opencode-go', api })
     const builtin = builtinModels('opencode-go')
-    expect(new Set(builtin.map((model) => model.api)).size).toBe(3)
+    expect(new Set(builtin.map((model) => model.api))).toEqual(
+      new Set([
+        'anthropic-messages',
+        'openai-completions',
+        'openai-responses',
+        'google-generative-ai',
+      ]),
+    )
     expect(builtin.length).toBeGreaterThan(2)
     const expected = [...new Set(builtin.map((model) => model.id))].sort()
     const models = candidates(record)
@@ -537,7 +544,7 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     ...input,
     builtin: 'opencode-go',
     api: 'anthropic-messages',
-    baseUrl: 'https://opencode.ai/zen/go',
+    baseUrl: 'https://opencode.ai/inference/go',
   })
   record.models = candidates(record).map(validateModel)
   expect(driver(record).id).toBe(`ai-provider:${record.id}`)
@@ -556,11 +563,12 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     expect(resolveModel(record, definition, record.baseUrl + '/').api).toBe(builtin.api)
     expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(true)
   }
-  const remote = validateModel({ ...model, id: 'mimo-v2.6-flash' })
+  const remote = validateModel({ ...model, id: 'mimo-future-test-model' })
+  expect(builtinModels('opencode-go').some((model) => model.id === remote.id)).toBe(false)
   record.models.push(remote)
   const unknown = resolveModel(record, remote, record.baseUrl)
   expect(unknown.api).toBe('openai-completions')
-  expect(unknown.baseUrl).toBe('https://opencode.ai/zen/go/v1')
+  expect(unknown.baseUrl).toBe('https://opencode.ai/inference/go/v1')
   expect(useBuiltinAdapter(record, unknown.id, record.baseUrl)).toBe(true)
   const future = validateModel({ ...model, id: 'future-go-model' })
   record.models.push(future)
@@ -579,7 +587,7 @@ it('自定义网关不被内置模型的协议和端点覆盖', () => {
   expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(false)
 })
 it('自定义提供商即使使用内置模型 ID 和官方地址也始终使用默认接口', () => {
-  const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/zen/go' })
+  const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/inference/go' })
   const builtin = builtinModels('opencode-go').find((model) => model.api === 'anthropic-messages')!
   const resolved = resolveModel(record, validateModel({ ...model, id: builtin.id }), record.baseUrl)
   expect(resolved.api).toBe(record.api)
@@ -591,7 +599,7 @@ it('其他内置提供商的同名模型不会改变所选提供商的默认请�
     ...input,
     builtin: 'opencode-go',
     api: 'anthropic-messages',
-    baseUrl: 'https://opencode.ai/zen/go',
+    baseUrl: 'https://opencode.ai/inference/go',
   })
   const known = new Set(builtinModels(record.builtin).map((model) => model.id))
   const other = builtinModels('openai').find((model) => !known.has(model.id))!
