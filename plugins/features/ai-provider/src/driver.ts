@@ -25,6 +25,7 @@ import type { ProviderRecord } from './types.js'
 import { builtinModels } from './catalog.js'
 import type { BuiltinQuota } from './builtin-quota.js'
 import { builtinLimitMessage } from './builtin-quota.js'
+import { providerRequestHeaders } from './user-agent.js'
 
 const apis: Record<string, () => ProviderStreams> = {
   'openai-completions': () => lazyApi(() => import('@earendil-works/pi-ai/api/openai-completions')),
@@ -268,7 +269,7 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
           }),
           {
             apiKey: keyless ? 'unused' : (connection.credential ?? ''),
-            headers,
+            headers: providerRequestHeaders(model, connection.credential, headers),
             ...(builtin ? { sessionId: context.conversationId } : {}),
             signal: context.signal,
             // 重试统一由 AI 核心控制，避免驱动与入口叠加重试次数。
