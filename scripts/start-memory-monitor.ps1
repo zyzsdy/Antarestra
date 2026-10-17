@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoPath = Split-Path -Parent $PSScriptRoot
 $preloadPath = Join-Path $PSScriptRoot 'memory-monitor.cjs'
-$runPath = Join-Path $PSScriptRoot ('memory-debug/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$runPath = Join-Path $repoPath ('.tmp/memory-debug/' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $savedOptions = $env:NODE_OPTIONS
 $savedDirectory = $env:ANTARESTRA_MEMORY_LOG_DIR
 $savedInterval = $env:ANTARESTRA_MEMORY_INTERVAL_MS

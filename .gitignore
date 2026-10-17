@@ -16,17 +16,4 @@ coverage/
 data/
 log/
 
-/plugins/definitions/webui/public/
-/plugins/implementations/auth-local/public/
-/plugins/features/chat-webui/public/
-/plugins/features/admin-console/public/
-
-/plugins/features/config-panel/public/
-/plugins/features/ai-provider/public/
-/plugins/features/ai-agents/public/
-/plugins/features/markdown-render/public/
-
-/plugins/features/workspace-file/public/
-/plugins/implementations/storage-s3/public/
-/plugins/features/im-console/public/
-/plugins/features/im-stickers-lib/public/
+public/

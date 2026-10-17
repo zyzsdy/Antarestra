@@ -30,31 +30,36 @@ if (directory) {
         resources[name] = (resources[name] || 0) + 1
       }
       const heap = getHeapStatistics()
-      appendFileSync(file, JSON.stringify({
-        timestamp: new Date().toISOString(),
-        event,
-        pid: process.pid,
-        parentPid: process.ppid,
-        threadId,
-        entry: process.argv[1] ? basename(process.argv[1]) : 'eval',
-        worker: process.env.ANTARESTRA_WORKER === '1',
-        nodeVersion: process.version,
-        uptimeSeconds: process.uptime(),
-        // 内存单位均为字节；GC 时长为毫秒，计数和时长均为累计值。
-        ...process.memoryUsage(),
-        heapSizeLimit: heap.heap_size_limit,
-        nativeContexts: heap.number_of_native_contexts,
-        detachedContexts: heap.number_of_detached_contexts,
-        gcCount,
-        majorGcCount,
-        gcDurationMs,
-        activeResources: resources,
-        ...(exitCode === undefined ? {} : { exitCode }),
-      }) + '\n')
+      appendFileSync(
+        file,
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          event,
+          pid: process.pid,
+          parentPid: process.ppid,
+          threadId,
+          entry: process.argv[1] ? basename(process.argv[1]) : 'eval',
+          worker: process.env.ANTARESTRA_WORKER === '1',
+          nodeVersion: process.version,
+          uptimeSeconds: process.uptime(),
+          // 内存单位均为字节；GC 时长为毫秒，计数和时长均为累计值。
+          ...process.memoryUsage(),
+          heapSizeLimit: heap.heap_size_limit,
+          nativeContexts: heap.number_of_native_contexts,
+          detachedContexts: heap.number_of_detached_contexts,
+          gcCount,
+          majorGcCount,
+          gcDurationMs,
+          activeResources: resources,
+          ...(exitCode === undefined ? {} : { exitCode }),
+        }) + '\n',
+      )
     } catch {
       failed = true
       observer.disconnect()
-      console.error(`[内存监测] PID ${process.pid} 写入失败，已停用采样，请检查目录权限和磁盘空间。`)
+      console.error(
+        `[内存监测] PID ${process.pid} 写入失败，已停用采样，请检查目录权限和磁盘空间。`,
+      )
     }
   }
 
