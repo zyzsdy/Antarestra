@@ -5,6 +5,7 @@ import '@antarestra/ai'
 import '@antarestra/database'
 import { catalog, candidates, discover } from './catalog.js'
 import { driver } from './driver.js'
+import { BuiltinQuota } from './builtin-quota.js'
 import { name } from './store.js'
 import type { Tables } from './store.js'
 import type { ProviderRecord } from './types.js'
@@ -22,6 +23,7 @@ declare module '@antarestra/plugin-sdk' {
   }
 }
 export class AiProviderService extends Service {
+  private quota = new BuiltinQuota(() => this.db())
   private entries = new Map<string, { record: ProviderRecord; dispose: () => Promise<void> }>()
   private queue: Promise<unknown> = Promise.resolve()
   private closing = false
@@ -57,7 +59,7 @@ export class AiProviderService extends Service {
     return entry.record
   }
   private register(record: ProviderRecord) {
-    const removeDriver = this.ctx.ai.registerDriver(this.ctx, driver(record))
+    const removeDriver = this.ctx.ai.registerDriver(this.ctx, driver(record, this.quota))
     try {
       const removeProvider = this.ctx.ai.registerProvider(this.ctx, {
         id: record.id,

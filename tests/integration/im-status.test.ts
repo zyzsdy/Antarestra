@@ -60,7 +60,7 @@ it('状态不限制字段、格式或标签，不解码实体、不裁剪空白�
   ).toHaveLength(20)
   expect(parseReplyWithStatus(block(''))).toEqual({ messages: [], status: '' })
   expect(parseReplyWithStatus('你好')).not.toHaveProperty('status')
-  expect(replyFormatGuide()).toContain('{{ im_status }}')
+  expect(replyFormatGuide()).toContain('<status>任意文本</status>')
 })
 
 it.each([

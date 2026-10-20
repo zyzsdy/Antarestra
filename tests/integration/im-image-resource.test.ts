@@ -20,6 +20,69 @@ const png = Buffer.from(
 )
 const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
 
+it('内置图片生成保存空间文件后自动续轮，IM 最终实际投递可读取的图片', async () => {
+  let calls = 0
+  let resourceId = ''
+  const app = await setup({
+    ai: true,
+    toolIds: ['draw'],
+    builtinTools: [
+      {
+        id: 'draw',
+        name: 'draw',
+        type: 'image_generation',
+        description: '',
+        modelIds: ['model'],
+        options: {},
+      },
+    ],
+    driver: {
+      id: 'driver',
+      async generate(request) {
+        if (++calls === 1)
+          return {
+            content: [
+              {
+                type: 'provider-tool',
+                id: 'ig-im',
+                name: 'draw',
+                status: 'completed',
+                result: {
+                  type: 'image_generation_call',
+                  result: png.toString('base64'),
+                  output_format: 'png',
+                },
+              },
+            ],
+          }
+        const block = request.messages
+          .flatMap((message) => message.content)
+          .find((block) => block.type === 'provider-tool')
+        if (block?.type !== 'provider-tool') throw new Error('缺少内置工具结果')
+        resourceId = (block.result.image as { resourceId: string }).resourceId
+        expect(JSON.stringify(request)).toContain('产物已保存到当前工作空间')
+        return {
+          content: [
+            { type: 'text', text: `<im_reply><image>resource://${resourceId}</image></im_reply>` },
+          ],
+        }
+      },
+    },
+  })
+  const state = await storage(app)
+  await app.connection.receive('/ai 画猫并发送')
+  await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+  expect(calls).toBe(2)
+  expect(app.sent).toHaveLength(1)
+  expect(resourceId).not.toBe(state.photo.id)
+  expect((await app.ctx.workspaceFile.readResource(state.access, resourceId)).bytes).toEqual(png)
+  const segment = app.sent[0]!.segments[0]!
+  if (segment.type !== 'image') throw new Error('没有投递图片')
+  const response = await fetch(segment.url)
+  expect(response.status).toBe(200)
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(png)
+})
+
 async function storage(app: Awaited<ReturnType<typeof setup>>) {
   await app.ctx.plugin(Storage)
   const blobs = new Map<string, Uint8Array>()

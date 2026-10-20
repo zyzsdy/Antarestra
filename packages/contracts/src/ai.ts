@@ -25,7 +25,14 @@ export type ContentBlock =
       url?: string
       size?: number
     }
-  | { type: 'tool-call'; id: string; name: string; arguments: JsonObject }
+  | {
+      type: 'tool-call'
+      id: string
+      name: string
+      arguments: JsonObject
+      /** 工具调用的续接签名，遵循与文本、思考块相同的连接和模型边界。 */
+      continuation?: { model: ModelRef; driverId: string; signature: string }
+    }
   | { type: 'tool-result'; id: string; content: Json; isError: boolean; images?: ToolImage[] }
   | { type: 'provider-tool'; id: string; name: string; status: string; result: JsonObject }
 export type ModelStopReason =

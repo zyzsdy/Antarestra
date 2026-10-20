@@ -2,6 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "maxModelRetries": {
+      "title": "模型请求最大重试次数",
+      "description": "Web、IM 及辅助模型请求共用。瞬时上游错误默认最多额外重试 2 次，0 表示关闭；间隔从 1 秒指数增长，最多 30 秒。已输出内容或内置工具活动、鉴权及参数错误不重试。重试不重跑已执行的本地工具，也不额外占用 maxModelCalls 的逻辑调用次数。",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 2
+    },
     "maxModelCalls": {
       "title": "最大模型调用次数",
       "description": "单次运行允许的模型调用次数上限，达到上限后不再发起新的模型请求。默认 64 次。",

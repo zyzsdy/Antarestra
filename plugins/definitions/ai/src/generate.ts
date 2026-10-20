@@ -2,6 +2,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import type { Access } from './index.js'
 import type { GenerateOptions, ModelDriver, Provider, Registration } from './types.js'
 import { abortable, AiError, check, compile, freeze, json } from './utils.js'
+import { generateWithRetry } from './retry.js'
 
 /** 直接模型请求不运行模板、扩展、工具或 Agent 循环。 */
 export async function generate(
@@ -12,6 +13,7 @@ export async function generate(
   driverEntry: Registration<ModelDriver>,
   signal: AbortSignal,
   idleTimeoutMs: number,
+  maxModelRetries: number,
 ) {
   const provider = providerEntry.value
   const driver = driverEntry.value
@@ -80,14 +82,26 @@ export async function generate(
       : undefined
     active()
     const result = await abortable(
-      driver.generate(
-        request,
-        { baseUrl: provider.baseUrl, credential },
-        context,
-        async (event) => {
-          active()
-          touch()
-          await options.update?.(event)
+      generateWithRetry(
+        driver,
+        [
+          request,
+          { baseUrl: provider.baseUrl, credential },
+          context,
+          async (event) => {
+            active()
+            touch()
+            await options.update?.(event)
+          },
+        ],
+        maxModelRetries,
+        async (attempt) => {
+          if (timer) clearTimeout(timer)
+          owner.logger.warn(
+            '直接模型请求暂时失败，准备重试（第 %s/%s 次）',
+            attempt,
+            maxModelRetries,
+          )
         },
       ),
       combined,

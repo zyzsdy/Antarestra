@@ -479,6 +479,122 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
   expect(query).not.toContain('预算其他消息')
 })
 
+it.each([
+  ...[undefined, '', null].flatMap((startTime) =>
+    [undefined, '', null].map((endTime) => ({
+      args: {
+        ...(startTime !== undefined ? { startTime } : {}),
+        ...(endTime !== undefined ? { endTime } : {}),
+      },
+      expected: ['earlier', 'later'],
+    })),
+  ),
+  ...['', null].flatMap((empty) => [
+    {
+      args: { startTime: empty, endTime: '2026-10-07T06:00:00Z' },
+      expected: ['earlier'],
+    },
+    {
+      args: { startTime: '2026-10-07T07:00:00Z', endTime: empty },
+      expected: ['later'],
+    },
+  ]),
+])('历史工具将空时间视为未填并保留单侧时间筛选：$args', async ({ args, expected }) => {
+  const results: unknown[] = []
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    toolIds: ['im_history_query'],
+    driver: {
+      id: 'driver',
+      async generate(request) {
+        if (calls++ === 0)
+          return {
+            content: [
+              {
+                type: 'tool-call',
+                id: 'history',
+                name: 'im_history_query',
+                arguments: { ...args, keyword: '待查消息' },
+              },
+            ],
+          }
+        results.push(
+          ...request.messages
+            .flatMap((message) => message.content)
+            .flatMap((part) =>
+              part.type === 'tool-result' && part.id === 'history' ? [part.content] : [],
+            ),
+        )
+        return { content: [{ type: 'text', text: '查询完成' }] }
+      },
+    },
+  })
+  await app.connection.receive('较早待查消息', {
+    id: 'earlier',
+    timestamp: Date.parse('2026-10-07T06:00:00Z'),
+  })
+  await app.connection.receive('较晚待查消息', {
+    id: 'later',
+    timestamp: Date.parse('2026-10-07T07:00:00Z'),
+  })
+  await app.connection.receive('/ai 查询')
+  await poll(() => app.sent.length).toBe(1)
+  expect(results).toEqual([
+    {
+      messages: expected.map((messageId) => expect.objectContaining({ messageId })),
+      nextBeforeSequence: expected[0] === 'earlier' ? null : 1,
+    },
+  ])
+})
+
+it.each([
+  { startTime: 'invalid', endTime: null },
+  { startTime: '', endTime: 'invalid' },
+  { startTime: 0, endTime: null },
+  { startTime: '', endTime: false },
+  { startTime: '2026-10-07T07:00:00Z', endTime: '2026-10-07T06:00:00Z' },
+])('历史工具仍拒绝无效时间及倒置范围：%j', async (args) => {
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    toolIds: ['im_history_query'],
+    driver: {
+      id: 'driver',
+      async generate() {
+        if (calls++ > 0) return { content: [{ type: 'text', text: '查询失败' }] }
+        return {
+          content: [
+            { type: 'tool-call', id: 'invalid-time', name: 'im_history_query', arguments: args },
+          ],
+        }
+      },
+    },
+  })
+  await app.connection.receive('/ai 查询')
+  await poll(() => app.sent.length).toBe(1)
+  const job = (await app.jobs())[0]!
+  const access = await app.ctx.ai.authorize('im', app.messages.at(-1)!.request)
+  const run = await app.ctx.ai.getRun(access, job.run_id!)
+  if (typeof args.startTime === 'number' || typeof args.endTime === 'boolean') {
+    expect(run.status).toBe('failed')
+    expect(run.error?.code).toBe('invalid_request')
+  } else {
+    expect(run.status).toBe('completed')
+    expect(run.messages.flatMap((message) => message.content)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-result',
+        id: 'invalid-time',
+        isError: true,
+        content: {
+          code: 'invalid_time',
+          error: args.startTime.includes('T') ? '开始时间不能晚于结束时间' : '查询时间格式无效',
+        },
+      }),
+    )
+  }
+})
+
 it('历史工具兼容首次零游标，保留精确筛选并正确结束向前分页', async () => {
   const results: {
     messages: { messageId: string; text: string }[]

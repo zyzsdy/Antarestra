@@ -17,7 +17,7 @@ export function schedule(args: JsonObject, now = Date.now()) {
     throw new AiError('invalid_schedule', '触发时间必须是有效的未来时间')
   const mode = args.mode ?? 'once'
   if (mode !== 'once' && mode !== 'interval') throw new AiError('invalid_schedule', '未知触发类型')
-  if (mode === 'once' && args.intervalSeconds !== undefined)
+  if (mode === 'once' && args.intervalSeconds !== undefined && args.intervalSeconds !== 0)
     throw new AiError('invalid_schedule', '一次性任务不能设置周期')
   const seconds = args.intervalSeconds
   if (

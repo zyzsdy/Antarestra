@@ -2,12 +2,107 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { afterEach, expect, it, vi } from 'vitest'
 import { finalText } from '@antarestra/plugin-im-ai'
 import imAi from '@antarestra/plugin-im-ai'
+import { AiError } from '@antarestra/ai'
 import { pluginId } from '../../plugins/features/im-ai/src/store.js'
 import type { Tables } from '../../plugins/features/im-ai/src/store.js'
 import { cleanup, setup } from './im-features-fixture.js'
 
 afterEach(cleanup)
 const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
+
+it('上游 503 后同一运行自动重试，IM 只投递一次成功回复', async () => {
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    driver: {
+      id: 'driver',
+      async generate() {
+        if (++calls === 1)
+          throw new AiError(
+            'provider_request_failed',
+            'sub2api API error (503): Service temporarily unavailable',
+          )
+        return { content: [{ type: 'text', text: '恢复成功' }] }
+      },
+    },
+  })
+  await app.connection.receive('/ai 问题')
+  await poll(() => app.sent.length).toBe(1)
+  expect(calls).toBe(2)
+  expect((await app.jobs())[0]?.status).toBe('completed')
+  expect(app.sent[0]?.segments).toEqual([{ type: 'text', text: '恢复成功' }])
+})
+
+it.each([true, false])('IM 不可用会话自动替换开关 %s，保留失败历史', async (enabled) => {
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    autoResetUnavailableConversation: enabled,
+    driver: {
+      id: 'driver',
+      async generate() {
+        if (++calls === 1) throw new AiError('provider_request_failed', '401 Unauthorized')
+        return { content: [{ type: 'text', text: '新会话回答' }] }
+      },
+    },
+  })
+  await app.connection.receive('/ai 第一条')
+  await poll(() => app.sent.length).toBe(1)
+  await app.connection.receive('/ai 第二条')
+  await poll(() => app.sent.length).toBe(2)
+  const jobs = await app.jobs()
+  expect(jobs[0]?.status).toBe('failed')
+  expect(jobs[1]?.status).toBe(enabled ? 'completed' : 'failed')
+  expect(calls).toBe(enabled ? 2 : 1)
+  expect(jobs[1]?.conversation_id === jobs[0]?.conversation_id).toBe(!enabled)
+  const access = await app.ctx.ai.authorize('im', app.messages[0]!.request)
+  expect((await app.ctx.ai.getRun(access, jobs[0]!.run_id!)).status).toBe('failed')
+})
+
+it('前一条失败后队列中的下一条自动恢复，重复投递不创建新任务', async () => {
+  let release!: () => void
+  let calls = 0
+  const app = await setup({
+    ai: true,
+    driver: {
+      id: 'driver',
+      async generate() {
+        if (++calls === 1) {
+          await new Promise<void>((resolve) => {
+            release = resolve
+          })
+          throw new AiError('provider_request_failed', 'HTTP 400：图片过大')
+        }
+        return { content: [{ type: 'text', text: '恢复' }] }
+      },
+    },
+  })
+  await app.connection.receive('/ai 第一条')
+  await poll(() => calls).toBe(1)
+  await app.connection.receive('/ai 排队消息', { id: 'queued' })
+  release()
+  await poll(() => app.sent.length).toBe(2)
+  await app.connection.receive('/ai 排队消息', { id: 'queued' })
+  const jobs = await app.jobs()
+  expect(jobs.map((job) => job.status)).toEqual(['failed', 'completed'])
+  expect(jobs[0]?.conversation_id).not.toBe(jobs[1]?.conversation_id)
+  expect(calls).toBe(2)
+})
+
+it.each(['archived', 'deleted'] as const)('已有 IM 会话 %s 后自动创建新会话', async (state) => {
+  const app = await setup({ ai: true })
+  await app.connection.receive('/ai 第一条')
+  await poll(() => app.sent.length).toBe(1)
+  const first = (await app.jobs())[0]!
+  const access = await app.ctx.ai.authorize('im', app.messages[0]!.request)
+  await app.ctx.ai.updateConversation(access, first.conversation_id!, { archived: true })
+  if (state === 'deleted') await app.ctx.ai.deleteConversation(access, first.conversation_id!)
+  await app.connection.receive('/ai 第二条')
+  await poll(() => app.sent.length).toBe(2)
+  const second = (await app.jobs())[1]!
+  expect(second.status).toBe('completed')
+  expect(second.conversation_id).not.toBe(first.conversation_id)
+})
 
 it('闲聊、命令、不相关 @、禁用聊天不调用模型，只发送最终正文', async () => {
   const app = await setup({ ai: true })
@@ -50,7 +145,7 @@ it('截断回复标记失败并发送未完整生成提示，不投递残缺正�
   expect(app.sent[0]?.segments).toEqual([
     {
       type: 'text',
-      text: '模型达到输出上限，回复未完整生成。请使用 /reset 开始新的对话后重试。',
+      text: '模型达到输出上限，回复未完整生成。下次消息将自动开始新的对话，请重新发送需要处理的内容。',
     },
   ])
 })

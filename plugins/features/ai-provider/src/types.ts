@@ -6,6 +6,7 @@ export interface BuiltinTool {
   modelIds: string[]
   options: JsonObject
   enabled: boolean
+  callsPer5Hours?: number
 }
 
 export interface ProviderRecord {

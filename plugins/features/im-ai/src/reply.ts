@@ -116,7 +116,9 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
     source = source.slice(end + '</status>'.length).trimStart()
   }
   if (source.startsWith('<status>')) consumeStatus()
-  if (!/^<im_reply(?:\s|>|\/|$)/.test(source)) {
+  const wrapped = /^<im_reply(?:\s|>|\/|$)/.test(source)
+  // 兼容模型遗漏外层的消息标签序列，后续复用完整的白名单校验。
+  if (!wrapped && !/^<(?:message|image|sticker)(?:\s|>|\/|$)/.test(source)) {
     const index = source.search(/<\/?status(?:\s|>|\/|$)/)
     const plain = index < 0 ? source : source.slice(0, index).trimEnd()
     if (index >= 0) {
@@ -124,19 +126,20 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
       consumeStatus()
       if (source.trim()) throw new Error('IM 状态块必须位于回复前后')
     }
-    const messages: MessageSegment[][] =
-      !plain || /^<message>\s*<\/message>$/.test(plain)
-        ? []
-        : [[{ type: 'text', text: status === undefined ? text : plain }]]
+    const messages: MessageSegment[][] = plain
+      ? [[{ type: 'text', text: status === undefined ? text : plain }]]
+      : []
     return { messages, ...(status !== undefined ? { status } : {}) }
   }
-  if (!source.startsWith('<im_reply>')) throw new Error('IM 回复外层格式无效')
-  source = source.slice('<im_reply>'.length).trimStart()
+  if (wrapped) {
+    if (!source.startsWith('<im_reply>')) throw new Error('IM 回复外层格式无效')
+    source = source.slice('<im_reply>'.length).trimStart()
+  }
   const tag = /^<(message|image|sticker)(?:\s+quote="([^"<>]*)")?>([\s\S]*?)<\/\1>/
   const messages: MessageSegment[][] = []
   let count = 0
   let hasStatus = false
-  while (!source.startsWith('</im_reply>')) {
+  while (wrapped ? !source.startsWith('</im_reply>') : source.length > 0) {
     if (source.startsWith('<status>')) {
       consumeStatus()
       hasStatus = true
@@ -169,8 +172,10 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
     messages.push(segments)
   }
   if (!count && !hasStatus) throw new Error('IM 回复必须包含消息或状态标签')
-  source = source.slice('</im_reply>'.length).trimStart()
-  if (source) consumeStatus()
-  if (source.trim()) throw new Error('IM 回复外层格式无效')
+  if (wrapped) {
+    source = source.slice('</im_reply>'.length).trimStart()
+    if (source) consumeStatus()
+    if (source.trim()) throw new Error('IM 回复外层格式无效')
+  }
   return { messages, ...(status !== undefined ? { status } : {}) }
 }

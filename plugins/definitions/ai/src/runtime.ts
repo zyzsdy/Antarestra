@@ -25,6 +25,8 @@ import type {
 import { abortable, AiError, canonical, check, compile, freeze, json, template } from './utils.js'
 import { budget, estimateRequest, summarizationPrompt, usageTokens } from './context.js'
 import { prepareContext } from './context-manager.js'
+import { ProviderImages } from './provider-images.js'
+import { generateWithRetry } from './retry.js'
 import {
   messageResources,
   structuredResult,
@@ -38,6 +40,16 @@ export class Running {
   reply: ContentBlock[] = []
   private tools = new Map<string, Tool>()
   private toolContexts = new WeakSet<RunContext>()
+  private providerImages = new ProviderImages(async (image) => {
+    this.active()
+    const context = Object.freeze({ ...this.context, signal: image.signal ?? this.context.signal })
+    this.toolContexts.add(context)
+    try {
+      return await this.service.storeToolImage(context, image)
+    } finally {
+      this.toolContexts.delete(context)
+    }
+  })
   private temporaryImages = new Map<string, ResolvedResource>()
   private temporaryImageBytes = 0
   temporaryImage(image: GeneratedImage): ToolImage {
@@ -73,6 +85,7 @@ export class Running {
   private requestThinking: string | null = null
   private transcript: ChatMessage[]
   private pending: Extract<ContentBlock, { type: 'tool-call' }>[] = []
+  private providerFeedback: ChatMessage | undefined
   private callIds = new Set<string>()
   private requesting = false
   private executing = false
@@ -333,6 +346,14 @@ export class Running {
     const local = new AbortController()
     const signal = AbortSignal.any([local.signal, this.context.signal])
     try {
+      // 等待同一响应中的客户端工具结果完整，不能将反馈插入调用与结果之间。
+      if (this.providerFeedback) {
+        const feedback = this.providerFeedback
+        this.providerFeedback = undefined
+        this.transcript.push(json(feedback))
+        this.record.messages.push(feedback)
+        await this.service.persist(this, 'message', feedback)
+      }
       const draft: RequestSnapshot = {
         purpose: 'reply',
         model: json(this.record.model),
@@ -464,40 +485,56 @@ export class Running {
             resources.set(block.resourceId, resource)
           }
       const output = await abortable(
-        driver.generate(
-          request,
-          { baseUrl: provider.baseUrl, credential, resources },
-          { ...this.context, signal },
-          async (update) => {
-            this.active()
-            signal.throwIfAborted()
-            touch()
-            if (update.type === 'provider-tool') {
-              const block = update.content
-              check(
-                request.tools.some((tool) => tool.providerTool?.name === block.name),
-                '提供商调用了未授权的内置工具',
-              )
-              const existing = this.record.messages
-                .flatMap((message) => message.content)
-                .find((item) => item.type === 'provider-tool' && item.id === block.id)
-              if (existing) Object.assign(existing, json(block))
-              else this.record.messages.push({ role: 'assistant', content: [json(block)] })
-              const replyBlock = this.reply.find(
-                (item) => item.type === 'provider-tool' && item.id === block.id,
-              )
-              if (replyBlock) Object.assign(replyBlock, json(block))
-              else this.reply.push(json(block))
-              await this.service.persist(this, 'provider-tool', json(block))
-            }
-            if (update.type === 'delta') {
-              check(
-                typeof update.text === 'string' && ['text', 'thinking'].includes(update.kind),
-                '增量格式无效',
-              )
-              this.reply.push({ type: update.kind, text: update.text })
-              await this.service.persist(this, 'message-delta', update)
-            }
+        generateWithRetry(
+          driver,
+          [
+            request,
+            { baseUrl: provider.baseUrl, credential, resources },
+            { ...this.context, signal },
+            async (update) => {
+              this.active()
+              signal.throwIfAborted()
+              touch()
+              if (update.type === 'provider-tool') {
+                let block = update.content
+                check(
+                  request.tools.some((tool) => tool.providerTool?.name === block.name),
+                  '提供商调用了未授权的内置工具',
+                )
+                block = await this.providerImages.receive(block, signal)
+                this.active()
+                signal.throwIfAborted()
+                const existing = this.record.messages
+                  .flatMap((message) => message.content)
+                  .find((item) => item.type === 'provider-tool' && item.id === block.id)
+                if (existing) Object.assign(existing, json(block))
+                else this.record.messages.push({ role: 'assistant', content: [json(block)] })
+                const replyBlock = this.reply.find(
+                  (item) => item.type === 'provider-tool' && item.id === block.id,
+                )
+                if (replyBlock) Object.assign(replyBlock, json(block))
+                else this.reply.push(json(block))
+                await this.service.persist(this, 'provider-tool', json(block))
+              }
+              if (update.type === 'delta') {
+                check(
+                  typeof update.text === 'string' && ['text', 'thinking'].includes(update.kind),
+                  '增量格式无效',
+                )
+                this.reply.push({ type: update.kind, text: update.text })
+                await this.service.persist(this, 'message-delta', update)
+              }
+            },
+          ],
+          this.service.config.maxModelRetries,
+          async (attempt) => {
+            if (timer) clearTimeout(timer)
+            this.service.context.logger.warn(
+              '模型请求暂时失败，准备重试（运行 %s，第 %s/%s 次）',
+              this.record.id,
+              attempt,
+              this.service.config.maxModelRetries,
+            )
           },
         ),
         signal,
@@ -505,6 +542,17 @@ export class Running {
       this.active()
       signal.throwIfAborted()
       check(Array.isArray(output.content), '模型响应无效')
+      for (let index = 0; index < output.content.length; index++) {
+        const block = output.content[index]!
+        if (block.type !== 'provider-tool') continue
+        check(
+          request.tools.some((tool) => tool.providerTool?.name === block.name),
+          '提供商调用了未授权的内置工具',
+        )
+        output.content[index] = await this.providerImages.receive(block, signal)
+      }
+      this.active()
+      signal.throwIfAborted()
       await this.validateResources(output.content)
       // 先保存模型给出的调用，再校验是否允许执行，拒绝的调用也能在历史中查看。
       const message: ChatMessage = {
@@ -567,6 +615,21 @@ export class Running {
       }
       this.transcript.push(json(message))
       this.pending = calls
+      const images = this.providerImages.take(output.content)
+      if (images.length) {
+        const feedback: ChatMessage = {
+          id: randomUUID(),
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `内置图片生成工具的产物已保存到当前工作空间。文件信息：${JSON.stringify(images)}\n请继续完成用户请求，使用这些 resourceId 引用图片；网页可输出 ![图片](/api/workspace-files/resources/文件ID/content)，IM 请按当前会话回复规范使用 resource://文件ID 发送图片。除非用户要求进一步修改，不要重复生成。`,
+            },
+          ],
+        }
+        this.providerFeedback = feedback
+        output.continue = true
+      }
       const actual = usageTokens(output.usage)
       await this.emitBudget(
         budget(
@@ -735,14 +798,27 @@ export class Running {
           ? await abortable(provider.resolveCredential({ ...this.context, signal }), signal)
           : undefined
         const result = await abortable(
-          driver.generate(
-            request,
-            { baseUrl: provider.baseUrl, credential },
-            { ...this.context, signal },
-            async () => {
-              this.active()
-              signal.throwIfAborted()
-              touch()
+          generateWithRetry(
+            driver,
+            [
+              request,
+              { baseUrl: provider.baseUrl, credential },
+              { ...this.context, signal },
+              async () => {
+                this.active()
+                signal.throwIfAborted()
+                touch()
+              },
+            ],
+            this.service.config.maxModelRetries,
+            async (attempt) => {
+              if (timer) clearTimeout(timer)
+              this.service.context.logger.warn(
+                '辅助模型请求暂时失败，准备重试（运行 %s，第 %s/%s 次）',
+                this.record.id,
+                attempt,
+                this.service.config.maxModelRetries,
+              )
             },
           ),
           signal,
@@ -826,11 +902,18 @@ export class Running {
                   draft.isError = result.isError ?? false
                   if (result.images) draft.images = json(result.images)
                 } else draft.result = returned
-              } catch {
+              } catch (error) {
                 this.active()
                 batch.signal.throwIfAborted()
                 draft.isError = true
-                draft.result = { error: local.signal.aborted ? '工具执行超时' : '工具执行失败' }
+                const message =
+                  error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+                draft.result = local.signal.aborted
+                  ? { error: '工具执行超时' }
+                  : {
+                      error: message || '工具执行失败',
+                      ...(error instanceof AiError ? { code: error.code } : {}),
+                    }
               }
             }
             if (timer) clearTimeout(timer)

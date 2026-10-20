@@ -207,7 +207,7 @@ it('忽略空白文本标签，保留非空文本和图片顺序，仍校验完�
   ])
   expect(() => parseReply('<im_reply><message></message><message>未闭合</im_reply>')).toThrow()
   expect(replyFormatGuide()).toContain('<message></message>')
-  expect(replyFormatGuide()).toContain('IM 侧不会发送任何消息')
+  expect(replyFormatGuide()).toContain('不会发送任何消息')
 })
 
 it.each(['<message></message>', '<im_reply><message> \n </message></im_reply>', ''])(

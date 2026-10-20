@@ -164,7 +164,7 @@ it('过滤仅转换文本，保留图片地址、提及与原生引用，归档�
     [
       { type: 'reply', data: { id: '1' } },
       { type: 'at', data: { qq: '00123' } },
-      { type: 'image', data: { file: 'https://example.com/a.png?a=1&b=2' } },
+      { type: 'image', data: { file: 'https://example.com/a.png?a=1&b=2', sub_type: 0 } },
     ],
   ])
   const history = await app.ctx.im.history(context.workspaceId, { limit: 20 })

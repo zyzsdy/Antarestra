@@ -1,6 +1,6 @@
 # 插件源码热更新
 
-`@antarestra/plugin-hmr` 基于官方 [`@cordisjs/plugin-hmr`](https://github.com/cordiverse/cordis/tree/main/packages/hmr) 1.1.0，使用官方 loader 1.0.0-rc.7、timer 1.1.3 与项目固定的 `cordis@4.0.0-rc.10`。官方 npm 包名不是 `@cordis/plugin-hmr`。
+`@antarestra/plugin-hmr` 基于官方 [`@cordisjs/plugin-hmr`](https://github.com/cordiverse/cordis/tree/main/packages/hmr) 1.1.1，使用官方 loader 1.0.0-rc.8、timer 1.1.4 与项目固定的 `cordis@4.0.0-rc.11`。官方 npm 包名不是 `@cordis/plugin-hmr`。
 
 模块依赖分析、ESM / CommonJS 缓存失效、导入失败回滚和 Fiber 替换均由官方实现。项目只适配目录配置、Windows 路径以及现有配置加载器的模块与实例登记；主配置格式、环境变量规则保持一致，不启用官方 loader 的 JS 配置表达式。
 

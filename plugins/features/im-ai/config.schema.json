@@ -2,6 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "autoResetUnavailableConversation": {
+      "title": "自动替换不可用会话",
+      "type": "boolean",
+      "default": true,
+      "description": "新消息执行前，若当前 IM 会话已失败、取消、中断、归档或删除，自动建立新会话并保留旧历史；不自动重放失败消息。关闭后需手动 /reset。"
+    },
     "pollIntervalMs": {
       "type": "integer",
       "minimum": 20,

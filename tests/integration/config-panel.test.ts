@@ -135,6 +135,8 @@ it.each([false, true])(
     })
     if (local) expect(await readFile(app.filename, 'utf8')).toBe(original)
   },
+  // 添加插件会扫描真实依赖目录，给并发文件系统访问预留时间。
+  20_000,
 )
 it('管理 API：认证、默认权限、保存任务、配置版本和敏感值边界', async () => {
   const app = await setup()

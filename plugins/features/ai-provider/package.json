@@ -27,7 +27,7 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*",
-    "@earendil-works/pi-ai": "^0.99.1",
+    "@earendil-works/pi-ai": "^1.3.0",
     "openai": "^7.23.0"
   },
   "antarestra": {

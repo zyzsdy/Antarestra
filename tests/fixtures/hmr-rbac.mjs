@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, sep } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Context, Logger } from '@antarestra/plugin-sdk'
 import * as configLoader from '@antarestra/config-loader'
 
-const directory = await mkdtemp(join(tmpdir(), 'antarestra rbac hmr '))
+// 使用真实长路径，避免 Windows 8.3 临时路径触发 libuv 文件监视器断言。
+const directory = await mkdtemp(join(realpathSync.native(tmpdir()), 'antarestra rbac hmr '))
 const ctx = new Context()
 const errors = []
 ctx.logger.exporter({
@@ -34,11 +36,17 @@ try {
   for (const name of ['package.json', 'config.schema.json']) {
     await cp(join(source, name), join(copy, name))
   }
-  await symlink(
-    join(source, 'node_modules'),
-    join(copy, 'node_modules'),
-    process.platform === 'win32' ? 'junction' : 'dir',
-  )
+  const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
+  // 逐个链接依赖的真实路径；整体链接 node_modules 会使 pnpm 的相对链接在搬迁后失效。
+  for (const name of Object.keys(manifest.dependencies)) {
+    const target = join(copy, 'node_modules', name)
+    await mkdir(dirname(target), { recursive: true })
+    await symlink(
+      await realpath(join(source, 'node_modules', name)),
+      target,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+  }
   const entry = join(copy, 'src', 'index.ts')
   const original = await readFile(entry, 'utf8')
   const urls = {

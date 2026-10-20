@@ -74,7 +74,11 @@ export const backend: ExecutionBackend = {
         const reply = message()
         try {
           signal.throwIfAborted()
-          const output = await runtime.request()
+          let output = await runtime.request()
+          while (output.continue && !output.content.some((block) => block.type === 'tool-call')) {
+            signal.throwIfAborted()
+            output = await runtime.request()
+          }
           signal.throwIfAborted()
           if (output.stopReason === 'pending') throw new Error('模型响应尚未完成')
           const calls = output.content.filter((block) => block.type === 'tool-call')

@@ -3,7 +3,13 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { AiError } from '@antarestra/ai'
-import type { JsonObject, RunContext, Access, AiService } from '@antarestra/ai'
+import type {
+  JsonObject,
+  RunContext,
+  Access,
+  AiService,
+  BackgroundTaskHandler,
+} from '@antarestra/ai'
 import type { DatabaseScope } from '@antarestra/database'
 import { pluginId } from './store.js'
 import type { Tables, TaskRow } from './store.js'
@@ -62,6 +68,25 @@ export class WakeTasksService extends Service<Config> {
     super(ctx, 'wakeTasks')
     this.ai = ctx.ai
     this.db = ctx.database.scope<Tables>(ctx, pluginId)
+    ctx.ai.registerBackgroundTaskGuard(ctx, 'wake-tasks', async (access, conversationId) => {
+      this.live()
+      const task = await this.db
+        .selectFrom('tasks')
+        .select(['status', 'available_at'])
+        .where('conversation_id', '=', conversationId)
+        .where('workspace_id', '=', access.workspaceId)
+        .where('actor_id', '=', access.actorId)
+        .executeTakeFirst()
+      if (
+        !task ||
+        task.status === 'cancelled' ||
+        task.status === 'failed' ||
+        task.status === 'completed'
+      )
+        throw new AiError('forbidden', '定时任务已取消或结束', 403)
+      if (task.status !== 'running' || task.available_at <= Date.now())
+        throw new AiError('capability_unavailable', '等待定时任务调度器恢复租约', 503)
+    })
     ctx.effect(() => async () => {
       this.active = false
       clearTimeout(this.timer)
@@ -243,6 +268,7 @@ export class WakeTasksService extends Service<Config> {
   private async execute(row: TaskRow, token: string) {
     let access: Access | undefined
     let runId: string | undefined
+    let handler: BackgroundTaskHandler | undefined
     try {
       this.live()
       access = await this.ai.authorizeBackground(
@@ -253,6 +279,42 @@ export class WakeTasksService extends Service<Config> {
         row.source_provider,
       )
       await this.renew(row.id, token)
+      if (row.source === 'im') {
+        // 来源处理器卸载或尚未就绪时必须重试，不能退回只生成文本的普通运行。
+        handler = this.ai.getBackgroundTaskHandler(row.source)
+        await handler.enqueue(
+          access,
+          {
+            conversationId: row.conversation_id,
+            sourceConversationId: row.source_conversation_id,
+            agentId: row.agent_id,
+            reason: row.reason,
+            prompt: row.prompt,
+          },
+          this.abort.signal,
+        )
+        while (true) {
+          await this.renew(row.id, token)
+          const current = await handler.inspect(access, row.conversation_id)
+          await this.owned(row.id, token)
+            .set({
+              last_conversation_id: row.conversation_id,
+              last_run_id: current.runId,
+            })
+            .execute()
+          if (current.status !== 'running') {
+            await this.finish(
+              row,
+              token,
+              current.error ?? (current.status === 'cancelled' ? 'IM 唤醒已取消' : null),
+            )
+            return
+          }
+          await delay(Math.min(1000, this.config.leaseMs / 3), undefined, {
+            signal: this.abort.signal,
+          })
+        }
+      }
       await this.ai.createConversation(
         access,
         row.agent_id,
@@ -281,21 +343,7 @@ export class WakeTasksService extends Service<Config> {
               : current.error?.code === 'model_output_truncated'
                 ? '模型达到输出上限，回复未完整生成，请查看执行会话'
                 : `AI 运行${current.status === 'cancelled' ? '已取消' : '失败'}，请查看执行会话`
-          const next =
-            row.interval_ms === null
-              ? null
-              : nextOccurrence(row.next_at, row.interval_ms, Date.now())
-          await this.owned(row.id, token)
-            .set({
-              status: next === null ? (error ? 'failed' : 'completed') : 'pending',
-              next_at: next ?? row.next_at,
-              available_at: next ?? row.next_at,
-              conversation_id: next === null ? row.conversation_id : randomUUID(),
-              lease_token: '',
-              attempts: 0,
-              last_error: error,
-            })
-            .execute()
+          await this.finish(row, token, error)
           return
         }
         await delay(Math.min(1000, this.config.leaseMs / 3), undefined, {
@@ -303,15 +351,31 @@ export class WakeTasksService extends Service<Config> {
         })
       }
     } catch (error) {
-      // 使用已捕获的运行对象取消，不因身份撤销或服务卸载而阻塞资源回收。
-      if (runId) await this.ai.running.get(runId)?.cancel()
-      // 所属数据库作用域已随插件失效；保留租约，由重载后的调度器回收。
-      if (!this.active) return
       const forbidden =
         typeof error === 'object' &&
         error !== null &&
         'status' in error &&
         (error.status === 401 || error.status === 403)
+      if (
+        handler &&
+        access &&
+        (!this.active || forbidden || (error instanceof AiError && error.code === 'lease_lost'))
+      ) {
+        // 租约转移不能撤销新执行者；仅显式取消或身份撤销、卸载时回收本轮。
+        const task = this.active
+          ? await this.db
+              .selectFrom('tasks')
+              .select('status')
+              .where('id', '=', row.id)
+              .executeTakeFirst()
+          : undefined
+        if (!this.active || forbidden || task?.status === 'cancelled')
+          await handler.cancel(access, row.conversation_id).catch(() => {})
+      }
+      // 使用已捕获的运行对象取消，不因身份撤销或服务卸载而阻塞资源回收。
+      if (runId) await this.ai.running.get(runId)?.cancel()
+      // 所属数据库作用域已随插件失效；保留租约，由重载后的调度器回收。
+      if (!this.active) return
       await this.owned(row.id, token)
         .set({
           status: forbidden ? 'failed' : 'pending',
@@ -323,5 +387,20 @@ export class WakeTasksService extends Service<Config> {
         })
         .execute()
     }
+  }
+  private async finish(row: TaskRow, token: string, error: string | null) {
+    const next =
+      row.interval_ms === null ? null : nextOccurrence(row.next_at, row.interval_ms, Date.now())
+    await this.owned(row.id, token)
+      .set({
+        status: next === null ? (error ? 'failed' : 'completed') : 'pending',
+        next_at: next ?? row.next_at,
+        available_at: next ?? row.next_at,
+        conversation_id: next === null ? row.conversation_id : randomUUID(),
+        lease_token: '',
+        attempts: 0,
+        last_error: error,
+      })
+      .execute()
   }
 }

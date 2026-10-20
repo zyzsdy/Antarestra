@@ -55,6 +55,8 @@ export function registerHistoryTools(
   })
   ctx.on('ai/template', async (context, draft) => {
     const input = await snapshot(context)
+    if (input?.wakePrompt && !draft.userPrompt.includes(input.wakePrompt))
+      draft.userPrompt += `\n\n定时任务指令：\n${input.wakePrompt}`
     if (input?.replyFormat?.append && !replyFormatVariable.test(context.agent.systemTemplate))
       draft.systemPrompt += `\n\n${input.replyFormat.guide}`
   })
@@ -88,14 +90,14 @@ export function registerHistoryTools(
             '仅精确查找一条消息时填写；查询时间范围或总结群聊时省略或填空字符串，空字符串视为未填写。使用聊天上下文、引用消息或查询结果中的原始 messageId，按字符串填写并保留前导零；不是查询起点、用户 ID、AI 会话消息 ID 或内部归档 ID。',
         },
         startTime: {
-          type: 'string',
-          format: 'date-time',
-          description: '起始时间（含），使用带时区的 ISO 时间，如 2026-10-06T09:00:00+08:00。',
+          anyOf: [{ type: 'string', format: 'date-time' }, { enum: ['', null] }],
+          description:
+            '可选。起始时间（含）；省略、空字符串或 null 均视为未填写，不限制起始时间。填写时使用带时区的 ISO 时间，如 2026-10-06T09:00:00+08:00。',
         },
         endTime: {
-          type: 'string',
-          format: 'date-time',
-          description: '结束时间（含），使用带时区的 ISO 时间，不能早于 startTime。',
+          anyOf: [{ type: 'string', format: 'date-time' }, { enum: ['', null] }],
+          description:
+            '可选。结束时间（含）；省略、空字符串或 null 均视为未填写，不限制结束时间。填写时使用带时区的 ISO 时间；startTime 也填写时，不能早于 startTime。',
         },
         senderId: {
           type: 'string',
@@ -125,7 +127,7 @@ export function registerHistoryTools(
       if (!ctx.ai.running.get(context.runId)?.ownsToolContext(context))
         throw new AiError('forbidden', '群消息查询需要有效工具上下文', 403)
       const parse = (value: unknown) => {
-        if (value === undefined) return undefined
+        if (value === undefined || value === '' || value === null) return undefined
         if (typeof value !== 'string' || !Number.isFinite(Date.parse(value)))
           throw new AiError('invalid_time', '查询时间格式无效')
         return Date.parse(value)

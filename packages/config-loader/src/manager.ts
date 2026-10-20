@@ -218,7 +218,7 @@ export class ConfigManager extends Service<ManagerConfig> {
     if (item.fiber?.state === 0) {
       const missing = Object.keys(item.fiber.inject).filter((name) => {
         const impl = item.fiber!.ctx.reflect._getImpl(name, true)
-        return !impl || impl.fiber.state !== 2
+        return !impl || impl.ctx.fiber.state !== 2
       })
       return `服务依赖未就绪：${missing.join('、') || '存在无法满足的依赖关系'}；请检查提供者是否启用、启动失败或循环依赖`
     }
@@ -387,7 +387,7 @@ export class ConfigManager extends Service<ManagerConfig> {
         if (
           Object.keys(item.fiber.inject).some((name) => {
             const impl = item.fiber!.ctx.reflect._getImpl(name, true)
-            return impl && descends(impl.fiber, affected)
+            return impl && descends(impl.ctx.fiber, affected)
           })
         ) {
           affected.add(item.fiber)

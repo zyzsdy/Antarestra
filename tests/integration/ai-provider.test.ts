@@ -16,6 +16,7 @@ import rbac from '@antarestra/rbac'
 import WebUI from '@antarestra/webui'
 import local from '@antarestra/plugin-auth-local'
 import ai from '@antarestra/ai'
+import type { GeneratedImage, RunContext } from '@antarestra/ai'
 import provider from '@antarestra/plugin-ai-provider'
 import type { ProviderView } from '@antarestra/plugin-ai-provider'
 import {
@@ -36,6 +37,15 @@ import {
   validateBuiltinTools,
 } from '../../plugins/features/ai-provider/src/validation.js'
 import type { Tables } from '../../plugins/features/ai-provider/src/store.js'
+import {
+  migrations,
+  name as providerNamespace,
+} from '../../plugins/features/ai-provider/src/store.js'
+import { migrations as checkMigrations } from '../../plugins/implementations/database-kysely/src/validation.js'
+import {
+  BuiltinQuota,
+  builtinWindowMs,
+} from '../../plugins/features/ai-provider/src/builtin-quota.js'
 const contexts: Context[] = []
 const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -62,6 +72,126 @@ const model = {
   tools: true,
   thinkingLevels: ['low', 'high'],
 }
+it('已执行原始 002 的数据库可追加索引迁移，保留提供商与额度数据', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'antarestra-quota-upgrade-'))
+  cleanups.push(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }))
+  const filename = join(directory, 'upgrade.sqlite')
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(DatabaseProvider)
+  await ctx.plugin(database, { filename })
+  // 此指纹来自已经执行原始建表迁移的数据库，防止再次修改历史。
+  expect(checkMigrations(migrations)[1]!.checksum).toBe(
+    '63caa99e360d4a6fe685f8ac9e5d397d0a878c385e61b4db3e5a809d1d819339',
+  )
+  await ctx.database.migrate(ctx, providerNamespace, migrations.slice(0, 2))
+  const db = ctx.database.scope<Tables>(ctx, providerNamespace)
+  await db
+    .insertInto('providers')
+    .values({ id: input.id, payload: JSON.stringify(validateProvider(input)) })
+    .execute()
+  const usage = {
+    id: 'preserved',
+    workspace_id: 'space',
+    provider_id: input.id,
+    tool_type: 'web_search',
+    created_at: new Date().toISOString(),
+    calls: 2,
+  }
+  await db.insertInto('builtin_usage').values(usage).execute()
+  // 重现把索引追加到 002 时的原始错误。
+  await expect(
+    ctx.database.migrate(ctx, providerNamespace, [
+      migrations[0]!,
+      {
+        id: migrations[1]!.id,
+        steps: [...migrations[1]!.steps, ...migrations[2]!.steps],
+      },
+    ]),
+  ).rejects.toThrow('迁移历史不兼容')
+  await ctx.fiber.dispose()
+  contexts.splice(contexts.indexOf(ctx), 1)
+  const restored = await setup(filename)
+  expect(restored.ctx.aiProvider.detail(input.id).name).toBe(input.name)
+  expect(
+    await restored.ctx.database
+      .scope<Tables>(restored.ctx, providerNamespace)
+      .selectFrom('builtin_usage')
+      .selectAll()
+      .execute(),
+  ).toEqual([usage])
+  await restored.fiber.dispose()
+  await restored.ctx.plugin(provider, {})
+  expect(restored.ctx.aiProvider.detail(input.id).name).toBe(input.name)
+})
+it('内置工具额度按空间和提供商隔离，原子预占、到期恢复、失败保留及 SQLite 重启恢复', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'antarestra-quota-'))
+  cleanups.push(() => rm(directory, { recursive: true, force: true, maxRetries: 5 }))
+  const filename = join(directory, 'quota.sqlite')
+  const app = await setup(filename)
+  const record = validateProvider(input)
+  record.models = [validateModel(model)]
+  const tool = {
+    name: 'search',
+    type: 'web_search',
+    modelIds: [model.id],
+    options: {},
+    enabled: true,
+    callsPer5Hours: 2,
+  }
+  record.builtinTools = validateBuiltinTools([tool], record.models)
+  const scope = () => app.ctx.database.scope<Tables>(app.ctx, '@antarestra/plugin-ai-provider')
+  const quota = new BuiltinQuota(scope)
+  const leases = await Promise.all([
+    quota.reserve(record, 'a', ['search']),
+    quota.reserve(record, 'a', ['search']),
+    quota.reserve(record, 'a', ['search']),
+  ])
+  expect(leases[0]!.blocked).toEqual([])
+  expect(leases[1]!.blocked).toEqual([])
+  expect(leases[2]!.blocked).toEqual(['search'])
+  await leases[0]!.finish(new Map([['search', 1]]), true)
+  await leases[1]!.finish(new Map(), false)
+  expect((await quota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  expect((await quota.reserve(record, 'b', ['search'])).blocked).toEqual([])
+  expect((await quota.reserve({ ...record, id: 'other' }, 'a', ['search'])).blocked).toEqual([])
+  record.builtinTools[0]!.callsPer5Hours = 0
+  const unlimited = await quota.reserve(record, 'a', ['search'])
+  expect(unlimited.blocked).toEqual([])
+  await unlimited.finish(new Map([['search', 1]]), true)
+  record.builtinTools[0]!.callsPer5Hours = 3
+  expect((await quota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  await app.ctx.fiber.dispose()
+  contexts.splice(contexts.indexOf(app.ctx), 1)
+  const restored = await setup(filename)
+  const restoredScope = () =>
+    restored.ctx.database.scope<Tables>(restored.ctx, '@antarestra/plugin-ai-provider')
+  const restoredQuota = new BuiltinQuota(restoredScope)
+  expect((await restoredQuota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  await restoredScope()
+    .updateTable('builtin_usage')
+    .set({ created_at: new Date(Date.now() - builtinWindowMs).toISOString() })
+    .execute()
+  const recovered = await restoredQuota.reserve(record, 'a', ['search'])
+  expect(recovered.blocked).toEqual([])
+  await recovered.finish(new Map(), true)
+  expect(await restoredScope().selectFrom('builtin_usage').selectAll().execute()).toEqual([])
+  // 本地限制不控制单次上游响应内部的调用数，实际返回的多次调用必须全部计入。
+  const multipleCalls = await restoredQuota.reserve(record, 'a', ['search'])
+  await multipleCalls.finish(new Map([['search', 4]]), false)
+  expect((await restoredScope().selectFrom('builtin_usage').selectAll().execute())[0]!.calls).toBe(
+    4,
+  )
+  expect((await restoredQuota.reserve(record, 'a', ['search'])).blocked).toEqual(['search'])
+  for (const value of [-1, 1.5, '2', null, Number.MAX_SAFE_INTEGER + 1])
+    expect(() => validateBuiltinTools([{ ...tool, callsPer5Hours: value }], record.models)).toThrow(
+      '非负整数',
+    )
+  expect(
+    validateBuiltinTools([{ ...tool, callsPer5Hours: undefined }], record.models)[0]!
+      .callsPer5Hours,
+  ).toBe(0)
+})
 it.each(['openai-completions', 'openai-responses', 'anthropic-messages'])(
   '工具图片通过 %s 的真实 HTTP 请求发送 Base64 图像',
   async (api) => {
@@ -332,12 +462,69 @@ async function remote(handler: RequestListener) {
   if (!address || typeof address === 'string') throw new Error('监听失败')
   return `http://127.0.0.1:${address.port}`
 }
-it.each(['anthropic-messages', 'openai-completions', 'openai-responses'])(
+
+it('真实 HTTP 503 经模型驱动由核心重试，直接调用成功且仅输出一次', async () => {
+  let calls = 0
+  const baseUrl = await remote((_req, res) => {
+    calls++
+    if (calls === 1) {
+      res.writeHead(503, { 'content-type': 'application/json' })
+      res.end(
+        JSON.stringify({
+          error: { message: 'Service temporarily unavailable', type: 'api_error' },
+        }),
+      )
+      return
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream' })
+    res.end(
+      'data: ' +
+        JSON.stringify({
+          id: 'response',
+          object: 'chat.completion.chunk',
+          model: 'test-model',
+          choices: [
+            { index: 0, delta: { role: 'assistant', content: '恢复成功' }, finish_reason: null },
+          ],
+        }) +
+        '\n\n' +
+        'data: ' +
+        JSON.stringify({
+          id: 'response',
+          object: 'chat.completion.chunk',
+          model: 'test-model',
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        }) +
+        '\n\ndata: [DONE]\n\n',
+    )
+  })
+  const app = await setup()
+  const saved = await app.ctx.aiProvider.save({ ...input, baseUrl })
+  await app.ctx.aiProvider.models(input.id, { revision: saved.revision, models: [model] })
+  const update = vi.fn()
+  const result = await app.ctx.ai.generate(app.ctx, app.access, {
+    model: { providerId: input.id, modelId: model.id },
+    systemPrompt: '',
+    messages: [{ role: 'user', content: [{ type: 'text', text: '问题' }] }],
+    update,
+  })
+  expect(result.content).toEqual([{ type: 'text', text: '恢复成功' }])
+  expect(calls).toBe(2)
+  expect(update.mock.calls.filter(([event]) => event.type === 'delta')).toHaveLength(1)
+})
+it.each(['anthropic-messages', 'openai-completions', 'openai-responses', 'google-generative-ai'])(
   'opencode-go 内置目录包含所有协议的模型（当前接口 %s）',
   async (api) => {
     const record = validateProvider({ ...input, builtin: 'opencode-go', api })
     const builtin = builtinModels('opencode-go')
-    expect(new Set(builtin.map((model) => model.api)).size).toBe(3)
+    expect(new Set(builtin.map((model) => model.api))).toEqual(
+      new Set([
+        'anthropic-messages',
+        'openai-completions',
+        'openai-responses',
+        'google-generative-ai',
+      ]),
+    )
     expect(builtin.length).toBeGreaterThan(2)
     const expected = [...new Set(builtin.map((model) => model.id))].sort()
     const models = candidates(record)
@@ -357,7 +544,7 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     ...input,
     builtin: 'opencode-go',
     api: 'anthropic-messages',
-    baseUrl: 'https://opencode.ai/zen/go',
+    baseUrl: 'https://opencode.ai/inference/go',
   })
   record.models = candidates(record).map(validateModel)
   expect(driver(record).id).toBe(`ai-provider:${record.id}`)
@@ -376,11 +563,12 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     expect(resolveModel(record, definition, record.baseUrl + '/').api).toBe(builtin.api)
     expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(true)
   }
-  const remote = validateModel({ ...model, id: 'mimo-v2.6-flash' })
+  const remote = validateModel({ ...model, id: 'mimo-future-test-model' })
+  expect(builtinModels('opencode-go').some((model) => model.id === remote.id)).toBe(false)
   record.models.push(remote)
   const unknown = resolveModel(record, remote, record.baseUrl)
   expect(unknown.api).toBe('openai-completions')
-  expect(unknown.baseUrl).toBe('https://opencode.ai/zen/go/v1')
+  expect(unknown.baseUrl).toBe('https://opencode.ai/inference/go/v1')
   expect(useBuiltinAdapter(record, unknown.id, record.baseUrl)).toBe(true)
   const future = validateModel({ ...model, id: 'future-go-model' })
   record.models.push(future)
@@ -399,7 +587,7 @@ it('自定义网关不被内置模型的协议和端点覆盖', () => {
   expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(false)
 })
 it('自定义提供商即使使用内置模型 ID 和官方地址也始终使用默认接口', () => {
-  const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/zen/go' })
+  const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/inference/go' })
   const builtin = builtinModels('opencode-go').find((model) => model.api === 'anthropic-messages')!
   const resolved = resolveModel(record, validateModel({ ...model, id: builtin.id }), record.baseUrl)
   expect(resolved.api).toBe(record.api)
@@ -411,7 +599,7 @@ it('其他内置提供商的同名模型不会改变所选提供商的默认请�
     ...input,
     builtin: 'opencode-go',
     api: 'anthropic-messages',
-    baseUrl: 'https://opencode.ai/zen/go',
+    baseUrl: 'https://opencode.ai/inference/go',
   })
   const known = new Set(builtinModels(record.builtin).map((model) => model.id))
   const other = builtinModels('openai').find((model) => !known.has(model.id))!
@@ -814,23 +1002,38 @@ it('思考续接信息经过项目 DTO 往返，仅回传给同一连接和模�
   ).toBeUndefined()
 })
 
-it('内置工具经 Responses 请求发送，提供商执行不会进入客户端工具循环，并受模型和 Agent 范围限制', async () => {
+it('内置工具不发送上游限额，达到本地额度后移除声明，并受模型和 Agent 范围限制', async () => {
   const { ctx, access, fiber } = await setup()
-  const received: { tools?: { type: string; name?: string }[] }[] = []
+  const received: { tools?: { type: string; name?: string }[]; max_tool_calls?: number }[] = []
   const baseUrl = await remote(async (req, res) => {
     let body = ''
     for await (const chunk of req) body += chunk.toString()
     const payload = JSON.parse(body)
     received.push(payload)
+    if (Object.hasOwn(payload, 'max_tool_calls')) {
+      res.writeHead(400, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          message: 'Unsupported parameter: max_tool_calls',
+          type: 'invalid_request_error',
+        }),
+      )
+      return
+    }
     const hosted = (payload.tools ?? [])
-      .filter((t: { type: string }) => t.type !== 'function')
+      .filter((t: { type: string }) => t.type !== 'function' && received.length === 1)
       .map((t: { type: string }) => ({
         id: `hosted-${t.type}`,
         type: `${t.type}_call`,
         status: 'completed',
         ...(t.type === 'web_search'
           ? { action: { type: 'search', query: '测试' } }
-          : { result: 'aW1hZ2U=', output_format: 'png' }),
+          : t.type === 'image_generation'
+            ? {
+                result:
+                  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=',
+                output_format: 'png',
+              }
+            : { results: [] }),
       }))
     const message = {
       id: 'msg-test',
@@ -880,6 +1083,7 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       type: 'web_search',
       modelIds: [model.id],
       enabled: true,
+      callsPer5Hours: 3,
       options: { search_context_size: 'low' },
     },
     {
@@ -911,6 +1115,20 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
     validateBuiltinTools([{ ...tools[0], options: { type: 'function' } }], saved.models),
   ).toThrow()
   await ctx.plugin(agentCore)
+  const storeImage = vi.fn(async (image: GeneratedImage, context: RunContext) => {
+    expect(context.workspaceId).toBe(access.workspaceId)
+    expect(ctx.ai.running.get(context.runId)?.ownsToolContext(context)).toBe(true)
+    return {
+      type: 'image' as const,
+      resourceId: 'saved-image',
+      mimeType: image.mimeType,
+      filename: image.filename,
+      size: image.data.byteLength,
+      width: image.width,
+      height: image.height,
+    }
+  })
+  ctx.ai.registerResources(ctx, { storeImage, async validate() {} })
   const execute = vi.fn(async () => '客户端结果')
   ctx.ai.registerTool(ctx, {
     id: 'local_tool',
@@ -950,7 +1168,7 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
     )
     const result = await ctx.ai.getRun(access, started.id)
     expect(result.status).toBe('completed')
-    expect(result.requests).toHaveLength(1)
+    expect(result.requests).toHaveLength(id === 'allowed' ? 2 : 1)
     return result
   }
   const result = await run('allowed', model.id, [
@@ -967,13 +1185,16 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
       expect.objectContaining({ type: 'function', name: 'local_tool' }),
     ]),
   )
+  expect(received.every((payload) => !Object.hasOwn(payload, 'max_tool_calls'))).toBe(true)
+  // added、done、completed 中的同一个调用只能计数一次，后续请求仍有额度。
+  expect(received[1]?.tools).toContainEqual({ type: 'web_search', search_context_size: 'low' })
   expect(
     result.messages.flatMap((m) => m.content).filter((b) => b.type === 'provider-tool'),
   ).toHaveLength(3)
   const content = result.messages
     .filter((message) => message.role === 'assistant')
     .flatMap((message) => message.content)
-  expect(content.map((block) => block.type)).toEqual([
+  expect(content.slice(0, 5).map((block) => block.type)).toEqual([
     'text',
     'provider-tool',
     'provider-tool',
@@ -992,10 +1213,20 @@ it('内置工具经 Responses 请求发送，提供商执行不会进入客户�
   expect(replay.completed).toEqual(content)
   expect(replyContent(content, historyToolDetails(result)).body).toBe('已完成')
   expect(execute).not.toHaveBeenCalled()
+  expect(storeImage).toHaveBeenCalledTimes(1)
+  expect(JSON.stringify(received[1])).toContain('saved-image')
+  expect(JSON.stringify(result)).not.toContain('iVBORw0KGgo')
   await run('wrong-model', 'other', ['provider:example:web_search'])
   expect(received.at(-1)?.tools ?? []).toEqual([])
   await run('not-authorized', model.id, [])
   expect(received.at(-1)?.tools ?? []).toEqual([])
+  saved = await ctx.aiProvider.builtinTools(input.id, {
+    revision: saved.revision,
+    tools: tools.map((tool) => ({ ...tool, callsPer5Hours: 1 })),
+  })
+  await run('limited', model.id, ['provider:example:web_search'])
+  expect(received.at(-1)?.tools ?? []).toEqual([])
+  expect(JSON.stringify(received.at(-1))).toContain('本工具已用完5小时调用限制')
   await ctx.aiProvider.builtinTools(input.id, {
     revision: saved.revision,
     tools: tools.map((tool) => ({ ...tool, enabled: false })),

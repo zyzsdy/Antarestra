@@ -1,6 +1,6 @@
 # 插件 SDK
 
-`@antarestra/plugin-sdk` 统一转导出 `cordis@4.0.0-rc.10` 的运行时与类型，并提供少量生命周期和配置辅助。插件应从 SDK 导入 `Context`、`Service`、`Plugin`、`Fiber` 等，不直接引入另一个 Cordis 运行时。
+`@antarestra/plugin-sdk` 统一转导出 `cordis@4.0.0-rc.11` 的运行时与类型，并提供少量生命周期和配置辅助。插件应从 SDK 导入 `Context`、`Service`、`Plugin`、`Fiber` 等，不直接引入另一个 Cordis 运行时。
 
 ## 服务与事件
 

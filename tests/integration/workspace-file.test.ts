@@ -1,4 +1,6 @@
 import ai from '@antarestra/ai'
+import * as agentCore from '@antarestra/plugin-ai-agent-core'
+import type { ContentBlock } from '@antarestra/ai'
 import type { RunContext } from '@antarestra/ai'
 import { setTimeout as delay } from 'node:timers/promises'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -15,6 +17,149 @@ import files from '@antarestra/plugin-workspace-file'
 import type { FileAccess } from '@antarestra/plugin-workspace-file'
 import { filePath } from '../../plugins/features/workspace-file/src/validation.js'
 const contexts: Context[] = []
+it.each([
+  { source: '网页', streaming: true, withTool: false, quota: false },
+  { source: 'IM', streaming: false, withTool: false, quota: false },
+  { source: '混合工具', streaming: true, withTool: true, quota: false },
+  { source: '配额不足', streaming: true, withTool: false, quota: true },
+])('$source 图片保存与续轮遵守空间、去重和配额约束', async ({ streaming, withTool, quota }) => {
+  const app = await setup(quota ? 1 : 32 * 1024 ** 2)
+  await app.ctx.plugin(ai, {})
+  await app.ctx.plugin(agentCore)
+  const access = await app.ctx.ai.authorize('test', 'a')
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII='
+  const image: Extract<ContentBlock, { type: 'provider-tool' }> = {
+    type: 'provider-tool',
+    id: 'ig-test',
+    name: 'draw',
+    status: 'completed',
+    result: { type: 'image_generation_call', output_format: 'png', result: png },
+  }
+  const write = vi.spyOn(app.backend, 'write')
+  let count = 0
+  let resourceId = ''
+  app.ctx.ai.registerProvider(app.ctx, {
+    id: 'images',
+    title: '图片测试',
+    baseUrl: '',
+    driverId: 'images',
+    models: [
+      {
+        id: 'test',
+        title: '测试',
+        contextWindow: 100000,
+        maxOutputTokens: 1000,
+        input: ['text'],
+        output: ['text'],
+        tools: true,
+        thinkingLevels: [],
+      },
+    ],
+    builtinTools: [
+      {
+        id: 'draw',
+        name: 'draw',
+        type: 'image_generation',
+        description: '',
+        modelIds: ['test'],
+        options: {},
+      },
+    ],
+  })
+  app.ctx.ai.registerTool(app.ctx, {
+    id: 'local',
+    description: '',
+    parameters: { type: 'object', properties: {} },
+    async execute() {
+      return '本地工具完成'
+    },
+  })
+  app.ctx.ai.registerDriver(app.ctx, {
+    id: 'images',
+    async generate(request, _connection, _context, update) {
+      if (++count === 1) {
+        if (streaming) {
+          await update({ type: 'provider-tool', content: { ...image, status: 'in_progress' } })
+          await update({ type: 'provider-tool', content: image })
+          await update({ type: 'provider-tool', content: image })
+        }
+        return {
+          stopReason: 'stop',
+          content: [
+            image,
+            ...(withTool
+              ? [{ type: 'tool-call' as const, id: 'local-1', name: 'local', arguments: {} }]
+              : []),
+          ],
+        }
+      }
+      const saved = request.messages
+        .flatMap((m) => m.content)
+        .find((b) => b.type === 'provider-tool')
+      expect(saved?.type).toBe('provider-tool')
+      const metadata = (saved as typeof image).result.image as { resourceId: string }
+      resourceId = metadata.resourceId
+      expect(JSON.stringify(request.messages)).toContain('产物已保存到当前工作空间')
+      expect(JSON.stringify(request)).not.toContain(png)
+      expect(
+        Buffer.from((await app.ctx.workspaceFile.readResource(app.a, resourceId)).bytes).toString(
+          'base64',
+        ),
+      ).toBe(png)
+      await expect(app.ctx.workspaceFile.readResource(app.b, resourceId)).rejects.toThrow()
+      if (withTool) {
+        expect(JSON.stringify(request.messages)).toContain('本地工具完成')
+        expect(request.messages.slice(-2).map((message) => message.role)).toEqual(['tool', 'user'])
+      }
+      return {
+        stopReason: 'stop',
+        content: [
+          { type: 'text', text: `![图片](/api/workspace-files/resources/${resourceId}/content)` },
+        ],
+      }
+    },
+  })
+  const ref = { providerId: 'images', modelId: 'test' }
+  app.ctx.ai.registerAgent(app.ctx, {
+    id: 'images',
+    title: '图片助理',
+    version: '1',
+    backendId: 'ai-agent-core',
+    systemTemplate: '',
+    userTemplate: '{{input}}',
+    models: [ref],
+    defaultModel: ref,
+    toolIds: ['draw', 'local'],
+    skillIds: [],
+    extensions: {},
+  })
+  const conversation = await app.ctx.ai.createConversation(access, 'images')
+  const run = await app.ctx.ai.start(access, conversation.id, {
+    operation: 'send',
+    input: { text: '画一只猫' },
+    idempotencyKey: 'image',
+    expectedRevision: conversation.revision,
+    expectedNodeId: null,
+  })
+  await vi.waitFor(async () =>
+    expect((await app.ctx.ai.getRun(access, run.id)).status).not.toBe('running'),
+  )
+  const result = await app.ctx.ai.getRun(access, run.id)
+  if (quota) {
+    expect(result.status).toBe('failed')
+    expect(count).toBe(1)
+    expect(write).not.toHaveBeenCalled()
+    expect(JSON.stringify(result)).not.toContain(png)
+    return
+  }
+  expect(result.status, JSON.stringify(result.error)).toBe('completed')
+  expect(count).toBe(2)
+  expect(write).toHaveBeenCalledTimes(1)
+  expect(resourceId).not.toBe('')
+  expect(JSON.stringify(result)).not.toContain(png)
+  expect(JSON.stringify(await app.ctx.ai.events(access, run.id, 0))).not.toContain(png)
+})
 afterEach(async () => {
   vi.useRealTimers()
   vi.restoreAllMocks()

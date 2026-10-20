@@ -479,6 +479,7 @@ onUnmounted(() => {
             <tr>
               <th>工具名 / 类型</th>
               <th>可用模型</th>
+              <th>每 5 小时上限</th>
               <th>状态</th>
               <th>操作</th>
             </tr>
@@ -490,6 +491,7 @@ onUnmounted(() => {
                 ><code>{{ tool.type }}</code>
               </td>
               <td>{{ tool.modelIds.join('、') }}</td>
+              <td>{{ tool.callsPer5Hours ? `${tool.callsPer5Hours} 次 / 工作空间` : '不限制' }}</td>
               <td>{{ tool.enabled ? '已启用' : '已停用' }}</td>
               <td>
                 <div class="actions">

@@ -14,10 +14,19 @@ import local from '@antarestra/plugin-auth-local'
 import ai, { AiError } from '@antarestra/ai'
 import * as agentCore from '@antarestra/plugin-ai-agent-core'
 import * as basicTools from '@antarestra/plugin-basic-tools'
-import type { Access, AgentPreset, Config, ModelDriver, RunCommand, Tool } from '@antarestra/ai'
+import type {
+  Access,
+  AgentPreset,
+  Config,
+  ModelDriver,
+  RunCommand,
+  Tool,
+  Provider,
+} from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
 import type { ConversationStateEvent } from '@antarestra/contracts'
 import { readEvents } from '../../plugins/features/chat-webui/client/stream.js'
+import { abortable } from '../../plugins/definitions/ai/src/utils.js'
 
 const contexts: Context[] = []
 const directories: string[] = []
@@ -58,6 +67,7 @@ async function setup(
     driver?: ModelDriver
     agent?: AgentPreset
     imageInput?: boolean
+    builtinTools?: Provider['builtinTools']
   } = {},
 ) {
   const ctx = new Context()
@@ -81,6 +91,7 @@ async function setup(
     title: '测试连接',
     baseUrl: 'https://example.invalid',
     driverId: 'driver',
+    ...(options.builtinTools ? { builtinTools: options.builtinTools } : {}),
     resolveCredential: async () => 'secret-never-export',
     models: [
       {
@@ -118,7 +129,7 @@ async function command(
   }
 }
 async function finish(ctx: Context, access: Access, id: string) {
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 1000; i++) {
     const run = await ctx.ai.getRun(access, id)
     if (run.status !== 'running') return run
     await delay(5)
@@ -134,6 +145,165 @@ async function send(app: Awaited<ReturnType<typeof setup>>, changes: Partial<Run
   return finish(app.ctx, app.access, run.id)
 }
 describe('AI 核心与实际 SQLite 数据库', () => {
+  it('已取消时仍接管传入请求的拒绝，避免未处理的异步异常', async () => {
+    const controller = new AbortController()
+    controller.abort(new AiError('cancelled', '测试取消'))
+    await expect(
+      abortable(Promise.reject(new Error('迟到的失败')), controller.signal),
+    ).rejects.toBe(controller.signal.reason)
+    await delay(0)
+  })
+  it('模型请求重试不重跑已执行工具，不重复保存输入与回复', async () => {
+    let calls = 0
+    const continuation = { model, driverId: 'driver', signature: '测试工具续接签名' }
+    const execute = vi.fn(async () => ({ saved: true }))
+    const app = await setup({
+      config: { maxModelRetries: 1, maxModelCalls: 2 },
+      agent: agent({ toolIds: ['save'] }),
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          calls++
+          if (calls === 1)
+            return {
+              content: [
+                { type: 'tool-call', id: 'call', name: 'save', arguments: {}, continuation },
+              ],
+            }
+          expect(request.messages.flatMap((message) => message.content)).toContainEqual({
+            type: 'tool-call',
+            id: 'call',
+            name: 'save',
+            arguments: {},
+            continuation,
+          })
+          if (calls === 2) throw new AiError('provider_request_failed', 'HTTP 503')
+          return { content: [{ type: 'text', text: '完成' }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'save',
+      description: '保存',
+      parameters: { type: 'object' },
+      execute,
+    })
+    const run = await send(app)
+    expect(run.status).toBe('completed')
+    expect(calls).toBe(3)
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(run.requests).toHaveLength(2)
+    expect(run.messages.filter((m) => m.role === 'user')).toHaveLength(1)
+    expect(run.messages.at(-1)?.content).toEqual([{ type: 'text', text: '完成' }])
+    const stored = await app.ctx.database
+      .scope<Tables>(app.ctx, '@antarestra/ai')
+      .selectFrom('runs')
+      .select('payload')
+      .where('id', '=', run.id)
+      .executeTakeFirstOrThrow()
+    expect(JSON.parse(stored.payload).messages).toEqual(run.messages)
+    expect(run.messages.flatMap((message) => message.content)).toContainEqual({
+      type: 'tool-call',
+      id: 'call',
+      name: 'save',
+      arguments: {},
+      continuation,
+    })
+  })
+
+  it.each([0, 1, 2])(
+    '重试上限 %s 耗尽后保留 Web 错误节点，允许手动重新生成',
+    async (maxModelRetries) => {
+      let calls = 0
+      let recover = false
+      const app = await setup({
+        config: { maxModelRetries },
+        driver: {
+          id: 'driver',
+          async generate() {
+            calls++
+            if (!recover)
+              throw new AiError(
+                'provider_request_failed',
+                'sub2api API error (503): Service temporarily unavailable',
+              )
+            return { content: [{ type: 'text', text: '恢复' }] }
+          },
+        },
+      })
+      const failed = await send(app)
+      expect(failed.status).toBe('failed')
+      expect(calls).toBe(maxModelRetries + 1)
+      const state = await app.ctx.ai.getConversation(app.access, app.conversation.id)
+      expect(state.conversation.selectedNodeId).toBe(failed.replyNodeId)
+      await expect(send(app)).rejects.toThrow('未完成轮次须重试')
+      recover = true
+      const retried = await send(app, { operation: 'regenerate', targetNodeId: failed.replyNodeId })
+      expect(retried.status).toBe('completed')
+      expect((await app.ctx.ai.getRun(app.access, failed.id)).status).toBe('failed')
+    },
+  )
+
+  it.each(['cancel', 'unload'] as const)('退避等待中 %s 立即取消，不再调用驱动', async (action) => {
+    const generate = vi.fn<ModelDriver['generate']>(async () => {
+      throw new AiError('provider_request_failed', 'HTTP 503')
+    })
+    const app = await setup({ driver: { id: 'driver', generate } })
+    const run = await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id),
+    )
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
+    if (action === 'cancel') await app.ctx.ai.running.get(run.id)!.cancel()
+    else await app.backend.dispose()
+    expect((await app.ctx.ai.getRun(app.access, run.id)).status).toBe('cancelled')
+    await delay(1100)
+    expect(generate).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['text', 'provider-tool'] as const)('已有 %s 输出的失败不自动重放', async (kind) => {
+    const generate = vi.fn<ModelDriver['generate']>(
+      async (_request, _connection, _context, update) => {
+        if (kind === 'text') await update({ type: 'delta', kind: 'text', text: '部分内容' })
+        else
+          await update({
+            type: 'provider-tool',
+            content: {
+              type: 'provider-tool',
+              id: 'hosted',
+              name: 'search',
+              status: 'in_progress',
+              result: {},
+            },
+          })
+        throw new AiError('provider_request_failed', 'HTTP 503')
+      },
+    )
+    const app = await setup({
+      driver: { id: 'driver', generate },
+      ...(kind === 'provider-tool'
+        ? {
+            agent: agent({ toolIds: ['search'] }),
+            builtinTools: [
+              {
+                id: 'search',
+                name: 'search',
+                type: 'web_search',
+                description: '搜索',
+                modelIds: ['model'],
+                options: {},
+              },
+            ],
+          }
+        : {}),
+    })
+    const run = await send(app)
+    expect(run.status).toBe('failed')
+    expect(run.error?.code).toBe('provider_request_failed')
+    expect(generate).toHaveBeenCalledTimes(1)
+  })
+
   it('直接调用已有模型，无 Agent 后端也能传递提示词、上下文和思考强度，不增加运行记录', async () => {
     const generate = vi.fn<ModelDriver['generate']>(async () => ({
       content: [{ type: 'text', text: '译文' }],
@@ -1695,6 +1865,48 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     const ends = events.filter((e) => e.type === 'tool-end')
     expect(JSON.stringify(ends[0]?.data)).toContain('"id":"2"')
   })
+  it.each([
+    [new Error('外部命令退出码 2'), { error: '外部命令退出码 2' }],
+    [
+      new AiError('invalid_schedule', '一次性任务不能设置周期'),
+      { error: '一次性任务不能设置周期', code: 'invalid_schedule' },
+    ],
+    ['参数无效', { error: '参数无效' }],
+    [new Error(), { error: '工具执行失败' }],
+    [{ privateDetail: '不应序列化' }, { error: '工具执行失败' }],
+  ])('工具异常消息返回后续模型请求和历史：%j', async (failure, expected) => {
+    let received = false
+    const app = await setup({
+      agent: agent({ toolIds: ['fail'] }),
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          if (request.messages.at(-1)?.role === 'tool') {
+            expect(request.messages.at(-1)?.content).toEqual([
+              expect.objectContaining({ type: 'tool-result', isError: true, content: expected }),
+            ])
+            received = true
+            return { content: [{ type: 'text', text: '已收到错误' }] }
+          }
+          return { content: [{ type: 'tool-call', name: 'fail', id: 'failure', arguments: {} }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTool(app.ctx, {
+      id: 'fail',
+      description: '',
+      parameters: {},
+      async execute() {
+        throw failure
+      },
+    })
+    const result = await send(app)
+    expect(result.status).toBe('completed')
+    expect(received).toBe(true)
+    expect(result.messages.find((message) => message.role === 'tool')?.content).toEqual([
+      expect.objectContaining({ isError: true, content: expected }),
+    ])
+  })
   it('工具可覆盖默认超时，超时结果返回模型且继续运行', async () => {
     const app = await setup({
       config: { toolTimeoutMs: 5 },
@@ -1729,7 +1941,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     const result = await send(app)
     expect(result.status).toBe('completed')
     expect(result.messages.filter((m) => m.role === 'tool').map((m) => m.content[0])).toMatchObject(
-      [{ isError: true }, { isError: false }],
+      [{ isError: true, content: { error: '工具执行超时' } }, { isError: false }],
     )
   })
   it('模型活动续期且不设总时限，无活动超时与调用上限明确终止', async () => {
@@ -1855,10 +2067,12 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     )
   })
   it('HTTP 鉴权、SSE 断线与 Last-Event-ID 重放', async () => {
+    let attempts = 0
     const app = await setup({
       driver: {
         id: 'driver',
         async generate(_r, _c, _context, update) {
+          if (++attempts === 1) throw new AiError('provider_request_failed', 'HTTP 503')
           await update({ type: 'delta', kind: 'text', text: '开始' })
           await delay(80)
           return { content: [{ type: 'text', text: '完成' }] }
