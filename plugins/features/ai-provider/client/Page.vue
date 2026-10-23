@@ -9,7 +9,7 @@ import type { ProviderView, Candidate, Discovery, BuiltinTool } from '../src/typ
 import BuiltinToolForm from './BuiltinToolForm.vue'
 import ProviderForm from './ProviderForm.vue'
 import ModelForm from './ModelForm.vue'
-import { syncModels } from './models.js'
+import { modelSyncRows, planModelSync, syncModels } from './models.js'
 import './style.css'
 
 const { api, run, busy, message, router } = useApi()
@@ -94,6 +94,8 @@ function removeTool(tool: BuiltinTool) {
 }
 const syncDialog = ref(false)
 const candidates = ref<Candidate[]>([])
+const candidatesLoaded = ref(false)
+const remoteFetched = ref(false)
 const warning = ref('')
 const selection = ref<string[]>([])
 const size = 20
@@ -107,12 +109,26 @@ const visibleProviders = computed(() =>
   providerRows.value.slice((page.value - 1) * size, page.value * size),
 )
 const models = computed(() => current.value?.models ?? [])
+const syncRows = computed(() =>
+  candidatesLoaded.value ? modelSyncRows(models.value, candidates.value, remoteFetched.value) : [],
+)
+const allPlan = computed(() => planModelSync(syncRows.value, 'all'))
+const updatePlan = computed(() => planModelSync(syncRows.value, 'update', selection.value))
+const deletePlan = computed(() => planModelSync(syncRows.value, 'delete', selection.value))
+const syncStatus = {
+  add: '待新增',
+  update: '已存在，将覆盖',
+  delete: '待删除',
+  'recommend-delete': '推荐删除',
+}
 const visibleModels = computed(() =>
   models.value.slice((modelPage.value - 1) * size, modelPage.value * size),
 )
 const filteredCandidates = computed(() =>
-  candidates.value.filter((item) =>
-    `${item.id} ${item.title}`.toLowerCase().includes(candidateSearch.value.toLowerCase()),
+  syncRows.value.filter((item) =>
+    `${item.model.id} ${item.model.title}`
+      .toLowerCase()
+      .includes(candidateSearch.value.toLowerCase()),
   ),
 )
 const visibleCandidates = computed(() =>
@@ -123,6 +139,9 @@ watch(search, () => {
 })
 watch(candidateSearch, () => {
   candidatePage.value = 1
+})
+watch(filteredCandidates, (rows) => {
+  candidatePage.value = Math.min(candidatePage.value, Math.max(1, Math.ceil(rows.length / size)))
 })
 watch(
   () => router.currentRoute.value.query.provider,
@@ -254,13 +273,17 @@ function removeModel(model: ModelDefinition) {
 function openSync() {
   syncDialog.value = true
   candidates.value = []
+  candidatesLoaded.value = false
+  remoteFetched.value = false
   selection.value = []
   warning.value = ''
   candidateSearch.value = ''
   candidatePage.value = 1
   void run(async () => {
     const result = await api<Discovery>(path() + '/candidates')
-    if (alive) candidates.value = result.models
+    if (!alive) return
+    candidates.value = result.models
+    candidatesLoaded.value = true
   })
 }
 function fetchModels() {
@@ -268,26 +291,38 @@ function fetchModels() {
     const result = await api<Discovery>(path() + '/discover', {})
     if (!alive) return
     candidates.value = result.models
+    candidatesLoaded.value = true
+    remoteFetched.value = !result.warning
     warning.value = result.warning
     selection.value = selection.value.filter((id) =>
-      candidates.value.some((model) => model.id === id),
+      syncRows.value.some((row) => row.model.id === id),
     )
     candidatePage.value = 1
     if (!warning.value) feedback.toast('模型列表已获取')
   })
 }
-function sync(all: boolean) {
+function sync(mode: 'all' | 'update' | 'delete') {
   void run(async () => {
-    const selected = candidates.value.filter((item) => all || selection.value.includes(item.id))
-    if (!selected.length) return
-    await saveModels(syncModels(models.value, selected))
+    const plan = planModelSync(syncRows.value, mode, selection.value)
+    if (!plan.updates.length && !plan.deletions.length) return
+    if (
+      plan.deletions.length &&
+      !(await feedback.modal(
+        mode === 'all' ? '同步全部模型？' : `删除所选的 ${plan.deletions.length} 个模型？`,
+        `将新增 ${plan.added} 个、覆盖 ${plan.modified} 个、删除 ${plan.deletions.length} 个模型。删除后引用这些模型的预设将无法使用它们，当前提供商的运行会中断。`,
+      ))
+    )
+      return
+    await saveModels(syncModels(models.value, plan.updates, plan.deletions))
     if (!alive) return
     selection.value = []
-    feedback.toast(`已同步 ${selected.length} 个模型`)
+    feedback.toast(
+      `已新增 ${plan.added} 个、覆盖 ${plan.modified} 个、删除 ${plan.deletions.length} 个模型`,
+    )
   })
 }
 function checkPage(checked: boolean) {
-  const ids = visibleCandidates.value.map((item) => item.id)
+  const ids = visibleCandidates.value.map((item) => item.model.id)
   selection.value = checked
     ? [...new Set([...selection.value, ...ids])]
     : selection.value.filter((id) => !ids.includes(id))
@@ -536,14 +571,16 @@ onUnmounted(() => {
     <EditorDialog v-if="syncDialog" title="同步模型" :busy="busy" @close="closeSync">
       <div class="sync-panel">
         <p class="hint">
-          内置目录与远端结果按模型 ID 合并。同步会新增模型并覆盖同 ID
-          模型的已有设置，未选中的模型保留。全部同步包含筛选外的模型。缺少参数时默认使用 128000
-          上下文、65535 最大输出，请同步后核对。
+          同步全部会新增、覆盖模型并移除“待删除”项，包含筛选外的模型。 未获取 API
+          列表时，不在内置目录中的已有模型为“待删除”；获取成功后，内置与 API
+          均不存在的已有模型为“待删除”，仅内置存在的已有模型为“推荐删除”。
+          “推荐删除”项在同步全部时仍按内置参数覆盖，仅能勾选后通过“同步并删除所选”移除。
+          缺少参数时默认使用 128000 上下文、65535 最大输出，请同步后核对。
         </p>
         <div class="actions">
           <button :disabled="busy" @click="fetchModels">获取模型列表</button
           ><span role="status" class="muted">{{
-            busy ? '正在处理…' : `${candidates.length} 个候选模型`
+            busy ? '正在处理…' : `${syncRows.length} 个模型`
           }}</span>
         </div>
         <p v-if="warning" class="warning" role="status">{{ warning }}</p>
@@ -568,11 +605,11 @@ onUnmounted(() => {
                     :disabled="busy || !visibleCandidates.length"
                     :checked="
                       visibleCandidates.length > 0 &&
-                      visibleCandidates.every((item) => selection.includes(item.id))
+                      visibleCandidates.every((item) => selection.includes(item.model.id))
                     "
                     :indeterminate="
-                      visibleCandidates.some((item) => selection.includes(item.id)) &&
-                      !visibleCandidates.every((item) => selection.includes(item.id))
+                      visibleCandidates.some((item) => selection.includes(item.model.id)) &&
+                      !visibleCandidates.every((item) => selection.includes(item.model.id))
                     "
                     @change="checkPage"
                   />
@@ -583,30 +620,37 @@ onUnmounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="model in visibleCandidates" :key="model.id">
+              <tr v-for="row in visibleCandidates" :key="row.model.id">
                 <td>
                   <CheckboxField
                     v-model="selection"
-                    :value="model.id"
-                    :aria-label="`选择 ${model.title}`"
+                    :value="row.model.id"
+                    :aria-label="`选择 ${row.model.title}`"
                     :disabled="busy"
                   />
                 </td>
                 <td>
-                  <strong>{{ model.title }}</strong
-                  ><code>{{ model.id }}</code>
+                  <strong>{{ row.model.title }}</strong
+                  ><code>{{ row.model.id }}</code>
                 </td>
                 <td>
                   {{
-                    model.source === 'both'
+                    row.candidate?.source === 'both'
                       ? '内置 + API'
-                      : model.source === 'builtin'
+                      : row.candidate?.source === 'builtin'
                         ? '内置'
-                        : 'API'
+                        : row.candidate
+                          ? 'API'
+                          : '已保存'
                   }}
                 </td>
-                <td>
-                  {{ models.some((item) => item.id === model.id) ? '已存在，将覆盖' : '待新增' }}
+                <td
+                  :class="{
+                    'sync-remove': row.status === 'delete',
+                    'sync-add': row.status === 'add',
+                  }"
+                >
+                  {{ syncStatus[row.status] }}
                 </td>
               </tr>
             </tbody>
@@ -615,7 +659,7 @@ onUnmounted(() => {
             {{
               busy
                 ? '正在加载模型…'
-                : candidates.length
+                : syncRows.length
                   ? '没有匹配的模型。'
                   : '暂无候选模型，点击“获取模型列表”或返回手动添加。'
             }}
@@ -631,10 +675,32 @@ onUnmounted(() => {
         />
       </div>
       <template #footer>
-        <button :disabled="busy || !candidates.length" @click="sync(true)">
-          同步并覆盖全部（{{ candidates.length }}）</button
-        ><button class="primary" :disabled="busy || !selection.length" @click="sync(false)">
-          同步并覆盖所选（{{ selection.length }}）
+        <button
+          class="sync-action"
+          :disabled="busy || !syncRows.length"
+          :aria-label="`同步全部：新增 ${allPlan.added} 个，覆盖 ${allPlan.modified} 个，删除 ${allPlan.deletions.length} 个`"
+          @click="sync('all')"
+        >
+          同步全部<span class="sync-counts"
+            >（<span class="sync-add">+{{ allPlan.added }}</span>
+            <span>*{{ allPlan.modified }}</span>
+            <span class="sync-remove">-{{ allPlan.deletions.length }}</span
+            >）</span
+          >
+        </button>
+        <button
+          class="primary sync-action"
+          :disabled="busy || !updatePlan.updates.length"
+          @click="sync('update')"
+        >
+          同步并覆盖所选（{{ updatePlan.updates.length }}）
+        </button>
+        <button
+          class="danger sync-action"
+          :disabled="busy || !deletePlan.deletions.length"
+          @click="sync('delete')"
+        >
+          同步并删除所选（{{ deletePlan.deletions.length }}）
         </button>
       </template>
     </EditorDialog>

@@ -29,7 +29,11 @@ import {
   resolveModel,
   useBuiltinAdapter,
 } from '../../plugins/features/ai-provider/src/driver.js'
-import { syncModels } from '../../plugins/features/ai-provider/client/models.js'
+import {
+  modelSyncRows,
+  planModelSync,
+  syncModels,
+} from '../../plugins/features/ai-provider/client/models.js'
 import {
   publicProvider,
   validateModel,
@@ -703,6 +707,35 @@ it('同步覆盖已有模型参数，保留未选模型并新增模型，保存�
   })
   expect(updated.models).toEqual(merged)
   expect(syncModels(updated.models, selected)).toEqual(merged)
+})
+it('同步增改删通过模型接口保存，拒绝过期修订，插件重载后不恢复已删除模型', async () => {
+  const app = await setup()
+  const saved = await app.ctx.aiProvider.save(input)
+  const initial = await app.ctx.aiProvider.models(input.id, {
+    revision: saved.revision,
+    models: [model, { ...model, id: 'retired' }],
+  })
+  const available = [model, { ...model, id: 'new' }].map((item) => ({
+    ...validateModel({ ...item, contextWindow: 128000 }),
+    source: 'remote' as const,
+  }))
+  const plan = planModelSync(modelSyncRows(initial.models, available, true), 'all')
+  const body = {
+    revision: initial.revision,
+    models: syncModels(initial.models, plan.updates, plan.deletions),
+  }
+  const response = await app.request('/ai-providers/example/models', app.cookie, body, 'PUT')
+  expect(response.status).toBe(200)
+  const updated = (await response.json()) as ProviderView
+  expect(updated.models.map((item) => item.id)).toEqual([model.id, 'new'])
+  expect(updated.models[0]?.contextWindow).toBe(128000)
+  expect((await app.request('/ai-providers/example/models', app.cookie, body, 'PUT')).status).toBe(
+    409,
+  )
+  await app.fiber.dispose()
+  await app.ctx.plugin(provider, {})
+  expect(app.ctx.aiProvider.detail(input.id).models).toEqual(updated.models)
+  expect((await app.ctx.ai.catalog(app.access)).providers[0]?.models).toEqual(updated.models)
 })
 it('远端缺失或无效参数使用新默认值，最大输出仍受上下文限制', async () => {
   const baseUrl = await remote((_req, res) => {

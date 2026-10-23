@@ -2,6 +2,8 @@
   color: #263047;
   --provider-primary: #315ed1;
   --provider-border: #e0e5ee;
+  --provider-success: #28734b;
+  --provider-danger: #b42338;
 }
 .ai-providers h1 {
   margin: 0;
@@ -73,7 +75,19 @@
   background: #244daf;
 }
 .ai-providers button.danger {
-  color: #b42338;
+  color: var(--provider-danger);
+}
+.ai-providers .sync-add {
+  color: var(--provider-success);
+}
+.ai-providers .sync-remove {
+  color: var(--provider-danger);
+}
+.ai-providers .sync-counts {
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .ai-providers .search-row {
   display: flex;
@@ -311,5 +325,8 @@
   }
   .ai-providers .ui-editor-dialog-footer button {
     flex: 1;
+  }
+  .ai-providers .ui-editor-dialog-footer .sync-action {
+    flex-basis: 100%;
   }
 }
