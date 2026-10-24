@@ -1,5 +1,7 @@
 # 启动与开发指南
 
+macOS 原生开发、数据库迁移及 NapCat Docker 部署见 [macOS 开发与迁移](macos-development.md)。
+
 ## 最小本地环境
 
 使用 Node.js 24、pnpm 11.7.0。下列 PowerShell 命令从仓库根目录执行；Windows 的 Node 与 pnpm 应在已经初始化 fnm 的 PowerShell 7 中运行。

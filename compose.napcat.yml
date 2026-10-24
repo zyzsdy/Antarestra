@@ -1,0 +1,18 @@
+# 使用前创建专用工作目录，并在其 .env 中设置随机 NAPCAT_WEBUI_TOKEN。
+# 反向 WebSocket 与访问令牌在 NapCat WebUI 中设置；详见 macOS 开发指南。
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    restart: unless-stopped
+    environment:
+      WEBUI_TOKEN: ${NAPCAT_WEBUI_TOKEN:?请先设置 NapCat WebUI 令牌}
+      ACCOUNT: ${NAPCAT_ACCOUNT:-}
+    ports:
+      - '127.0.0.1:6099:6099'
+    # Colima 将 host-gateway 指向 macOS 宿主，而不是容器或虚拟机回环地址。
+    extra_hosts:
+      - 'host.lima.internal:host-gateway'
+    volumes:
+      - ./data/qq:/app/.config/QQ
+      - ./data/config:/app/napcat/config
+      - ./data/plugins:/app/napcat/plugins
