@@ -136,20 +136,13 @@ Docker 上下文拥有各自的容器、镜像和命名卷，切换上下文不�
 
 开发服务直接运行 `pnpm dev`。初次完整构建后，按需另开终端运行对应前端插件的 `pnpm --filter 包名 dev`；根级 `pnpm dev` 不启动前端构建监听。
 
-本次部署使用用户级 LaunchAgent `local.antarestra.dev` 托管原生 `pnpm dev`，日志位于项目 `.tmp/macos/`。常用操作：
+当前已禁用用户级 LaunchAgent `local.antarestra.dev`，Antarestra 不再随登录自动启动。原 plist 和历史日志保留，日常在 Mac 终端手工运行：
 
 ```sh
-# 查看与重启原生开发服务
-launchctl print "gui/$(id -u)/local.antarestra.dev"
-launchctl kickstart -k "gui/$(id -u)/local.antarestra.dev"
-
-# 停止后台实例，切换到终端前台调试
-launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/local.antarestra.dev.plist"
 cd ~/Workspace/Antarestra
 pnpm dev
-
-# 结束前台进程后恢复后台实例
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/local.antarestra.dev.plist"
 ```
 
-PostgreSQL 使用 `brew services` 管理，OrbStack 已设置登录时启动；容器采用 `restart: unless-stopped`。LaunchAgent 的 PATH 应包含 `$HOME/.orbstack/bin` 展开后的绝对路径。这些用户级服务在用户登录后启动，不保证停留在 FileVault 解锁界面时运行。不要在后台实例仍运行时另外启动占用相同端口的开发服务。
+通过 `launchctl print-disabled "gui/$(id -u)"` 可确认 `local.antarestra.dev` 为禁用状态。前台开发进程使用 `Ctrl+C` 停止；在普通 SSH 会话中手工运行时，不保证断开会话后继续运行。
+
+PostgreSQL 使用 `brew services` 管理，OrbStack 已设置登录时启动；NapCat 和 RustFS 容器采用 `restart: unless-stopped`，保持自动启动。NapCat 会等待手工启动的 Antarestra 并自动重连。这些用户级服务在用户登录后启动，不保证停留在 FileVault 解锁界面时运行。不要同时启动多个占用相同端口的开发服务。
