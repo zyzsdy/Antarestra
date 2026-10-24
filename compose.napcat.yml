@@ -9,9 +9,7 @@ services:
       ACCOUNT: ${NAPCAT_ACCOUNT:-}
     ports:
       - '127.0.0.1:6099:6099'
-    # Colima 将 host-gateway 指向 macOS 宿主，而不是容器或虚拟机回环地址。
-    extra_hosts:
-      - 'host.lima.internal:host-gateway'
+    # OrbStack 内置 host.docker.internal，反向连接使用该地址访问 macOS 宿主。
     volumes:
       - ./data/qq:/app/.config/QQ
       - ./data/config:/app/napcat/config
