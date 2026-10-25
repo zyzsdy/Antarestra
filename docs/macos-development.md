@@ -125,6 +125,18 @@ pnpm test:storage
 
 数据库中的旧附件、表情和资源记录仍会保留，但对应旧文件内容不在新存储中；这些历史资源不能正常下载。新上传使用新存储。
 
+### 单独补迁表情包图片
+
+数据库已迁移时，可以读取 `library:im-stickers` 文件空间中的文件记录，按原 `key` 从旧 RustFS 下载图片，再写入新 RustFS 的同名桶与对象路径，无需重新导入数据库或重新创建表情包。仅补入目标不存在的对象，写入时使用 `If-None-Match: *` 防止覆盖；目标已有对象应先核对内容，不直接替换。保留图片类型及对象元数据，并逐张下载目标对象校验 SHA-256。
+
+2026-10-25 已从 Windows 向 macOS 补迁全部 12 张表情包，共 5,521,255 字节。目标端原先均缺失，补迁后逐张下载验证 SHA-256 和图片类型一致。表情包 ID、名称、描述及数据库记录未修改，其他历史附件不在本次补迁范围内。Windows 旧 RustFS 仅在导出期间启动，完成后恢复停止状态。
+
+本次临时图片备份及校验清单保留在 Windows 仓库的 `.tmp/sticker-recovery/` 和 Mac 仓库的 `.tmp/sticker-recovery-20261025/`，未纳入 Git。验证覆盖 Windows 源对象和 macOS 目标对象，未执行浏览器页面验证。
+
+补迁后的浏览器复查发现，`publicEndpoint` 使用了 `http://host.docker.internal:19000`，而 RustFS 只绑定回环地址，导致局域网浏览器仍无法加载图片。已将 Mac 本地配置的 `publicEndpoint` 改为 `http://192.168.71.50:19000`，并在 `.env.storage.local` 设置 `ANTARESTRA_S3_BIND_HOST=0.0.0.0` 后重建 RustFS 容器、重载应用。随后通过 Windows Chrome 访问 Mac 的管理页面，确认全部 12 张图片成功加载并解码。
+
+Compose 的 S3 端口默认仍绑定 `127.0.0.1`；需要局域网访问时才设置上述绑定变量，控制台端口保持仅本机访问。`publicEndpoint` 必须是浏览器及使用图片链接的客户端均可访问的地址；`host.docker.internal` 是容器访问宿主的名称，不应直接作为普通浏览器的图片地址。若 Mac 的局域网 IP 改变，需同步调整本地 `publicEndpoint`。修改后通过 `pnpm startdevstorage` 应用端口配置，并重新加载应用的存储配置。
+
 ### 从 Colima 切换到 OrbStack
 
 Docker 上下文拥有各自的容器、镜像和命名卷，切换上下文不会迁移卷数据。迁移期间显式使用 `docker --context colima` 与 `docker --context orbstack`，避免误操作。

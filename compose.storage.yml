@@ -4,7 +4,7 @@ services:
     image: rustfs/rustfs:latest
     restart: unless-stopped
     ports:
-      - '127.0.0.1:19000:9000'
+      - '${ANTARESTRA_S3_BIND_HOST:-127.0.0.1}:19000:9000'
       - '127.0.0.1:19001:9001'
     environment:
       RUSTFS_ACCESS_KEY: ${ANTARESTRA_S3_ACCESS_KEY:?请运行 pnpm startdevstorage}
