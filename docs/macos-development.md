@@ -88,6 +88,8 @@ cd ~/Workspace/NapCat
 docker compose up -d
 ```
 
+Compose 显式固定了当前部署的 hostname 和 MAC 地址，并通过三个 `data` 目录持久化 QQ 登录数据、NapCat 配置和插件。重建或升级时保留这些配置与目录；部署其他实例时使用独立的 MAC 地址。修改 hostname 或 MAC 后执行 `docker compose up -d napcat` 应用配置，这会重建容器并短暂断线；OrbStack 的 Restart 只重启现有容器，不会应用 Compose 修改。固定这些标识不能保证 QQ 永远不要求重新验证。
+
 在 NapCat WebUI 中配置 **WebSocket 客户端（反向 WebSocket）**：
 
 - 地址为 `ws://host.docker.internal:14451/im/onebot/实例路径`，与 Antarestra `im-onebot.path` 一致，无 `/api` 前缀。
