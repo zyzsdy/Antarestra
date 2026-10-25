@@ -35,6 +35,16 @@ NapCat WebUI 的网络配置中新建 **WebSocket 客户端（反向 WebSocket�
 
 测试使用真实本地 WebSocket 和受控 OneBot 对端，验证鉴权、目标白名单、发送、超时、重连及卸载；此测试本身不代表真实 QQ 端验收。
 
+## WebSocket 断线排查
+
+`maxPayloadMiB` 控制单条入站 WebSocket 消息上限，默认 136 MiB，可配置 1–256 MiB。该限制包含 JSON 和 base64，不改变媒体归档大小上限。100 MiB 媒体编码后约为 134 MiB，因此不能将传输上限直接设为媒体大小。较大的消息会增加解析时的内存占用。
+
+旧版固定上限为 2 MiB，NapCat 返回约 1.5 MiB 以上文件的 base64 时就可能超限：WebSocket 接收器报错，适配器终止连接，所有等待中的 RPC 随之报“连接已断开，发送结果可能未知”。NapCat 的 `enableLocalFile2Url` 可能使文件接口返回 base64，参见[文件接口实现](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetFile.ts)。
+
+诊断日志包含接入 ID、WebSocket 错误码、传输上限、关闭码与等待请求数。`WS_ERR_UNSUPPORTED_MESSAGE_LENGTH` 表示消息超限；关闭码 `1006` 仅表示未正常完成关闭握手，须结合之前的错误判断。插件卸载（包括 HMR）和新连接替换旧连接会分别记录明确原因；同一接入只允许一个连接。日志不记录原始消息、平台路径、下载 URL 或对端关闭原因文本。
+
+`file not found` / `1200` 属于平台接口失败，本身只拒绝对应 RPC，不会关闭 WebSocket。适配器记录失败接口，并识别明确的 `file not found` 返回；文件查询失败与断线可以同时出现，不能据此判断前者导致后者。若无消息超限、卸载或连接替换记录，应继续核对同一时间的 NapCat 容器退出/重启、Antarestra 进程重启和网络状态。
+
 ## 过滤引用链接
 
 在插件配置面板选择对应的 OneBot 接入，开启“过滤引用链接”，或在该实例的启动配置中添加：

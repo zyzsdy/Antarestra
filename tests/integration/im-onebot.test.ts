@@ -12,7 +12,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-async function setup(privateIds: string[] = []) {
+async function setup(privateIds: string[] = [], config: Partial<OneBot.Config> = {}) {
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
   let descriptor!: ConnectionDescriptor
@@ -44,6 +44,7 @@ async function setup(privateIds: string[] = []) {
     selfId: '152408856',
     token: 'test-secret',
     rpcTimeoutMs: 100,
+    ...config,
   })
   const url = `ws://127.0.0.1:${ctx.server.address!.port}/im/onebot/test`
   const connect = async (headers: Record<string, string> = {}) => {
@@ -78,6 +79,89 @@ const event = (changes: Record<string, unknown> = {}) => ({
 })
 
 describe('OneBot 11 反向 WebSocket', () => {
+  it('平台返回 file not found 只拒绝当前请求，不关闭 WebSocket', async () => {
+    const app = await setup()
+    const socket = await app.connect()
+    let calls = 0
+    socket.on('message', (raw) => {
+      const request = JSON.parse(raw.toString())
+      calls++
+      socket.send(
+        JSON.stringify({
+          echo: request.echo,
+          status: calls === 1 ? 'failed' : 'ok',
+          retcode: calls === 1 ? 1200 : 0,
+          wording: 'file not found',
+          data: { message_id: 9 },
+        }),
+      )
+    })
+    const send = () =>
+      app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '测试' }])
+    await expect(send()).rejects.toThrow('接口=send_group_msg，文件未找到（file not found）')
+    await expect(send()).resolves.toBeDefined()
+    expect(app.statuses.at(-1)).toBe('online')
+  })
+
+  it('超过配置的 WebSocket 上限时关闭连接并清理等待请求', async () => {
+    const app = await setup([], { maxPayloadMiB: 1 })
+    const socket = await app.connect()
+    socket.on('message', (raw) => {
+      const request = JSON.parse(raw.toString())
+      socket.send(
+        JSON.stringify({
+          echo: request.echo,
+          status: 'ok',
+          retcode: 0,
+          data: { base64: 'A'.repeat(1024 * 1024) },
+        }),
+      )
+    })
+    await expect(
+      app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '测试' }]),
+    ).rejects.toThrow('连接已断开')
+    expect(app.statuses.at(-1)).toBe('offline')
+  })
+
+  it('超过 2 MiB 的媒体 base64 响应不会断开连接，后续请求仍可使用', async () => {
+    const app = await setup()
+    const socket = await app.connect()
+    const data = Buffer.alloc(2 * 1024 * 1024, 1)
+    socket.on('message', (raw) => {
+      const request = JSON.parse(raw.toString())
+      socket.send(
+        JSON.stringify({
+          echo: request.echo,
+          status: 'ok',
+          retcode: 0,
+          data:
+            request.action === 'get_image'
+              ? { base64: data.toString('base64') }
+              : { message_id: 9 },
+        }),
+      )
+    })
+    const message = normalizeMessage(
+      event({
+        message: [{ type: 'image', data: { file: 'cached-image' } }],
+      }),
+      '152408856',
+    )!
+    const segment = message.segments[0]!
+    if (!('url' in segment)) throw new Error('媒体段缺失')
+    const payload = await app.descriptor.downloadMedia!(
+      message,
+      segment,
+      new AbortController().signal,
+      data.length,
+    )
+    expect(payload.data).toEqual(data)
+    await expect(
+      app.descriptor.send(message.chat, [{ type: 'text', text: '连接仍可用' }]),
+    ).resolves.toBeDefined()
+    expect(app.statuses.at(-1)).toBe('online')
+  })
+
   it.each(['group', 'private'] as const)(
     '%s 图片和表情包通过 RPC 发送不同 sub_type',
     async (type) => {

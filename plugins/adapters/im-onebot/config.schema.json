@@ -26,6 +26,14 @@
       "default": 15000,
       "type": "integer"
     },
+    "maxPayloadMiB": {
+      "minimum": 1,
+      "maximum": 256,
+      "default": 136,
+      "type": "integer",
+      "title": "WebSocket 消息大小上限",
+      "description": "单位 MiB，包含 JSON 和 base64。默认允许接收 100 MiB 媒体编码后的响应；超过上限会关闭连接，此值不改变媒体归档大小限制。"
+    },
     "filterCitationLinks": {
       "type": "boolean",
       "default": false,

@@ -22,6 +22,7 @@ export interface Config {
   path?: string
   label?: string
   rpcTimeoutMs?: number
+  maxPayloadMiB?: number
   ignoredUserIds?: string[]
   filterCitationLinks?: boolean
 }
@@ -37,10 +38,13 @@ export function apply(ctx: Context, input: Config) {
   const allowed = (target: ChatTarget) => ctx.im.getChatPolicy(config.id, target).enabled
   const token = config.token ?? (config.tokenEnv ? process.env[config.tokenEnv] : undefined)
   if (!token) throw new Error('OneBot 访问令牌未设置')
-  const server = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 })
+  // 100 MiB 媒体转为 base64 后约为 134 MiB，另外为 JSON 留出空间。
+  const maxPayload = (config.maxPayloadMiB ?? 136) * 1024 * 1024
+  const server = new WebSocketServer({ noServer: true, maxPayload })
   const pending = new Map<
     string,
     {
+      action: string
       socket: WebSocket
       resolve(value: unknown): void
       reject(error: Error): void
@@ -84,6 +88,7 @@ export function apply(ctx: Context, input: Config) {
       )
       timer.unref()
       pending.set(echo, {
+        action,
         socket,
         resolve,
         reject,
@@ -283,6 +288,7 @@ export function apply(ctx: Context, input: Config) {
   })
   ctx.inject(['ai'], (owner) => registerTools(owner))
   ctx.effect(() => async () => {
+    logger.info('OneBot 插件卸载，关闭连接：%o', { connectionId: config.id })
     active = false
     current = undefined
     failPending(undefined, 'OneBot 插件已卸载')
@@ -309,12 +315,28 @@ export function apply(ctx: Context, input: Config) {
         const previous = current
         current = client
         if (previous) {
+          logger.warn('OneBot 新连接替换旧连接：%o', { connectionId: config.id })
           failPending(previous, 'OneBot 连接已被重新建立，发送结果可能未知')
           previous.terminate()
         }
         handle.setStatus('online')
-        client.on('error', () => client.terminate())
-        client.on('close', () => {
+        client.on('error', (error) => {
+          const code = 'code' in error && typeof error.code === 'string' ? error.code : ''
+          logger.warn('OneBot WebSocket 错误：%o', {
+            connectionId: config.id,
+            code: /^WS_ERR_[A-Z_]+$/.test(code) ? code : 'UNKNOWN',
+            maxPayload,
+          })
+          client.terminate()
+        })
+        client.on('close', (code) => {
+          logger.info('OneBot WebSocket 连接关闭：%o', {
+            connectionId: config.id,
+            code,
+            cause: !active ? '插件卸载' : current !== client ? '新连接替换' : '连接中断',
+            pendingRequests: [...pending.values()].filter((entry) => entry.socket === client)
+              .length,
+          })
           failPending(client, 'OneBot 连接已断开，发送结果可能未知')
           if (active && current === client) {
             current = undefined
@@ -336,7 +358,17 @@ export function apply(ctx: Context, input: Config) {
             pending.delete(echo)
             entry.cleanup()
             if (event.status === 'ok' && event.retcode === 0) entry.resolve(event.data)
-            else entry.reject(new Error(`OneBot 操作失败（${String(event.retcode)}）`))
+            else {
+              // 只保留已知错误分类，不把平台返回的路径、URL 或凭据写入日志。
+              const missing = [event.message, event.wording].some(
+                (value) => typeof value === 'string' && value.trim() === 'file not found',
+              )
+              entry.reject(
+                new Error(
+                  `OneBot 操作失败（${String(event.retcode)}），接口=${entry.action}${missing ? '，文件未找到（file not found）' : ''}`,
+                ),
+              )
+            }
             return
           }
           const message = normalizeMessage(event, config.selfId)
