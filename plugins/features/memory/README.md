@@ -51,7 +51,7 @@ plugins:
 
 设置独立测试数据库连接 `ANTARESTRA_TEST_POSTGRES` 后运行：
 
-```powershell
+```text
 pnpm exec vitest run tests/integration/memory.test.ts --maxWorkers=1
 ```
 

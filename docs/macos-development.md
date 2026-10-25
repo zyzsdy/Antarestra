@@ -1,5 +1,7 @@
 # macOS 原生开发与迁移
 
+本指南以 macOS arm64（Apple Silicon）、zsh / bash 为例，不要求 PowerShell。项目也面向 macOS x64；Intel Mac 的 Homebrew 前缀和外部依赖路径需按本机安装位置调整。完整开发与目标运行平台范围见[启动与开发指南](development.md)。
+
 开发目录使用 `~/Workspace/Antarestra`。Node.js、pnpm、TypeScript/Vue 构建、Chrome 和 PostgreSQL 在 macOS 原生运行；NapCat 和 RustFS 文件存储通过 OrbStack 的 Docker 运行。
 
 ## 安装开发工具

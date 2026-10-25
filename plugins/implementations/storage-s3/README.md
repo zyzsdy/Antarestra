@@ -6,7 +6,7 @@
 
 参考 [RustFS Docker 官方文档](https://docs.rustfs.com/zh/installation/container/docker)。本项目单独使用 compose.storage.yml，与 PostgreSQL 开发环境互不影响。
 
-```powershell
+```text
 pnpm startdevstorage
 pnpm initdevstorage
 pnpm test:storage
@@ -16,7 +16,7 @@ pnpm test:storage
 
 启用根 antarestra.yml 中注释的 storage-s3 配置。将 `.env.storage.local` 中的两个环境变量加入启动环境，或在开发时执行：
 
-```powershell
+```text
 node --env-file=.env.storage.local --conditions=development --import tsx apps/server/src/index.ts
 ```
 
@@ -24,7 +24,7 @@ node --env-file=.env.storage.local --conditions=development --import tsx apps/se
 
 停止容器但保留数据：
 
-```powershell
+```text
 docker compose --env-file .env.storage.local -p antarestra-storage -f compose.storage.yml stop
 ```
 

@@ -6,8 +6,16 @@
 
 服务端先选择基础配置：优先 `--conf=路径`，否则使用由入口文件位置计算的仓库根 `antarestra.yml`；若同目录存在 `<主配置文件名去掉扩展名>.local.yml`，自动合并后作为主配置。例如默认读取 `antarestra.yml` 和可选的 `antarestra.local.yml`。显式相对路径基于进程工作目录；基础文件不存在、覆盖文件无法读取或任一文件无效时明确失败，不回退。`pnpm start` / `pnpm dev` 的服务端工作目录为 `apps/server`，因此推荐传绝对路径，并给含空格的整个参数加引号。
 
-```powershell
+Windows 路径示例：
+
+```text
 pnpm start '--conf=E:/Antarestra 配置/antarestra.yml'
+```
+
+macOS / Linux 路径示例（替换为本机实际位置）：
+
+```text
+pnpm start '--conf=/srv/Antarestra 配置/antarestra.yml'
 ```
 
 主配置顶层支持 `plugins`、`loader`、`pluginPanel`。插件配置为平铺映射，不支持 Koishi 嵌套分组、表达式或 YAML 别名；`pluginPanel` 分组只影响界面展示，不改变依赖和加载顺序。

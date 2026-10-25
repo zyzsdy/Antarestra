@@ -4,9 +4,11 @@ macOS 原生开发、数据库迁移及 NapCat Docker 部署见 [macOS 开发与
 
 ## 最小本地环境
 
-使用 Node.js 24、pnpm 11.7.0。下列 PowerShell 命令从仓库根目录执行；Windows 的 Node 与 pnpm 应在已经初始化 fnm 的 PowerShell 7 中运行。
+使用 Node.js 24、pnpm 11.7.0。开发平台为 macOS 和 Windows；目标运行平台为 macOS、Windows、Linux，各平台均覆盖 x64 / arm64。
 
-```powershell
+命令从仓库根目录执行。仅 Windows 要求在已经初始化 fnm 的 PowerShell 7（`pwsh`）中运行 Node 与 pnpm；macOS 使用 zsh 或 bash，Linux 运行与部署使用本机 shell，不要求 pwsh。通用命令以 `text` 代码块展示；涉及环境变量、路径解析等 shell 语法时分别提供示例。切换操作系统或架构后重新安装依赖并构建，不复用其他平台的 `node_modules` 或原生构建产物。浏览器、原生依赖和外部服务需按目标平台准备。
+
+```text
 pnpm install --frozen-lockfile
 pnpm build
 ```
@@ -44,7 +46,7 @@ plugins:
   chat-webui: {}
 ```
 
-`bootstrapEmail` 是兼容保留的配置字段名，值现在表示登录名，不要求邮箱格式。输入管理员密码并使用绝对配置路径启动：
+`bootstrapEmail` 是兼容保留的配置字段名，值现在表示登录名，不要求邮箱格式。输入管理员密码并使用绝对配置路径启动。Windows（PowerShell 7）：
 
 ```powershell
 $adminSecret = Read-Host '设置初始管理员密码（8–128 字符）' -AsSecureString
@@ -52,6 +54,24 @@ $env:ANTARESTRA_ADMIN_PASSWORD = [System.Net.NetworkCredential]::new('', $adminS
 $localConfig = (Resolve-Path -LiteralPath './antarestra.dev.local.yml').Path
 pnpm start "--conf=$localConfig"
 ```
+
+macOS（zsh）：
+
+```zsh
+read -r -s "ANTARESTRA_ADMIN_PASSWORD?设置初始管理员密码（8–128 字符）："
+printf '\n'
+export ANTARESTRA_ADMIN_PASSWORD
+localConfig="$PWD/antarestra.dev.local.yml"
+pnpm start "--conf=$localConfig"
+```
+
+macOS / Linux 使用 bash 时，将上述 `read` 行替换为：
+
+```bash
+read -r -s -p '设置初始管理员密码（8–128 字符）：' ANTARESTRA_ADMIN_PASSWORD
+```
+
+其余命令相同。下文的 `pnpm dev` 示例复用当前终端中的 `localConfig` 变量。
 
 访问 `/auth/user/`，用 `admin` 和刚输入的密码登录；在 `/admin/` 的“AI 设置 → 提供商接入”创建连接和模型，再到首页发送消息。`ai-agents` 已提供默认助理。初始化只创建不存在的账号，不会提升已有同名账号的权限。首次创建完成后，从配置中移除两个 `bootstrap` 字段，并在相应终端移除 `ANTARESTRA_ADMIN_PASSWORD` 环境变量。
 
@@ -65,7 +85,7 @@ pnpm start "--conf=$localConfig"
 
 本地 PostgreSQL 可独立启动：
 
-```powershell
+```text
 pnpm startdevdb
 ```
 
@@ -98,13 +118,13 @@ database-kysely:
 
 `pnpm dev` 当前只启动服务端 `tsx watch`，**不会先构建，也不会自动启动前端监听**。先执行一次 `pnpm build`，再运行：
 
-```powershell
+```text
 pnpm dev "--conf=$localConfig"
 ```
 
 另开终端，为需要修改的界面插件启动监听，例如：
 
-```powershell
+```text
 pnpm --filter @antarestra/plugin-chat-webui dev
 ```
 
@@ -125,6 +145,6 @@ pnpm --filter @antarestra/plugin-chat-webui dev
 
 默认只运行受影响插件及其关联、依赖插件的测试，使用 `pnpm exec vitest run <测试文件...>` 指定范围。除非用户明确要求，不运行全量 `pnpm test` 或包含全量测试的 `pnpm check`。仓库已移除 GitHub Actions，推送和 Pull Request 不自动执行验证。
 
-Windows 遇到临时路径或文件监视器问题时，可将 `TEMP` / `TMP` 设为仓库内绝对路径，再使用 `pnpm exec vitest run <测试文件> --maxWorkers=1` 排查。必须区分实际回归与单独复现结果，不把跳过的外部测试算作通过。
+Windows 遇到临时路径或文件监视器问题时，可将 `TEMP` / `TMP` 设为仓库内绝对路径，再使用 `pnpm exec vitest run <测试文件> --maxWorkers=1` 排查。验证记录应注明实际操作系统与架构；目标平台范围不等于已完成全部组合验证。必须区分实际回归与单独复现结果，不把跳过的外部测试算作通过。
 
 依赖变更通过包管理器命令完成，例如 `pnpm --filter @antarestra/webui add 包名`、`pnpm add -Dw 包名`。提交前检查差异、运行相关验证并使用简体中文提交概要；不自动推送。完整约定见 [AGENTS.md](../AGENTS.md)。

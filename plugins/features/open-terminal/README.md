@@ -51,15 +51,25 @@ plugins:
 
 默认执行协议、认证、分页、参数、错误处理及 Cordis 生命周期测试：
 
-```powershell
+```text
 pnpm exec vitest run tests/integration/open-terminal.test.ts --maxWorkers=1
 ```
 
 使用一个专门用于测试的 Open Terminal 实例，可额外运行真实远端测试。测试在远端 `/tmp/antarestra-*` 写入临时文件，建议使用可丢弃容器：
 
+Windows（PowerShell 7）：
+
 ```powershell
 $env:OPEN_TERMINAL_TEST_URL = 'http://127.0.0.1:8000'
 $env:OPEN_TERMINAL_TEST_API_KEY = '测试实例密钥'
+pnpm exec vitest run tests/integration/open-terminal.test.ts --maxWorkers=1
+```
+
+macOS / Linux（zsh / bash）：
+
+```sh
+export OPEN_TERMINAL_TEST_URL='http://127.0.0.1:8000'
+export OPEN_TERMINAL_TEST_API_KEY='测试实例密钥'
 pnpm exec vitest run tests/integration/open-terminal.test.ts --maxWorkers=1
 ```
 

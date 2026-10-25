@@ -44,7 +44,7 @@ export default apply
 
 `pnpm test` 包含逐字分片、DOM 引用与 MutationObserver 检查、部分/完整解析、错误隔离、重复注册和卸载恢复用例。可用下列命令打开真实聊天消息组件的本地模拟流页面，验证普通/窄屏布局、复制、扩展卸载和中断；此页面不调用真实模型：
 
-```powershell
+```text
 pnpm exec vite --host 127.0.0.1 --port 14459 --config tests/fixtures/markdown-preview.config.ts
 ```
 

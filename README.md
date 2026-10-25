@@ -6,9 +6,11 @@ Antarestra 是面向多用户、多助理的 AI 运行平台，提供网页聊�
 
 ## 开始使用
 
-环境要求：**Node.js 24、pnpm 11.7.0**。在仓库根目录执行：
+开发平台为 **macOS 和 Windows**；目标运行平台为 **macOS、Windows、Linux 的 x64 / arm64**。平台范围不代表所有组合均已完成验证，验证结果以实际操作系统与架构为准。
 
-```powershell
+环境要求：**Node.js 24、pnpm 11.7.0**。仅 Windows 要求在已初始化 fnm 的 PowerShell 7（`pwsh`）中运行 Node 与 pnpm；macOS 使用 zsh 或 bash，Linux 部署使用本机 shell。在仓库根目录执行：
+
+```text
 pnpm install --frozen-lockfile
 pnpm build
 ```

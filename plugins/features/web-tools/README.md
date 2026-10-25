@@ -85,10 +85,12 @@ HTML 输入示例：
 
 ## 验证
 
-```powershell
+```text
 pnpm exec vitest run tests/integration/web-tools.test.ts tests/integration/ai.test.ts tests/integration/ai-provider.test.ts tests/integration/workspace-file.test.ts tests/integration/chat-tool-details.test.ts --maxWorkers=1
 # 安装有系统 Chrome 时启用；截图存储使用测试替身，不等同于 S3 验证。
-$env:WEB_BROWSER_TEST = '1'
+# 按平台选择并执行下面的一条环境变量赋值（去掉注释前缀）：
+# Windows（PowerShell 7）：$env:WEB_BROWSER_TEST = '1'
+# macOS / Linux（zsh / bash）：export WEB_BROWSER_TEST=1
 pnpm exec vitest run tests/integration/web-tools.test.ts tests/integration/web-tools-dom.test.ts --maxWorkers=1
 # 单独验证真实开发运行器的函数序列化、正文读取及交互，不访问外网。
 pnpm exec tsx --conditions=development scripts/smoke-web-tools.ts

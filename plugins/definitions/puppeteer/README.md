@@ -65,12 +65,12 @@ export async function apply(ctx: Context) {
 
 ## 验证
 
-```powershell
+```text
 # 不需要安装 Chrome 的生命周期测试
 pnpm exec vitest run tests/integration/puppeteer.test.ts --maxWorkers=1
 # 本机真实 Chrome：读取、PNG 尺寸、Cookie 隔离、异常回收和进程退出
 pnpm exec tsx --conditions=development scripts/smoke-puppeteer.ts
-# 如需指定验证路径，在运行前设置 $env:CHROME_PATH
+# 如需指定验证路径，在运行前设置 CHROME_PATH 环境变量
 ```
 
 上游参考：[启动选项](https://pptr.dev/api/puppeteer.launchoptions)、[系统 Chrome 查找](https://pptr.dev/browsers-api/browsers.computesystemexecutablepath)。

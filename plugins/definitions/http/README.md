@@ -43,7 +43,7 @@ export async function apply(ctx: Context) {
 
 ## 验证
 
-```powershell
+```text
 pnpm exec vitest run tests/integration/http.test.ts --maxWorkers=1
 ```
 

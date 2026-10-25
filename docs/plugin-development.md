@@ -54,7 +54,7 @@ export function apply(ctx: Context) {
 
 ## 网页插件
 
-```powershell
+```text
 pnpm create:webui example
 ```
 

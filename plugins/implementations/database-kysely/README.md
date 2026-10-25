@@ -22,6 +22,8 @@ plugins:
     filename: E:/Antarestra 数据/database.sqlite
 ```
 
+上述 `E:/...` 为 Windows 绝对路径示例；macOS / Linux 请使用本机绝对路径，例如 `/srv/antarestra/data/database.sqlite`。
+
 `filename: ':memory:'` 适合隔离测试，重启或卸载连接后数据消失。
 
 网络数据库通过 url 接收连接串，由 config-loader 统一解析环境变量。通过同级 .env 或进程环境设置 `ANTARESTRA_DATABASE_URL`，其值格式分别为 `postgres://用户:URL编码后的密码@地址:5432/数据库` 或 `mysql://用户:URL编码后的密码@地址:3306/数据库`。
@@ -42,7 +44,7 @@ SQLite 不能配置 `url`，网络数据库不能配置 `filename`，未知配�
 
 数据库 guard 按所属 Cordis Fiber 复用，服务代理生成的不同影子上下文不会重复注册卸载回调。所属生命周期结束后，旧 scope 和已经创建的查询都会失效；即使同一 Fiber 因依赖恢复重新启用，旧 guard 也不会复活。不同 Fiber 的卸载互不影响，各插件的表命名空间仍独立处理。
 
-```powershell
+```text
 pnpm exec vitest run tests/integration/database.test.ts tests/integration/database-guard.test.ts --maxWorkers=1
 ```
 
@@ -52,6 +54,6 @@ pnpm exec vitest run tests/integration/database.test.ts tests/integration/databa
 
 网络测试以随机 `test-UUID` 插件标识创建表，并有意留下失败或中断的迁移供断言；它们不会清空整个数据库。请使用专用测试库，完成后由测试库管理员清理本次测试命名空间。SQLite 测试临时文件会自动回收。
 
-CI 在 Windows、Linux 执行 SQLite，在独立 Linux 服务任务执行 PostgreSQL 17 和 MySQL 8.4。远端任务是否通过以实际 CI 结果为准。本机验证过 PostgreSQL 17，以及通过 MySQL 方言连接的 MariaDB 12.0.2；MariaDB 的通过结果不能替代 Oracle MySQL 的运行结果。
+仓库当前没有 GitHub Actions 自动验证。数据库验证需记录实际操作系统、架构与数据库版本，不能据此推定所有目标平台均已通过。既有记录包含 PostgreSQL 17，以及通过 MySQL 方言连接的 MariaDB 12.0.2；MariaDB 的通过结果不能替代 Oracle MySQL 的运行结果。
 
 完整 API、迁移规则与使用示例见 [数据库定义说明](../../definitions/database/README.md)。
