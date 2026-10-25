@@ -258,8 +258,9 @@ it('转发数组、CQ 和嵌套图片先入库去重，模型随后通过文件�
     })
     first.receive()
     await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
-    expect(downloads).toEqual(['/download?appid=1407&fileid=example&rkey=example'])
+    expect(downloads).toEqual([])
     expect(first.actions.filter((entry) => entry.action === 'get_image')).toEqual([
+      expect.objectContaining({ params: { file: 'example.jpg' } }),
       expect.objectContaining({ params: { file: 'platform-only.png' } }),
     ])
     expect(second.actions).toEqual([])

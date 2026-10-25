@@ -3,6 +3,7 @@ import type { UserInput } from '@antarestra/ai'
 import { replyFormatGuide } from './reply.js'
 
 export interface InputSnapshot {
+  privateMedia?: ArchivedMessage
   wakePrompt?: string
   template: string
   history_message: string
@@ -84,6 +85,9 @@ export function prepareInput(
   const attached = new Map(attachments.map((file, index) => [file.resourceId, index + 1]))
   return {
     template,
+    ...(message.message.chat.type === 'private' && message.archived
+      ? { privateMedia: message.archived }
+      : {}),
     replyFormat: {
       append: policy.appendReplyFormat === true,
       guide: replyFormatGuide(message.connection.capabilities),

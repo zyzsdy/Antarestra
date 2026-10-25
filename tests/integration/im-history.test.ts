@@ -717,3 +717,152 @@ it('群消息中的模板字样作为原文传送，不递归替换其他消息'
   await poll(() => app.sent.length).toBe(1)
   expect(JSON.stringify(request)).toContain('原文 {{last_message}} {{history_message}}')
 })
+
+it('自动保存限制 100 MiB，超限不重试，主动下载保存到当前空间并复用资源', async () => {
+  const app = await setup()
+  await storage(app)
+  const limits: number[] = []
+  const load = vi.fn(async (_message, media, _signal, limit) => {
+    limits.push(limit)
+    return download(_message, media)
+  })
+  const connection = await app.connect('large', '18', app.defaultPolicy, load)
+  await connection.receive('', {
+    id: 'large-video',
+    segments: [{ type: 'video', url: 'https://example.invalid/video', size: 100 * 1024 ** 2 + 1 }],
+  })
+  const workspace = app.messages.at(-1)!.workspaceId
+  const [message] = await app.ctx.im.history(workspace)
+  expect(message!.media[0]!.status).toBe('skipped')
+  await app.ctx.im.maintainHistory()
+  expect(load).not.toHaveBeenCalled()
+  const mediaId = message!.media[0]!.id
+  const signal = new AbortController().signal
+  const resource = await app.ctx.im.downloadArchivedMedia(workspace, 'large-video', mediaId, signal)
+  expect(resource.size).toBe(3)
+  expect(limits).toEqual([1024 ** 3])
+  expect(await app.ctx.im.downloadArchivedMedia(workspace, 'large-video', mediaId, signal)).toEqual(
+    resource,
+  )
+  expect(load).toHaveBeenCalledTimes(1)
+  expect((await app.ctx.im.history(workspace))[0]!.media[0]!.status).toBe('stored')
+  const other = await app.connect('foreign-download', '19')
+  await other.receive('另一空间')
+  const foreignWorkspace = app.messages.at(-1)!.workspaceId
+  await expect(
+    app.ctx.im.downloadArchivedMedia(foreignWorkspace, 'large-video', mediaId, signal),
+  ).rejects.toThrow('未找到')
+  await expect(
+    app.ctx.im.downloadArchivedMedia(workspace, 'large-video', 'unknown', signal),
+  ).rejects.toThrow('未找到')
+  await connection.receive('', {
+    segments: [{ type: 'image', url: 'https://example.invalid/small', size: 100 * 1024 ** 2 }],
+  })
+  expect(limits.at(-1)).toBe(100 * 1024 ** 2)
+})
+
+it.each(['group', 'private'] as const)(
+  'AI 工具主动下载 %s 当前消息中自动跳过的文件',
+  async (chatType) => {
+    let calls = 0
+    const app = await setup({
+      ai: true,
+      toolIds: ['im_download_file'],
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          calls++
+          const result = request.messages
+            .flatMap((message) => message.content)
+            .find((block) => block.type === 'tool-result')
+          if (result) {
+            expect(result).toMatchObject({
+              isError: false,
+              content: { resourceId: expect.any(String), size: 3 },
+            })
+            return { content: [{ type: 'text', text: '下载完成' }] }
+          }
+          const text = request.messages
+            .flatMap((message) => message.content)
+            .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+            .join('\n')
+          const mediaId = text.match(/\[文件,([^\]]+)\]/)![1]!
+          return {
+            content: [
+              {
+                type: 'tool-call',
+                id: 'download-file',
+                name: 'im_download_file',
+                arguments: { messageId: 'download-me', mediaId },
+              },
+            ],
+          }
+        },
+      },
+    })
+    await storage(app)
+    const connection = await app.connect(
+      'download-tool',
+      '20',
+      {
+        ...app.defaultPolicy,
+        private: { mode: 'blacklist', ids: [], defaults: { ai: true, agentId: 'assistant' } },
+      },
+      download,
+    )
+    await connection.receive('', {
+      id: 'download-me',
+      chat: { type: chatType, id: chatType === 'group' ? '40894918' : '79338528' },
+      segments: [
+        { type: 'text', text: '/ai 下载这个文件' },
+        { type: 'file', url: 'https://example.invalid/file', size: 100 * 1024 ** 2 + 1 },
+      ],
+    })
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    expect(calls).toBe(2)
+  },
+)
+
+it.each(['取消运行', '卸载文件服务'] as const)(
+  '主动下载期间%s会取消并等待下载，失败不标记已保存',
+  async (mode) => {
+    const app = await setup()
+    const store = await storage(app)
+    let started = false
+    let aborted = false
+    const connection = await app.connect(
+      'manual-slow',
+      '21',
+      app.defaultPolicy,
+      async (_message, _media, signal) => {
+        started = true
+        try {
+          await delay(60000, undefined, { signal })
+        } finally {
+          aborted = signal.aborted
+        }
+        return { data: new Uint8Array(), mimeType: 'video/mp4', filename: 'slow.mp4' }
+      },
+    )
+    await connection.receive('', {
+      id: 'manual-slow',
+      segments: [{ type: 'video', url: 'https://example.invalid/slow', size: 101 * 1024 ** 2 }],
+    })
+    const workspace = app.messages.at(-1)!.workspaceId
+    const mediaId = (await app.ctx.im.history(workspace))[0]!.media[0]!.id
+    const controller = new AbortController()
+    const pending = app.ctx.im.downloadArchivedMedia(
+      workspace,
+      'manual-slow',
+      mediaId,
+      controller.signal,
+    )
+    const rejected = expect(pending).rejects.toThrow()
+    await poll(() => started).toBe(true)
+    if (mode === '取消运行') controller.abort()
+    else await store.fiber.dispose()
+    await rejected
+    expect(aborted).toBe(true)
+    expect((await app.ctx.im.history(workspace))[0]!.media[0]!.status).toBe('skipped')
+  },
+)

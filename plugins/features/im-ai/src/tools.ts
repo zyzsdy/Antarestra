@@ -9,6 +9,50 @@ export function registerHistoryTools(
   snapshot: (context: RunContext) => Promise<InputSnapshot | undefined>,
 ) {
   ctx.ai.registerTool(ctx, {
+    id: 'im_download_file',
+    resultMode: 'structured',
+    timeoutMs: null,
+    description:
+      '主动下载并保存当前聊天消息中的图片、视频、音频或文件，返回可供 workspace_file_read 使用的 resourceId。messageId 为原始消息 ID，mediaId 为消息中 [文件,ID] 等标签的 ID 或 im_history_query 的 media.id。自动保存超过 100 MiB 的文件会跳过；主动下载遵守空间单文件大小和配额。私聊只支持本次输入消息中的媒体。不能指定其他聊天或任意平台文件 ID。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['messageId', 'mediaId'],
+      properties: {
+        messageId: { type: 'string', minLength: 1 },
+        mediaId: { type: 'string', minLength: 1 },
+      },
+    },
+    async execute(args, context) {
+      if (!ctx.ai.running.get(context.runId)?.ownsToolContext(context))
+        throw new AiError('forbidden', '文件下载需要有效工具上下文', 403)
+      if (typeof args.messageId !== 'string' || typeof args.mediaId !== 'string')
+        throw new AiError('invalid_input', '必须填写消息和媒体 ID')
+      context.signal.throwIfAborted()
+      const input = await snapshot(context)
+      try {
+        const resource = await ctx.im.downloadArchivedMedia(
+          context.workspaceId,
+          args.messageId,
+          args.mediaId,
+          context.signal,
+          input?.privateMedia,
+        )
+        return {
+          content: { ...resource, src: `resourceId://${encodeURIComponent(resource.resourceId)}` },
+        }
+      } catch (error) {
+        context.signal.throwIfAborted()
+        if (error instanceof ImError)
+          return { content: { error: error.message, code: error.code }, isError: true }
+        return {
+          content: { error: '文件下载失败，请检查平台文件是否过期或超过空间大小、配额限制' },
+          isError: true,
+        }
+      }
+    },
+  })
+  ctx.ai.registerTool(ctx, {
     id: 'im_recall_message',
     resultMode: 'structured',
     description:

@@ -13,6 +13,17 @@ export const imFiles = {
         const { src: _src, ...resource } = await service.prepareImage(access, { resourceId })
         return resource
       },
+      async inspectFile(workspaceId, resourceId, signal) {
+        signal.throwIfAborted()
+        const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)
+        const file = await service.resource(access, resourceId)
+        return {
+          resourceId: file.id,
+          filename: file.filename,
+          mimeType: file.mimeType,
+          size: file.size,
+        }
+      },
       async resolve(workspaceId, resourceId, signal) {
         signal.throwIfAborted()
         const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)

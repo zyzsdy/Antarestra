@@ -30,6 +30,7 @@ export function replyFormatGuide(capabilities?: readonly string[]) {
 <sticker>resource://表情包资源ID</sticker>
 </im_reply>
 
+${!capabilities || capabilities.includes('file') ? '- 发送文件使用 <file>https://可下载的文件直链</file> 或 <file>resourceId://文件资源ID</file>，也支持 resource://；文件 ID 必须来自当前空间。file 单独发送，不能带 quote。' : ''}
 - 只输出一个 im_reply 外层，不加 Markdown 代码围栏或标签外说明。每个 message、image、sticker 都会单独发送，最多 ${maxReplyMessages} 条；按需要选择内容，不必包含全部类型。
 - 发送工作空间或共享表情包图片时，直接使用URL: \`resource://图片资源ID\`；ID 必须来自当前空间的文件、图片工具结果、历史消息或服务端提供的全局表情包列表，不得编造。共享表情包必须按 resourceId 使用。
 - 你应当在输出中包含 \`<status>任意文本</status>\` 保存当前聊天的状态，放在 im_reply 内与 message 同级。status 内部内容将保存为当前状态，并在下次激活时回传给你，不发送到聊天。
@@ -96,6 +97,11 @@ function imageUrl(value: string, capabilities?: readonly string[]) {
   return value
 }
 
+function fileUrl(value: string, capabilities?: readonly string[]) {
+  if (capabilities && !capabilities.includes('file')) throw new Error('当前接入不支持文件发送')
+  return imageUrl(value)
+}
+
 /** 小型白名单语法，不使用 HTML 容错、外部实体或自动修复不完整标签。 */
 export function parseReply(text: string, capabilities?: readonly string[]): MessageSegment[][] {
   return parseReplyWithStatus(text, capabilities).messages
@@ -118,7 +124,7 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
   if (source.startsWith('<status>')) consumeStatus()
   const wrapped = /^<im_reply(?:\s|>|\/|$)/.test(source)
   // 兼容模型遗漏外层的消息标签序列，后续复用完整的白名单校验。
-  if (!wrapped && !/^<(?:message|image|sticker)(?:\s|>|\/|$)/.test(source)) {
+  if (!wrapped && !/^<(?:message|image|sticker|file)(?:\s|>|\/|$)/.test(source)) {
     const index = source.search(/<\/?status(?:\s|>|\/|$)/)
     const plain = index < 0 ? source : source.slice(0, index).trimEnd()
     if (index >= 0) {
@@ -135,7 +141,7 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
     if (!source.startsWith('<im_reply>')) throw new Error('IM 回复外层格式无效')
     source = source.slice('<im_reply>'.length).trimStart()
   }
-  const tag = /^<(message|image|sticker)(?:\s+quote="([^"<>]*)")?>([\s\S]*?)<\/\1>/
+  const tag = /^<(message|image|sticker|file)(?:\s+quote="([^"<>]*)")?>([\s\S]*?)<\/\1>/
   const messages: MessageSegment[][] = []
   let count = 0
   let hasStatus = false
@@ -151,6 +157,7 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
     if (++count > maxReplyMessages) throw new Error('IM 回复条数超过上限')
     const segments: MessageSegment[] = []
     if (match[2] !== undefined) {
+      if (match[1] === 'file') throw new Error('文件发送不支持引用消息')
       const messageId = decodeAttribute(match[2])
       if (!messageId || messageId.length > 200 || /\s|[\u0000-\u001f]/.test(messageId))
         throw new Error('IM 引用消息 ID 无效')
@@ -162,10 +169,11 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
       segments.push(...content)
     } else {
       const value = decode(match[3]!).trim()
-      if (!value) throw new Error('IM 图片地址不能为空')
+      if (!value)
+        throw new Error(match[1] === 'file' ? 'IM 文件地址不能为空' : 'IM 图片地址不能为空')
       segments.push({
-        type: 'image',
-        url: imageUrl(value, capabilities),
+        type: match[1] === 'file' ? 'file' : 'image',
+        url: match[1] === 'file' ? fileUrl(value, capabilities) : imageUrl(value, capabilities),
         ...(match[1] === 'sticker' ? { sticker: true } : {}),
       })
     }

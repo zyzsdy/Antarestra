@@ -3,6 +3,8 @@ import type { ImageResourceResolver } from './types.js'
 
 /** 不使用 URL.hostname，避免大小写敏感的资源 ID 被转为小写。 */
 export function imageResourceId(source: string): string | undefined {
+  if (source.startsWith('resourceId://'))
+    source = `resource://${source.slice('resourceId://'.length)}`
   if (!source.startsWith('resource:')) return
   const match = /^resource:\/\/([A-Za-z0-9_-]|%[0-9A-Fa-f]{2}){1,600}$/.exec(source)
   if (!match) throw new Error('图片资源引用无效，应为 resource://资源ID')
@@ -38,6 +40,12 @@ export class ImageResources {
     const unregister = this.registry.register(owner, 'image', {
       inspect: (workspaceId, id, signal) =>
         track(signal, (signal) => resolver.inspect(workspaceId, id, signal)),
+      ...(resolver.inspectFile
+        ? {
+            inspectFile: (workspaceId: string, id: string, signal: AbortSignal) =>
+              track(signal, (signal) => resolver.inspectFile!(workspaceId, id, signal)),
+          }
+        : {}),
       resolve: (workspaceId, id, signal) =>
         track(signal, (signal) => resolver.resolve(workspaceId, id, signal)),
     })

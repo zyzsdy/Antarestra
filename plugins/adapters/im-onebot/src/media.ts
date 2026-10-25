@@ -1,5 +1,10 @@
-import { downloadHttpMedia, type IncomingMessage, type MediaSegment } from '@antarestra/im'
-import { record } from './message.js'
+import {
+  downloadHttpMedia,
+  MediaSizeError,
+  type IncomingMessage,
+  type MediaSegment,
+} from '@antarestra/im'
+import { id, normalizeMessage, record } from './message.js'
 
 export async function downloadMedia(
   message: IncomingMessage,
@@ -8,53 +13,63 @@ export async function downloadMedia(
   maxBytes: number,
   rpc: (action: string, params: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>,
 ) {
-  let url = segment.url
+  // 旧归档只保存了上报 URL；可从原始事件补回稳定文件标识。
+  const raw = record(message.raw)
+  const original = normalizeMessage(raw, id(raw.self_id) ?? '')
+  const index = message.segments.findIndex(
+    (item) =>
+      item === segment || ('url' in item && item.type === segment.type && item.url === segment.url),
+  )
+  const originalSegment = original?.segments[index]
+  let url =
+    segment.reference ??
+    (originalSegment && 'url' in originalSegment ? originalSegment.reference : undefined) ??
+    segment.url
+  if (segment.size !== undefined && segment.size > maxBytes) throw new MediaSizeError()
   let filename = segment.name
   if (url.startsWith('onebot://')) {
     const reference = new URL(url)
     const parts = reference.pathname.split('/').filter(Boolean)
     const file = decodeURIComponent(parts[0] ?? '')
     if (!file) throw new Error('平台媒体标识无效')
-    const groupFile = reference.hostname === 'group-file'
+    const groupFile =
+      reference.hostname === 'group-file' ||
+      (segment.type === 'file' && message.chat.type === 'group')
+    const privateFile = segment.type === 'file' && !groupFile
     const action = groupFile
       ? 'get_group_file_url'
-      : segment.type === 'audio'
-        ? 'get_record'
-        : segment.type === 'image'
-          ? 'get_image'
-          : 'get_file'
+      : privateFile
+        ? 'get_private_file_url'
+        : segment.type === 'audio'
+          ? 'get_record'
+          : segment.type === 'image'
+            ? 'get_image'
+            : 'get_file'
     const result = record(
       await rpc(
         action,
         groupFile
           ? { group_id: message.chat.id, file_id: file, busid: Number(parts[1] ?? 0) }
-          : { file, ...(segment.type === 'audio' ? { out_format: 'mp3' } : {}) },
+          : privateFile
+            ? { file_id: file }
+            : { file, ...(segment.type === 'audio' ? { out_format: 'mp3' } : {}) },
         signal,
       ),
     )
     signal.throwIfAborted()
+    if (Number(result.file_size ?? result.size) > maxBytes) throw new MediaSizeError()
     filename ??= typeof result.file_name === 'string' ? result.file_name : undefined
     if (typeof result.base64 === 'string') {
-      if (result.base64.length > Math.ceil(maxBytes / 3) * 4)
-        throw new Error('媒体超过文件大小上限')
+      if (result.base64.length > Math.ceil(maxBytes / 3) * 4) throw new MediaSizeError()
       const data = Buffer.from(result.base64, 'base64')
-      if (data.byteLength > maxBytes) throw new Error('媒体超过文件大小上限')
+      if (data.byteLength > maxBytes) throw new MediaSizeError()
       return {
         data,
         filename: filename ?? (segment.type === 'audio' ? '语音.mp3' : '媒体'),
-        mimeType:
-          segment.type === 'audio'
-            ? 'audio/mpeg'
-            : data.subarray(0, 8).toString('hex') === '89504e470d0a1a0a'
-              ? 'image/png'
-              : data.subarray(0, 3).toString('hex') === 'ffd8ff'
-                ? 'image/jpeg'
-                : /^GIF8[79]a$/.test(data.subarray(0, 6).toString())
-                  ? 'image/gif'
-                  : data.subarray(0, 4).toString() === 'RIFF' &&
-                      data.subarray(8, 12).toString() === 'WEBP'
-                    ? 'image/webp'
-                    : 'application/octet-stream',
+        mimeType: detectMimeType(
+          data,
+          segment.type === 'audio' ? 'audio/mpeg' : 'application/octet-stream',
+        ),
       }
     }
     if (typeof result.url !== 'string' || !/^https?:\/\//i.test(result.url))
@@ -62,9 +77,24 @@ export async function downloadMedia(
     url = result.url
   }
   // 平台返回的本地路径属于机器人主机，不能拿来读取本服务文件系统。
-  return downloadHttpMedia(
+  const payload = await downloadHttpMedia(
     { ...segment, url, ...(filename ? { name: filename } : {}) },
     signal,
     maxBytes,
   )
+  return { ...payload, mimeType: detectMimeType(payload.data, payload.mimeType) }
+}
+
+function detectMimeType(data: Buffer, fallback: string) {
+  if (data.subarray(0, 8).toString('hex') === '89504e470d0a1a0a') return 'image/png'
+  if (data.subarray(0, 3).toString('hex') === 'ffd8ff') return 'image/jpeg'
+  if (/^GIF8[79]a$/.test(data.subarray(0, 6).toString())) return 'image/gif'
+  if (data.subarray(0, 4).toString() === 'RIFF' && data.subarray(8, 12).toString() === 'WEBP')
+    return 'image/webp'
+  if (
+    data.subarray(4, 8).toString() === 'ftyp' &&
+    ['isom', 'iso2', 'mp41', 'mp42', 'avc1'].includes(data.subarray(8, 12).toString())
+  )
+    return 'video/mp4'
+  return fallback
 }

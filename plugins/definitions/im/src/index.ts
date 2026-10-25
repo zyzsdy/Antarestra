@@ -4,6 +4,7 @@ import { defineDatabasePlugin } from '@antarestra/database'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import { migrations, pluginId, type Tables } from './schema.js'
 import { describeArchiveError } from './diagnostics.js'
+import { autoMediaMaxBytes, MediaSizeError } from './media.js'
 import { ImageResources, imageResourceId } from './resources.js'
 import { messageSendDelay, waitForSend, type SendDelayConfig } from './send-delay.js'
 import type {
@@ -33,7 +34,7 @@ import type {
 } from './types.js'
 export * from './types.js'
 export { imageResourceId } from './resources.js'
-export { downloadHttpMedia } from './media.js'
+export { downloadHttpMedia, MediaSizeError } from './media.js'
 export interface Config extends Partial<SendDelayConfig> {
   mediaMaxRetries?: number
 }
@@ -632,12 +633,15 @@ export class ImService extends Service<ServiceOptions> {
     if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
       throw new Error('IM 聊天已禁用')
     for (const segment of segments) {
-      if (resources && segment.type === 'image') {
+      if (resources && (segment.type === 'image' || segment.type === 'file')) {
         const resourceId = imageResourceId(segment.url)
         if (resourceId !== undefined)
-          await this.imageResources
-            .get()
-            .inspect(target.workspaceId, resourceId, entry.controller.signal)
+          await this.inspectResource(
+            segment.type,
+            target.workspaceId,
+            resourceId,
+            entry.controller.signal,
+          )
       }
       if (segment.type !== 'reply') continue
       const reference = await this.db()
@@ -653,7 +657,18 @@ export class ImService extends Service<ServiceOptions> {
     this.ctx.fiber.assertActive()
     return this.imageResources.register(owner, resolver)
   }
-  private async prepareImages(
+  private inspectResource(
+    type: 'image' | 'file',
+    workspaceId: string,
+    id: string,
+    signal: AbortSignal,
+  ) {
+    const resolver = this.imageResources.get()
+    if (type === 'image') return resolver.inspect(workspaceId, id, signal)
+    if (!resolver.inspectFile) throw new ImError(400, 'unsupported', '文件资源服务不可用')
+    return resolver.inspectFile(workspaceId, id, signal)
+  }
+  private async prepareResources(
     entry: Entry,
     target: ScopedTarget,
     segments: readonly MessageSegment[],
@@ -662,11 +677,11 @@ export class ImService extends Service<ServiceOptions> {
     const prepared = [...segments]
     const resources = new Map<number, ImageResource>()
     for (const [index, segment] of segments.entries()) {
-      if (segment.type !== 'image') continue
+      if (segment.type !== 'image' && segment.type !== 'file') continue
       const id = imageResourceId(segment.url)
       if (id === undefined) continue
       const resolver = this.imageResources.get()
-      const image = await resolver.inspect(target.workspaceId, id, signal)
+      const image = await this.inspectResource(segment.type, target.workspaceId, id, signal)
       const link = await resolver.resolve(target.workspaceId, id, signal)
       const url = new URL(link.url)
       if (
@@ -676,11 +691,16 @@ export class ImService extends Service<ServiceOptions> {
         !Number.isFinite(link.expiresAt) ||
         link.expiresAt <= Date.now()
       )
-        throw new Error('图片临时地址无效或已过期')
+        throw new Error('资源临时地址无效或已过期')
       signal.throwIfAborted()
-      prepared[index] = entry.descriptor.prepareImage
-        ? await entry.descriptor.prepareImage({ ...image, url: link.url }, signal)
-        : { ...segment, url: link.url }
+      prepared[index] =
+        segment.type === 'image' && entry.descriptor.prepareImage
+          ? await entry.descriptor.prepareImage({ ...image, url: link.url }, signal)
+          : {
+              ...segment,
+              url: link.url,
+              ...(segment.type === 'file' ? { name: image.filename } : {}),
+            }
       resources.set(index, image)
     }
     return { segments: prepared, resources }
@@ -716,7 +736,7 @@ export class ImService extends Service<ServiceOptions> {
     const signal = options.signal
       ? AbortSignal.any([entry.controller.signal, options.signal])
       : entry.controller.signal
-    const deliver = async (prepared: Awaited<ReturnType<ImService['prepareImages']>>) => {
+    const deliver = async (prepared: Awaited<ReturnType<ImService['prepareResources']>>) => {
       this.assertEntry(entry)
       signal.throwIfAborted()
       if (!this.getChatPolicy(target.connectionId, target.chat).enabled)
@@ -780,7 +800,7 @@ export class ImService extends Service<ServiceOptions> {
       // 等待期间可能撤销聊天或业务权限，必须在真正发送前重新校验。
       await this.validateSend(target, segments)
       // 签名和平台上传在认领投递前完成；准备失败不应成为投递结果未知。
-      const prepared = await this.prepareImages(entry, target, segments, signal)
+      const prepared = await this.prepareResources(entry, target, segments, signal)
       await this.validateSend(target, segments)
       await options.beforeSend?.()
       this.assertEntry(entry)
@@ -887,17 +907,74 @@ export class ImService extends Service<ServiceOptions> {
               context.message,
               segment,
               signal,
-              limit,
+              Math.min(limit, autoMediaMaxBytes),
             ),
           context.signal,
         )
         media.status = 'stored'
-      } catch {
+      } catch (error) {
         context.signal.throwIfAborted()
-        media.status = 'failed'
+        media.status = error instanceof MediaSizeError ? 'skipped' : 'failed'
+        media.lastError = describeArchiveError(error)
       }
     }
     return { ...context, archived: message }
+  }
+  /** 主动下载只接受当前空间历史或服务端保存的本次私聊快照。 */
+  async downloadArchivedMedia(
+    workspaceId: string,
+    messageId: string,
+    mediaId: string,
+    signal: AbortSignal,
+    privateSource?: ArchivedMessage,
+  ) {
+    const target = await this.resolveTarget(workspaceId)
+    const message =
+      target.chat.type === 'private'
+        ? privateSource
+        : (await this.history(workspaceId, { messageId, limit: 1 }))[0]
+    if (!message || message.workspaceId !== workspaceId || message.message.id !== messageId)
+      throw new ImError(404, 'not_found', '当前聊天中未找到该消息')
+    const archive = this.mediaArchive
+    if (!archive) throw new ImError(503, 'unavailable', '文件归档服务不可用')
+    const entry = this.entry(target.connectionId)
+    const combined = AbortSignal.any([signal, entry.controller.signal, this.abort.signal])
+    const work = this.exclusive(`media:${message.id}`, async () => {
+      combined.throwIfAborted()
+      if (target.chat.type === 'group') {
+        const latest = (await this.history(workspaceId, { messageId, limit: 1 }))[0]
+        if (latest) message.media = latest.media
+      }
+      const media = message.media.find(
+        (item) => item.id === mediaId || item.resource?.resourceId === mediaId,
+      )
+      if (!media) throw new ImError(404, 'not_found', '该消息中未找到指定媒体')
+      if (media.resource && (await archive.available(workspaceId, media.resource.resourceId))) {
+        combined.throwIfAborted()
+        return media.resource
+      }
+      const segment = message.message.segments[media.index]
+      if (!segment || !('url' in segment)) throw new ImError(400, 'invalid_media', '媒体记录无效')
+      const resource = await archive.store(
+        message,
+        media,
+        (limit, downloadSignal) =>
+          this.downloadMedia(target, message.message, segment, downloadSignal, limit),
+        combined,
+      )
+      combined.throwIfAborted()
+      media.resource = resource
+      media.status = 'stored'
+      delete media.lastError
+      if (target.chat.type === 'group') await this.saveMediaState(message)
+      return resource
+    })
+    entry.pending.add(work)
+    try {
+      return await work
+    } finally {
+      entry.pending.delete(work)
+    }
   }
   async mediaAvailable(workspaceId: string, resourceId: string) {
     return this.mediaArchive ? this.mediaArchive.available(workspaceId, resourceId) : false
@@ -994,7 +1071,7 @@ export class ImService extends Service<ServiceOptions> {
                 message.message,
                 message.message.segments[media.index] as MediaSegment,
                 downloadSignal,
-                limit,
+                Math.min(limit, autoMediaMaxBytes),
               ),
             signal,
           )
@@ -1002,7 +1079,7 @@ export class ImService extends Service<ServiceOptions> {
           delete media.lastError
         } catch (error) {
           signal.throwIfAborted()
-          media.status = 'failed'
+          media.status = error instanceof MediaSizeError ? 'skipped' : 'failed'
           media.lastError = describeArchiveError(error)
         }
         media.attempts = attempts + 1
@@ -1194,6 +1271,7 @@ export class ImService extends Service<ServiceOptions> {
     )
       throw new ImError(403, 'forbidden', '媒体下载目标不属于当前空间')
     const entry = this.entry(target.connectionId)
+    if (segment.size !== undefined && segment.size > maxBytes) throw new MediaSizeError()
     if (!entry.descriptor.downloadMedia) throw new ImError(400, 'unsupported', '接入不支持媒体下载')
     const combined = AbortSignal.any([signal, entry.controller.signal])
     combined.throwIfAborted()
@@ -1202,6 +1280,7 @@ export class ImService extends Service<ServiceOptions> {
     try {
       const result = await work
       combined.throwIfAborted()
+      if (result.data.byteLength > maxBytes) throw new MediaSizeError()
       return result
     } finally {
       entry.pending.delete(work)

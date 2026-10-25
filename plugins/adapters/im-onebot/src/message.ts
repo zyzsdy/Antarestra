@@ -65,6 +65,10 @@ export function normalizeMessage(value: unknown, selfId: string): IncomingMessag
             typeof file.url === 'string'
               ? file.url
               : `onebot://group-file/${encodeURIComponent(fileId)}/${id(file.busid) ?? '0'}`,
+          reference: `onebot://group-file/${encodeURIComponent(fileId)}/${id(file.busid) ?? '0'}`,
+          ...(Number.isFinite(Number(file.size)) && Number(file.size) >= 0
+            ? { size: Number(file.size) }
+            : {}),
           ...(typeof file.name === 'string' ? { name: file.name } : {}),
         },
       ],
@@ -134,6 +138,16 @@ export function normalizeSegments(message: unknown): MessageSegment[] | undefine
             : typeof data.file === 'string' && /^https?:\/\//i.test(data.file)
               ? data.file
               : `onebot://file/${encodeURIComponent(id(data.file_id) ?? String(data.file))}`,
+        ...((id(data.file_id) ??
+        (typeof data.file === 'string' && !/^https?:\/\//i.test(data.file) ? data.file : undefined))
+          ? {
+              reference: `onebot://file/${encodeURIComponent(id(data.file_id) ?? String(data.file))}/${id(data.busid) ?? '0'}`,
+            }
+          : {}),
+        ...(Number.isFinite(Number(data.file_size ?? data.size)) &&
+        Number(data.file_size ?? data.size) >= 0
+          ? { size: Number(data.file_size ?? data.size) }
+          : {}),
         ...(typeof data.name === 'string' ? { name: data.name } : {}),
       })
     if (

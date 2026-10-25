@@ -109,6 +109,7 @@ export function apply(ctx: Context, input: Config) {
       'mention',
       'reply',
       'image',
+      'file',
       'member',
       'group.ban',
       'group.kick',
@@ -117,6 +118,10 @@ export function apply(ctx: Context, input: Config) {
       'message.recall',
     ],
     validateMessage: (segments) => {
+      if (segments.some((segment) => segment.type === 'file')) {
+        if (segments.length !== 1) throw new Error('文件必须单独发送')
+        return
+      }
       encodeMessage(segments)
     },
     async downloadMedia(message, segment, signal, maxBytes) {
@@ -125,6 +130,24 @@ export function apply(ctx: Context, input: Config) {
     },
     async send(target, segments, options) {
       if (!allowed(target)) throw new Error('目标聊天未获准接入')
+      const file = segments.find((segment) => segment.type === 'file')
+      if (file?.type === 'file') {
+        if (segments.length !== 1) throw new Error('文件必须单独发送')
+        const url = new URL(file.url)
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
+          throw new Error('文件发送需要 HTTP(S) 下载地址')
+        const name = file.name || decodeURIComponent(url.pathname.split('/').at(-1) || '文件')
+        await rpc(
+          target.type === 'group' ? 'upload_group_file' : 'upload_private_file',
+          {
+            [target.type === 'group' ? 'group_id' : 'user_id']: target.id,
+            file: file.url,
+            name,
+          },
+          options?.signal,
+        )
+        return {}
+      }
       const data = record(
         await rpc(
           target.type === 'group' ? 'send_group_msg' : 'send_private_msg',

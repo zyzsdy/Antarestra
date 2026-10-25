@@ -73,7 +73,12 @@ it('OneBot 保留视频音频、CQ 文本结构和群文件通知，未知内容
     '1',
   )
   expect(upload?.segments).toEqual([
-    { type: 'file', url: 'onebot://group-file/file-id/102', name: '原始文件.txt' },
+    {
+      type: 'file',
+      url: 'onebot://group-file/file-id/102',
+      reference: 'onebot://group-file/file-id/102',
+      name: '原始文件.txt',
+    },
   ])
   expect(
     onebot({ ...base, message: [{ type: 'forward', data: { id: 'ref' } }] }, '1'),
@@ -142,7 +147,11 @@ it('OneBot 无直链的文件保留资源 ID，语音通过平台 RPC 获取二�
     '1',
   )!
   const segment = message.segments[0]!
-  expect(segment).toEqual({ type: 'audio', url: 'onebot://file/opaque%2Fid' })
+  expect(segment).toEqual({
+    type: 'audio',
+    url: 'onebot://file/opaque%2Fid',
+    reference: 'onebot://file/opaque%2Fid/0',
+  })
   if (!('url' in segment)) throw new Error('媒体段缺失')
   const signal = new AbortController().signal
   const rpc = async (action: string, params: Record<string, unknown>) => {
@@ -159,4 +168,83 @@ it('OneBot 无直链的文件保留资源 ID，语音通过平台 RPC 获取二�
   await expect(
     onebotMedia(message, segment, signal, 3, async () => ({ url: '/bot/voice.mp3' })),
   ).rejects.toThrow('URL')
+})
+
+it.each([
+  ['group', 'file', 'get_group_file_url'],
+  ['private', 'file', 'get_private_file_url'],
+  ['group', 'video', 'get_file'],
+  ['group', 'image', 'get_image'],
+] as const)('%s 的 %s 使用稳定标识重新获取直链', async (chat, type, action) => {
+  const server = createServer((_request, response) => {
+    response.setHeader('content-type', 'application/octet-stream')
+    response.end(Buffer.from('89504e470d0a1a0a', 'hex'))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('监听失败')
+    const message = onebot(
+      {
+        self_id: '1',
+        user_id: '2',
+        group_id: '3',
+        post_type: 'message',
+        message_type: chat,
+        message_id: '4',
+        message: [
+          {
+            type,
+            data: {
+              file_id: 'stable/id',
+              url: 'https://expired.invalid/old',
+              name: '图片.png',
+              file_size: '8',
+              busid: 102,
+            },
+          },
+        ],
+      },
+      '1',
+    )!
+    const segment = message.segments[0]!
+    if (!('url' in segment)) throw new Error('媒体段缺失')
+    let calls = 0
+    const rpc = async (name: string, params: Record<string, unknown>) => {
+      calls++
+      expect(name).toBe(action)
+      expect(params).toEqual(
+        type === 'file'
+          ? chat === 'group'
+            ? { group_id: '3', file_id: 'stable/id', busid: 102 }
+            : { file_id: 'stable/id' }
+          : { file: 'stable/id' },
+      )
+      return { url: `http://127.0.0.1:${address.port}/new` }
+    }
+    // 同时验证新消息以及没有 reference 的旧归档，从 raw 恢复标识。
+    for (const input of [segment, { ...segment, reference: undefined }]) {
+      const { reference, ...legacy } = input
+      const result = await onebotMedia(
+        message,
+        reference ? segment : legacy,
+        new AbortController().signal,
+        8,
+        rpc,
+      )
+      expect(result).toMatchObject({
+        filename: '图片.png',
+        mimeType: 'image/png',
+        data: Buffer.from('89504e470d0a1a0a', 'hex'),
+      })
+    }
+    expect(calls).toBe(2)
+    await expect(
+      onebotMedia(message, segment, new AbortController().signal, 7, rpc),
+    ).rejects.toThrow('上限')
+    expect(calls).toBe(2)
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
 })

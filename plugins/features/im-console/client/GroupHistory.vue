@@ -160,7 +160,7 @@ onMounted(() => {
                 item.media
                   .map(
                     (media) =>
-                      `${media.resource?.filename || '附件'} · ${{ pending: '保存中', stored: '已保存', failed: '保存失败', expired: '已过期' }[media.status]}`,
+                      `${media.resource?.filename || '附件'} · ${{ pending: '保存中', stored: '已保存', failed: '保存失败', expired: '已过期', skipped: '已跳过（超出自动保存上限）' }[media.status]}`,
                   )
                   .join('；')
               }}

@@ -322,3 +322,34 @@ describe('OneBot 11 反向 WebSocket', () => {
     ).toEqual([{ type: 'mention', userId: '152408856' }])
   })
 })
+
+it.each(['group', 'private'] as const)('%s 文件通过专用上传接口发送', async (type) => {
+  const app = await setup(['79338528'])
+  const socket = await app.connect()
+  const requests: { action: string; params: Record<string, unknown> }[] = []
+  socket.on('message', (raw) => {
+    const request = JSON.parse(raw.toString())
+    requests.push(request)
+    socket.send(JSON.stringify({ echo: request.echo, status: 'ok', retcode: 0, data: {} }))
+  })
+  const target = { type, id: type === 'group' ? '40894918' : '79338528' }
+  const segments = parseReply(
+    '<file>https://example.com/report.txt?token=test</file>',
+    app.descriptor.capabilities,
+  )[0]!
+  app.descriptor.validateMessage!(segments)
+  expect(await app.descriptor.send(target, segments)).toEqual({})
+  expect(requests).toMatchObject([
+    {
+      action: `upload_${type}_file`,
+      params: {
+        [type === 'group' ? 'group_id' : 'user_id']: target.id,
+        file: 'https://example.com/report.txt?token=test',
+        name: 'report.txt',
+      },
+    },
+  ])
+  expect(() =>
+    app.descriptor.validateMessage!([{ type: 'text', text: '混合' }, ...segments]),
+  ).toThrow('单独')
+})

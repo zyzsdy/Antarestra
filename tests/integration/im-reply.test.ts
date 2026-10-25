@@ -495,3 +495,24 @@ it('第二条投递结果未知时保留首条并停止后续发送', async () =
   expect(app.sent[0]?.segments).toEqual([{ type: 'text', text: '一' }])
   expect((await app.jobs())[0]?.attempts).toBe(1)
 })
+
+it('文件标签支持直链与资源 ID，拒绝危险地址、空标签、引用及不支持的接入', () => {
+  expect(
+    parseReply(
+      '<im_reply><file>resourceId://File_A</file><file>https://example.com/a.txt</file></im_reply>',
+      ['file'],
+    ),
+  ).toEqual([
+    [{ type: 'file', url: 'resourceId://File_A' }],
+    [{ type: 'file', url: 'https://example.com/a.txt' }],
+  ])
+  for (const value of [
+    '',
+    'file:///secret',
+    'https://user:pass@example.com/file',
+    'resourceId://bad/path',
+  ])
+    expect(() => parseReply(`<file>${value}</file>`)).toThrow()
+  expect(() => parseReply('<file quote="1">https://example.com/a</file>')).toThrow()
+  expect(() => parseReply('<file>https://example.com/a</file>', ['file.key'])).toThrow()
+})

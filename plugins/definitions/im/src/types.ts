@@ -50,6 +50,10 @@ export interface MediaSegment {
   type: 'image' | 'video' | 'audio' | 'file'
   url: string
   name?: string
+  /** 平台声明的字节数；下载时仍检查实际流大小。 */
+  size?: number
+  /** 平台稳定文件引用，用于刷新过期的下载地址。 */
+  reference?: string
   /** 图片是否作为表情包发送；省略时为普通图片。 */
   sticker?: boolean
 }
@@ -62,6 +66,7 @@ export interface ImageResource {
 /** 仅由服务端调用；空间来自已验证的发送目标，不接受模型传入空间。 */
 export interface ImageResourceResolver {
   inspect(workspaceId: string, resourceId: string, signal: AbortSignal): Promise<ImageResource>
+  inspectFile?(workspaceId: string, resourceId: string, signal: AbortSignal): Promise<ImageResource>
   /** 每次实际发送前生成无需额外鉴权的临时 HTTP(S) 地址。 */
   resolve(
     workspaceId: string,
@@ -73,7 +78,7 @@ export interface ArchivedMedia {
   id: string
   index: number
   type: MediaSegment['type']
-  status: 'pending' | 'stored' | 'failed' | 'expired'
+  status: 'pending' | 'stored' | 'failed' | 'expired' | 'skipped'
   /** 已完成的保存尝试次数，包含首次保存；旧失败记录缺省按 1 次处理。 */
   attempts?: number
   /** 最近一次保存失败的原因摘要，不含下载凭据。 */

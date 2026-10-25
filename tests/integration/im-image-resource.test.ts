@@ -386,3 +386,27 @@ it('文件扩展独立卸载后拒绝内部资源，重载后恢复；取消在�
   await app.ctx.im.send(state.target, state.segments, { idempotencyKey: 'cancel' })
   expect(app.sent).toHaveLength(1)
 })
+
+it('文件资源发送校验当前空间，保留文件名且拒绝跨空间资源', async () => {
+  const app = await setup()
+  const state = await storage(app)
+  const file = await app.ctx.workspaceFile.writeAttachment(
+    state.access,
+    {
+      filename: '报告.txt',
+      mimeType: 'text/plain',
+      data: Buffer.from('内容'),
+    },
+    new AbortController().signal,
+  )
+  const messages = parseReply(`<file>resourceId://${file.id}</file>`)
+  await app.ctx.im.send(state.target, messages[0]!)
+  expect(app.sent.at(-1)?.segments).toEqual([
+    { type: 'file', url: expect.stringContaining('http://'), name: '报告.txt' },
+  ])
+  const other = await app.connect('foreign-file', '19')
+  await other.receive('另一空间')
+  const target = await app.ctx.im.resolveTarget(app.messages.at(-1)!.workspaceId)
+  await expect(app.ctx.im.send(target, messages[0]!)).rejects.toThrow()
+  expect(app.sent).toHaveLength(1)
+})

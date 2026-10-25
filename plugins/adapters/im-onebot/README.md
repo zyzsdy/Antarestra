@@ -24,7 +24,7 @@ NapCat WebUI 的网络配置中新建 **WebSocket 客户端（反向 WebSocket�
 ## 支持范围
 
 - 入站：数组与 CQ 字符串的文本、@、引用、图片、视频、音频、文件；群上传通知通过文件 URL 或资源 ID 下载。原始事件、发送者和群主/管理员角色保留。
-- 出站：文本、@、引用、图片、视频和音频。通用 OneBot 11 消息接口不支持文件发送，因此明确返回不支持。
+- 出站：文本、@、引用、图片、视频、音频和文件。文件单独调用 `upload_group_file` / `upload_private_file`，不混入通用消息接口。
 - AI 回复中的 `<image>` 发送为普通图片（`sub_type: 0`），`<sticker>` 发送为表情包（`sub_type: 1`），供 QQ 按表情包分类和尺寸展示。出站使用数组消息段，字段名为 `sub_type`（CQ 码对应 `subType`）；未标记表情包的图片默认使用 `0`。
 - 能力调用：成员查询、群禁言、移除群成员。业务插件必须自行检查操作者和机器人平台权限；适配器不自行赋予群管理权限。
 - 合并转发：保留数组与 CQ 消息中的资源 ID，AI 输入显示 `[合并转发,资源ID]`，可通过工具主动读取内部内容。
@@ -72,4 +72,21 @@ AI 服务可用时自动注册以下工具，未加载 AI 服务不影响 OneBot
 
 群媒体下载到 workspace-file，失败保留元数据并重试。消息输入模板、历史条数、附件数量和媒体清理全部在“IM 接入”面板配置；适配器不再提供 context/recentLimit 配置。
 
-没有直链的媒体通过 get_image、get_record 或 get_file 获取 URL/二进制，语音请求 MP3。仅返回机器人主机本地路径时不会读取 Antarestra 本地文件；平台必须提供可访问 URL 或 base64，否则保留失败状态。NapCat 的相关能力与配置见[官方文件处理说明](https://napneko.github.io/develop/file)。
+入站保留稳定文件引用，即使已有 URL，也在下载时通过 `get_image`、`get_record` 或 `get_file` 刷新图片、语音和视频地址，语音请求 MP3。群文件（包含以文件上传的图片）通过 `get_group_file_url`，私聊文件通过 `get_private_file_url` 获取直链；旧归档可从原始事件恢复标识。HTTP 响应声明为普通二进制时按内容识别 PNG、JPEG、GIF、WebP 和常见 MP4。仅返回机器人主机本地路径时不会读取 Antarestra 本地文件；平台必须提供可访问 URL 或 base64，否则保留失败状态。NapCat 的相关能力与配置见[官方文件处理说明](https://napneko.github.io/develop/file)。
+
+## 文件下载与发送
+
+自动归档上限为 100 MiB（104857600 字节），包括聊天图片、短视频及原有音频、文件归档。先检查平台大小，下载时再检查 HTTP 长度和实际流大小；超限取消读取，不写入存储，不自动重试，保留 `skipped` 状态与媒体 ID。空间单文件限制更小时仍服从该限制。保存成功不代表当前模型可以直接理解视频或任意文件格式。
+
+在助理工具列表启用 im-ai 提供的 `im_download_file`，传入原始 `messageId` 与消息标签中的 `mediaId`（也可从 `im_history_query` 的 `media.id` 取得）。工具将指定媒体保存到当前空间，返回 `resourceId`；主动下载可超过自动上限，但仍受文件服务的单文件大小和空间配额约束。私聊仅支持本次输入的媒体。图片和文本可继续交给 `workspace_file_read`，其读取大小、格式和模型能力限制仍有效。
+
+AI 最终回复可单独输出，或放在 `<im_reply>` 中：
+
+```xml
+<file>https://example.com/报告.pdf</file>
+<file>resourceId://文件资源ID</file>
+```
+
+也兼容 `resource://文件资源ID`。文件不可带 quote 或与其他段混发；内部资源先校验当前空间访问权，再生成临时 HTTP 地址，保留文件名。存储临时地址须能被 NapCat 访问；上传接口没有返回消息 ID 时不伪造 ID。传输超时沿用未知投递保护，不自动重复发送。
+
+接口依据：[官方 API 列表](https://napneko.github.io/onebot/api)、[文件处理指南](https://napneko.github.io/develop/file)、[GetFile 实现](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetFile.ts)、[群文件直链](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetGroupFileUrl.ts)、[私聊文件直链](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetPrivateFileUrl.ts)。`get_file` 对普通文件可能只返回机器人本地路径，因此不能作为跨主机文件直链接口替代品。

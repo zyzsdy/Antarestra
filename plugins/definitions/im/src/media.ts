@@ -1,5 +1,12 @@
 import type { MediaSegment } from './types.js'
 
+export const autoMediaMaxBytes = 100 * 1024 ** 2
+export class MediaSizeError extends Error {
+  constructor() {
+    super('媒体超过文件大小上限')
+  }
+}
+
 /** 平台返回的下载地址；不读取本地路径或执行非 HTTP 协议。 */
 export async function downloadHttpMedia(
   segment: MediaSegment,
@@ -21,13 +28,12 @@ export async function downloadHttpMedia(
   const chunks: Uint8Array[] = []
   let size = 0
   try {
-    if (Number(response.headers.get('content-length')) > maxBytes)
-      throw new Error('媒体超过空间单文件上限')
+    if (Number(response.headers.get('content-length')) > maxBytes) throw new MediaSizeError()
     while (true) {
       const part = await reader.read()
       if (part.done) break
       size += part.value.byteLength
-      if (size > maxBytes) throw new Error('媒体超过空间单文件上限')
+      if (size > maxBytes) throw new MediaSizeError()
       chunks.push(part.value)
     }
   } finally {
