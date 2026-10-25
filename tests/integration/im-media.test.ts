@@ -1,9 +1,107 @@
 import { createServer } from 'node:http'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { downloadHttpMedia } from '@antarestra/im'
 import { normalizeMessage as onebot } from '../../plugins/adapters/im-onebot/src/message.js'
 import { normalizeMessage as feishu } from '../../plugins/adapters/im-feishu/src/message.js'
 import { downloadMedia as onebotMedia } from '../../plugins/adapters/im-onebot/src/media.js'
+
+it('OneBot 图片优先下载直链，兼容旧归档，失败、超限和取消不会重复调用平台', async () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex')
+  const requests: string[] = []
+  const controller = new AbortController()
+  const server = createServer((request, response) => {
+    requests.push(request.url!)
+    if (request.url === '/cancel') {
+      controller.abort()
+      response.end()
+      return
+    }
+    if (request.url === '/expired') {
+      response.writeHead(403)
+      response.end()
+      return
+    }
+    response.setHeader('content-type', 'application/octet-stream')
+    response.end(png)
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('监听失败')
+    const url = `http://127.0.0.1:${address.port}/image`
+    const message = onebot(
+      {
+        self_id: '1',
+        user_id: '2',
+        group_id: '3',
+        post_type: 'message',
+        message_type: 'group',
+        message_id: '4',
+        message: [{ type: 'image', data: { file: 'missing-file', url, name: '图片.png' } }],
+      },
+      '1',
+    )!
+    const segment = message.segments[0]!
+    if (!('url' in segment)) throw new Error('媒体段缺失')
+    const rpc = vi.fn(async () => {
+      throw new Error('file not found')
+    })
+    const signal = new AbortController().signal
+    const { reference, ...legacy } = segment
+    expect(reference).toBeDefined()
+    for (const input of [segment, legacy]) {
+      expect(await onebotMedia(message, input, signal, 8, rpc)).toEqual({
+        data: png,
+        mimeType: 'image/png',
+        filename: '图片.png',
+      })
+    }
+    // HTTP 正文超限与元数据超限均不可绕过限制改走 RPC。
+    await expect(onebotMedia(message, segment, signal, 7, rpc)).rejects.toThrow('上限')
+    await expect(onebotMedia(message, { ...segment, size: 9 }, signal, 8, rpc)).rejects.toThrow(
+      '上限',
+    )
+    await expect(onebotMedia(message, segment, AbortSignal.abort(), 8, rpc)).rejects.toThrow()
+    await expect(
+      onebotMedia(
+        message,
+        {
+          ...segment,
+          url: url.replace('/image', '/cancel'),
+        },
+        controller.signal,
+        8,
+        rpc,
+      ),
+    ).rejects.toThrow()
+    expect(rpc).not.toHaveBeenCalled()
+    expect(requests).toEqual(['/image', '/image', '/image', '/cancel'])
+
+    // 有引用时直链失效只刷新一次；平台仍找不到文件就保留失败。
+    const expired = { ...segment, url: url.replace('/image', '/expired') }
+    await expect(onebotMedia(message, expired, signal, 8, rpc)).rejects.toThrow('file not found')
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('get_image', { file: 'missing-file' }, signal)
+    // 没有平台引用时保留 HTTP 错误，不重复下载，也不调用平台。
+    await expect(
+      onebotMedia(
+        { ...message, raw: {} },
+        {
+          ...legacy,
+          url: expired.url,
+        },
+        signal,
+        8,
+        rpc,
+      ),
+    ).rejects.toThrow('HTTP 403')
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(requests.slice(-2)).toEqual(['/expired', '/expired'])
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
 
 it('HTTP 媒体下载保留二进制和类型，限制流大小、拒绝本地协议并报告失败状态码', async () => {
   const server = createServer((request, response) => {
@@ -176,7 +274,12 @@ it.each([
   ['group', 'video', 'get_file'],
   ['group', 'image', 'get_image'],
 ] as const)('%s 的 %s 使用稳定标识重新获取直链', async (chat, type, action) => {
-  const server = createServer((_request, response) => {
+  const server = createServer((request, response) => {
+    if (request.url === '/old') {
+      response.writeHead(403)
+      response.end()
+      return
+    }
     response.setHeader('content-type', 'application/octet-stream')
     response.end(Buffer.from('89504e470d0a1a0a', 'hex'))
   })
@@ -197,7 +300,7 @@ it.each([
             type,
             data: {
               file_id: 'stable/id',
-              url: 'https://expired.invalid/old',
+              url: `http://127.0.0.1:${address.port}/old`,
               name: '图片.png',
               file_size: '8',
               busid: 102,

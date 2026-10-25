@@ -26,6 +26,17 @@ export async function downloadMedia(
     (originalSegment && 'url' in originalSegment ? originalSegment.reference : undefined) ??
     segment.url
   if (segment.size !== undefined && segment.size > maxBytes) throw new MediaSizeError()
+  signal.throwIfAborted()
+  // 图片直链不依赖平台文件缓存；失效时才使用保留的文件引用刷新。
+  if (segment.type === 'image' && /^https?:\/\//i.test(segment.url)) {
+    try {
+      const payload = await downloadHttpMedia(segment, signal, maxBytes)
+      return { ...payload, mimeType: detectMimeType(payload.data, payload.mimeType) }
+    } catch (error) {
+      signal.throwIfAborted()
+      if (error instanceof MediaSizeError || !url.startsWith('onebot://')) throw error
+    }
+  }
   let filename = segment.name
   if (url.startsWith('onebot://')) {
     const reference = new URL(url)

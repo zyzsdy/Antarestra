@@ -82,7 +82,9 @@ AI 服务可用时自动注册以下工具，未加载 AI 服务不影响 OneBot
 
 群媒体下载到 workspace-file，失败保留元数据并重试。消息输入模板、历史条数、附件数量和媒体清理全部在“IM 接入”面板配置；适配器不再提供 context/recentLimit 配置。
 
-入站保留稳定文件引用，即使已有 URL，也在下载时通过 `get_image`、`get_record` 或 `get_file` 刷新图片、语音和视频地址，语音请求 MP3。群文件（包含以文件上传的图片）通过 `get_group_file_url`，私聊文件通过 `get_private_file_url` 获取直链；旧归档可从原始事件恢复标识。HTTP 响应声明为普通二进制时按内容识别 PNG、JPEG、GIF、WebP 和常见 MP4。仅返回机器人主机本地路径时不会读取 Antarestra 本地文件；平台必须提供可访问 URL 或 base64，否则保留失败状态。NapCat 的相关能力与配置见[官方文件处理说明](https://napneko.github.io/develop/file)。
+入站保留平台文件引用。图片优先下载上报的 HTTP(S) 直链，成功时不调用 `get_image`，避免平台文件查询失败阻断仍可下载的图片。直链下载失败且存在文件引用时，每次下载尝试最多调用一次 `get_image` 刷新；超过大小限制或任务取消时不会刷新。没有文件引用时保留原始下载错误。语音和视频仍通过 `get_record` 或 `get_file` 获取地址，语音请求 MP3。群文件（包含以文件上传的图片）通过 `get_group_file_url`，私聊文件通过 `get_private_file_url` 获取直链；旧归档可从原始事件恢复标识。HTTP 响应声明为普通二进制时按内容识别 PNG、JPEG、GIF、WebP 和常见 MP4。仅返回机器人主机本地路径时不会读取 Antarestra 本地文件；平台必须提供可访问 URL 或 base64，否则保留失败状态。NapCat 的相关能力与配置见[官方文件处理说明](https://napneko.github.io/develop/file)。
+
+直链和平台引用均失效时仍保留媒体失败状态，由 IM 核心按现有次数上限重试；更新适配器不会重置已耗尽的重试次数，也不能恢复平台已丢失的文件。
 
 ## 文件下载与发送
 
