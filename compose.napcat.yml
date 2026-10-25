@@ -1,4 +1,4 @@
-# 使用前创建专用工作目录，并在其 .env 中设置随机 NAPCAT_WEBUI_TOKEN。
+# 使用前创建专用工作目录，在 .env 中设置随机 NAPCAT_WEBUI_TOKEN 与固定 NAPCAT_MACHINE_ID。
 # 反向 WebSocket 与访问令牌在 NapCat WebUI 中设置；详见 macOS 开发指南。
 services:
   napcat:
@@ -13,7 +13,18 @@ services:
     ports:
       - '127.0.0.1:6099:6099'
     # OrbStack 内置 host.docker.internal，反向连接使用该地址访问 macOS 宿主。
+    # 两个路径使用同一份设备标识配置。
+    configs:
+      - source: machine_id
+        target: /etc/machine-id
+      - source: machine_id
+        target: /var/lib/dbus/machine-id
     volumes:
       - ./data/qq:/app/.config/QQ
       - ./data/config:/app/napcat/config
       - ./data/plugins:/app/napcat/plugins
+
+# 从本地 .env 生成只读配置文件，沿用现有值，避免镜像升级改变 QQ 设备 GUID。
+configs:
+  machine_id:
+    content: "${NAPCAT_MACHINE_ID:?请先在 .env 中保存当前 machine-id}\n"

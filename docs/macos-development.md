@@ -81,14 +81,16 @@ CPU 和内存是这台开发机的配置选择，可按负载调整；设置后�
 
 Docker daemon 的下载代理与终端代理是不同配置。OrbStack 默认 `network_proxy: auto`，跟随 macOS 系统代理；只给终端设置 `http_proxy` 不等于配置了 daemon。通过 OrbStack 的网络设置调整代理，并保留宿主地址的排除规则。验证容器内的 DNS 和宿主访问，不能只验证拉取镜像成功。
 
-复制仓库的 `compose.napcat.yml` 到 `~/Workspace/NapCat/compose.yaml`，在该目录创建权限为 `600` 的 `.env`，配置随机 `NAPCAT_WEBUI_TOKEN`。首次扫码成功后，可设置 `NAPCAT_ACCOUNT` 为原机器人账号以便重启后快速登录。
+复制仓库的 `compose.napcat.yml` 到 `~/Workspace/NapCat/compose.yaml`，在该目录创建权限为 `600` 的 `.env`，配置随机 `NAPCAT_WEBUI_TOKEN` 和固定 `NAPCAT_MACHINE_ID`（32 位小写十六进制）。已有容器应读取其 `/etc/machine-id`，将原值写入 `.env`，不要重新生成；全新部署可用 `openssl rand -hex 16` 生成一次。`.env` 权限保持为 `600`，不提交版本库。首次扫码成功后，可设置 `NAPCAT_ACCOUNT` 为原机器人账号以便重启后快速登录。
 
 ```sh
 cd ~/Workspace/NapCat
 docker compose up -d
 ```
 
-Compose 显式固定了当前部署的 hostname 和 MAC 地址，并通过三个 `data` 目录持久化 QQ 登录数据、NapCat 配置和插件。重建或升级时保留这些配置与目录；部署其他实例时使用独立的 MAC 地址。修改 hostname 或 MAC 后执行 `docker compose up -d napcat` 应用配置，这会重建容器并短暂断线；OrbStack 的 Restart 只重启现有容器，不会应用 Compose 修改。固定这些标识不能保证 QQ 永远不要求重新验证。
+Compose 通过 `configs.content` 从 `.env` 读取 machine-id，并在 `/etc/machine-id` 与 `/var/lib/dbus/machine-id` 提供只读配置文件（需要 Docker Compose 2.23.1 或更新版本）。Linux QQ 的 GUID 按 `MD5(machine-id + MAC)` 计算，其中 MAC 来自 QQ 数据目录的 `global/nt_data/msf/machine-info`，不一定等于容器网卡 MAC；必须同时保留 `.env` 中的 machine-id 和 QQ 数据目录，才能在重建或升级镜像后保持该 GUID。
+
+Compose 还显式固定了当前部署的 hostname 和 MAC 地址，并通过三个 `data` 目录持久化 QQ 登录数据、NapCat 配置和插件。重建或升级时保留这些配置与目录；部署其他实例时使用独立的 MAC 地址。修改 hostname 或 MAC 后执行 `docker compose up -d napcat` 应用配置，这会重建容器并短暂断线；OrbStack 的 Restart 只重启现有容器，不会应用 Compose 修改。固定这些标识不能保证 QQ 永远不要求重新验证。
 
 在 NapCat WebUI 中配置 **WebSocket 客户端（反向 WebSocket）**：
 
