@@ -18,7 +18,7 @@ im-onebot:
 
 以上条目放在主配置的 `plugins` 映射下。若配置多个 OneBot 插件，映射键使用 `im-onebot:八位随机十六进制哈希`；`id` 必须在所有 IM 接入中唯一且保持稳定。账号和聊天 ID 全部使用字符串。
 
-`provider`（OneBot 提供方）可选 `napcat`、`snowluma`，省略时默认为 `snowluma`。该配置用于标识提供方，收发逻辑共用 OneBot 11 协议，不按提供方分支处理。
+`provider`（OneBot 提供方）可选 `napcat`、`snowluma`，省略时默认为 `snowluma`。通用接口共用 OneBot 11 协议；视频与文件下载按提供方适配，详见下方接口核对。
 
 SnowLuma 或 NapCat WebUI 的网络配置中新建 **WebSocket 客户端（反向 WebSocket）**，地址填写 `ws://127.0.0.1:14451/im/onebot/qq-qianqian`，令牌与环境变量一致，消息格式选择 `array`，连接角色选择 `Universal`（同时收事件和调用 API）。地址没有 `/api` 前缀。如提供方在其他机器，替换为 Antarestra 的可达地址并通过安全的网络连接。
 
@@ -73,7 +73,7 @@ AI 服务可用时自动注册以下工具，未加载 AI 服务不影响 OneBot
 | 工具                        | 参数与用途                                                                                                                                                                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `onebot_get_forward_msg`    | 必填 `message_id` 为包含合并转发的外层原始消息 ID；可选 `id` 为该消息中指定的合并转发资源 ID，省略时读取第一个。调用 `get_msg` 核验消息和资源归属，再调用 `get_forward_msg`，保留节点、发送者、时间与内容，并将图片转换为当前空间的文件资源 ID。 |
-| `onebot_set_msg_emoji_like` | 必填 `message_id` 和 `emoji_id`，调用 NapCat `set_msg_emoji_like`，固定 `set: true` 为消息添加表态。工具描述完整列出表情外观和使用含义。                                                                                                         |
+| `onebot_set_msg_emoji_like` | 必填 `message_id` 和 `emoji_id`，调用 `set_msg_emoji_like`，固定 `set: true` 为消息添加表态。工具描述完整列出表情外观和使用含义。                                                                                                                |
 
 所有 ID 均以字符串传入。表态可选 ID：续标识 `424`、问号 `10068`、捂脸 `264`、紧张 `128560`、辣眼睛 `265`、赞 `76`、NO `123`、大哭 `128557`、拥抱 `49`、爱心 `66`。
 
@@ -87,7 +87,7 @@ AI 服务可用时自动注册以下工具，未加载 AI 服务不影响 OneBot
 
 群媒体下载到 workspace-file，失败保留元数据并重试。消息输入模板、历史条数、附件数量和媒体清理全部在“IM 接入”面板配置；适配器不再提供 context/recentLimit 配置。
 
-入站保留平台文件引用。图片优先下载上报的 HTTP(S) 直链，成功时不调用 `get_image`，避免平台文件查询失败阻断仍可下载的图片。直链下载失败且存在文件引用时，每次下载尝试最多调用一次 `get_image` 刷新；超过大小限制或任务取消时不会刷新。没有文件引用时保留原始下载错误。语音和视频仍通过 `get_record` 或 `get_file` 获取地址，语音请求 MP3。群文件（包含以文件上传的图片）通过 `get_group_file_url`，私聊文件通过 `get_private_file_url` 获取直链；旧归档可从原始事件恢复标识。HTTP 响应声明为普通二进制时按内容识别 PNG、JPEG、GIF、WebP 和常见 MP4。仅返回机器人主机本地路径时不会读取 Antarestra 本地文件；平台必须提供可访问 URL 或 base64，否则保留失败状态。NapCat 的相关能力与配置见[官方文件处理说明](https://napneko.github.io/develop/file)。
+入站保留平台文件引用。图片优先下载上报的 HTTP(S) 直链，成功时不调用 `get_image`，避免平台文件查询失败阻断仍可下载的图片。直链下载失败且存在文件引用时，每次下载尝试最多调用一次 `get_image` 刷新；超过大小限制或任务取消时不会刷新。没有文件引用时保留原始下载错误。语音通过 `get_record` 请求 MP3；NapCat 视频通过 `get_file` 获取内容，SnowLuma 视频优先使用上报直链，失败后调用一次 `get_msg` 刷新，并校验消息与媒体归属。群文件（包含以文件上传的图片）通过 `get_group_file_url`，私聊文件通过 `get_private_file_url` 获取直链；旧归档可从原始事件恢复标识。HTTP 响应声明为普通二进制时按内容识别 PNG、JPEG、GIF、WebP 和常见 MP4。仅返回机器人主机本地路径时不会读取 Antarestra 本地文件；平台必须提供可访问 URL 或 base64，否则保留失败状态。NapCat 的相关能力与配置见[官方文件处理说明](https://napneko.github.io/develop/file)。
 
 直链和平台引用均失效时仍保留媒体失败状态，由 IM 核心按现有次数上限重试；更新适配器不会重置已耗尽的重试次数，也不能恢复平台已丢失的文件。
 
@@ -104,6 +104,26 @@ AI 最终回复可单独输出，或放在 `<im_reply>` 中：
 <file>resourceId://文件资源ID</file>
 ```
 
-也兼容 `resource://文件资源ID`。文件不可带 quote 或与其他段混发；内部资源先校验当前空间访问权，再生成临时 HTTP 地址，保留文件名。存储临时地址须能被 NapCat 访问；上传接口没有返回消息 ID 时不伪造 ID。传输超时沿用未知投递保护，不自动重复发送。
+也兼容 `resource://文件资源ID`。文件不可带 quote 或与其他段混发；内部资源先校验当前空间访问权，再生成临时 HTTP 地址，保留文件名。存储临时地址须能被所选 OneBot 提供方访问；上传接口没有返回消息 ID 时不伪造 ID。传输超时沿用未知投递保护，不自动重复发送。
 
 接口依据：[官方 API 列表](https://napneko.github.io/onebot/api)、[文件处理指南](https://napneko.github.io/develop/file)、[GetFile 实现](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetFile.ts)、[群文件直链](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetGroupFileUrl.ts)、[私聊文件直链](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetPrivateFileUrl.ts)。`get_file` 对普通文件可能只返回机器人本地路径，因此不能作为跨主机文件直链接口替代品。
+
+## SnowLuma 与 NapCat 接口核对
+
+2026-10-26 对照 [SnowLuma API](https://snowluma.github.io/zh/docs/api)、[动作目录](https://snowluma.github.io/api/catalog.json)、本机 SnowLuma v2.2.0 运行时代码和 NapCat 官方实现，核对当前适配器调用的全部 16 个动作。文档生成的数字类型不代表必须改写项目 ID：本机 SnowLuma 参数解析接受数字字符串，消息 ID 允许负数，项目继续使用字符串保存和传递 ID。
+
+| 当前调用                                   | 核对结果与处理                                                                                                                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `send_group_msg`、`send_private_msg`       | 共用目标 ID、数组 `message` 和返回的 `message_id`。文本、@、引用、图片 `sub_type`、语音和视频消息段共用。                                                                                             |
+| `upload_group_file`、`upload_private_file` | 共用目标 ID、HTTP(S) `file` 和 `name`。SnowLuma 返回 `file_id`；它不是消息 ID，不拿来伪造发送回执。                                                                                                   |
+| `get_group_member_info`                    | 共用 `group_id`、`user_id`、`no_cache`，读取 `user_id` 和 `role`。                                                                                                                                    |
+| `set_group_ban`、`set_group_kick`          | 共用群与成员 ID、秒数 `duration`、`reject_add_request`。                                                                                                                                              |
+| `get_msg`、`delete_msg`                    | 共用原始 `message_id`，保留原有聊天归属与仅撤回机器人自身消息的检查。平台查不到历史消息时明确失败，不放宽归属校验。                                                                                   |
+| `get_forward_msg`                          | 两者支持资源 `id`，返回 `messages`。已有递归处理兼容节点中的 `message` 与 `content`。                                                                                                                 |
+| `set_msg_emoji_like`                       | 共用 `message_id`、字符串 `emoji_id` 和 `set: true`。                                                                                                                                                 |
+| `get_image`、`get_record`                  | 共用 `file`、语音 `out_format: mp3`，兼容 URL/base64 返回；SnowLuma 语音指定格式后附带转码 base64。                                                                                                   |
+| `get_file`                                 | **需要分支**：NapCat 可获取视频；SnowLuma 仅查询图片/语音缓存。SnowLuma 视频走直链，必要时通过 `get_msg` 刷新。本机 v2.2.0 会尝试刷新视频 URL；若平台无法刷新，保持下载失败，不改调不支持的视频接口。 |
+| `get_private_file_url`                     | **需要分支**：NapCat 从自己的不透明 `file_id` 恢复上下文；SnowLuma 补传聊天 `user_id` 和消息原始 `file_hash`。哈希编码进媒体引用，旧归档优先从原始事件恢复；不猜测缺失哈希。                          |
+| `get_group_file_url`                       | **需要分支**：SnowLuma 缺失 `busid` 时省略，让平台使用默认 102；显式值（包括 0）保留。NapCat 保持原来的缺省 0。新引用区分缺失值与显式 0，SnowLuma 旧引用优先从原始事件恢复。                          |
+
+差异依据：[SnowLuma get_file](https://snowluma.github.io/zh/docs/api/extended/get_file)、[私聊文件](https://snowluma.github.io/zh/docs/api/group-file/get_private_file_url)、[群文件](https://snowluma.github.io/zh/docs/api/group-file/get_group_file_url)、[语音](https://snowluma.github.io/zh/docs/api/extended/get_record)，以及 [NapCat get_file](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetFile.ts)、[NapCat 私聊文件](https://github.com/NapNeko/NapCatQQ/blob/main/packages/napcat-onebot/action/file/GetPrivateFileUrl.ts)。视频刷新能力与缺省 busid 另经本机运行时代码核对；以上不是全部接口的真实 QQ 操作验收。

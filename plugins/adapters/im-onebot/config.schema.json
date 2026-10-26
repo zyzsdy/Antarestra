@@ -7,7 +7,7 @@
       "enum": ["napcat", "snowluma"],
       "default": "snowluma",
       "title": "OneBot 提供方",
-      "description": "所连接的 OneBot 实现；两者共用 OneBot 11 反向 WebSocket 收发协议。"
+      "description": "所连接的 OneBot 实现；共用 OneBot 11 收发协议，视频和文件下载按提供方适配。"
     },
     "path": {
       "type": "string",

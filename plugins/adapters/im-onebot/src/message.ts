@@ -14,6 +14,12 @@ export function id(value: unknown): string | undefined {
       : undefined
 }
 
+function mediaReference(kind: string, file: string, data: Record<string, unknown>) {
+  const busid = id(data.busid)
+  const hash = typeof data.file_hash === 'string' && data.file_hash ? data.file_hash : undefined
+  return `onebot://${kind}/${encodeURIComponent(file)}${busid ? `/${busid}` : ''}${hash ? `?file_hash=${encodeURIComponent(hash)}` : ''}`
+}
+
 const decodeCq = (value: string) =>
   value
     .replaceAll('&#91;', '[')
@@ -61,11 +67,8 @@ export function normalizeMessage(value: unknown, selfId: string): IncomingMessag
       segments: [
         {
           type: 'file',
-          url:
-            typeof file.url === 'string'
-              ? file.url
-              : `onebot://group-file/${encodeURIComponent(fileId)}/${id(file.busid) ?? '0'}`,
-          reference: `onebot://group-file/${encodeURIComponent(fileId)}/${id(file.busid) ?? '0'}`,
+          url: typeof file.url === 'string' ? file.url : mediaReference('group-file', fileId, file),
+          reference: mediaReference('group-file', fileId, file),
           ...(Number.isFinite(Number(file.size)) && Number(file.size) >= 0
             ? { size: Number(file.size) }
             : {}),
@@ -141,7 +144,7 @@ export function normalizeSegments(message: unknown): MessageSegment[] | undefine
         ...((id(data.file_id) ??
         (typeof data.file === 'string' && !/^https?:\/\//i.test(data.file) ? data.file : undefined))
           ? {
-              reference: `onebot://file/${encodeURIComponent(id(data.file_id) ?? String(data.file))}/${id(data.busid) ?? '0'}`,
+              reference: mediaReference('file', id(data.file_id) ?? String(data.file), data),
             }
           : {}),
         ...(Number.isFinite(Number(data.file_size ?? data.size)) &&

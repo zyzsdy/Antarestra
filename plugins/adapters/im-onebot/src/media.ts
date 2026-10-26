@@ -4,7 +4,8 @@ import {
   type IncomingMessage,
   type MediaSegment,
 } from '@antarestra/im'
-import { id, normalizeMessage, record } from './message.js'
+import type { Config } from './index.js'
+import { id, normalizeMessage, normalizeSegments, record } from './message.js'
 
 export async function downloadMedia(
   message: IncomingMessage,
@@ -12,6 +13,7 @@ export async function downloadMedia(
   signal: AbortSignal,
   maxBytes: number,
   rpc: (action: string, params: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>,
+  provider: Config['provider'] = 'snowluma',
 ) {
   // 旧归档只保存了上报 URL；可从原始事件补回稳定文件标识。
   const raw = record(message.raw)
@@ -25,8 +27,43 @@ export async function downloadMedia(
     segment.reference ??
     (originalSegment && 'url' in originalSegment ? originalSegment.reference : undefined) ??
     segment.url
+  // 旧引用曾将缺失 busid 写成 0；SnowLuma 应恢复原始字段，使用平台默认值。
+  if (provider === 'snowluma' && originalSegment && 'url' in originalSegment)
+    url = originalSegment.reference ?? url
   if (segment.size !== undefined && segment.size > maxBytes) throw new MediaSizeError()
   signal.throwIfAborted()
+  if (provider === 'snowluma' && segment.type === 'video') {
+    // SnowLuma 的 get_file 只支持图片/语音；视频从消息 URL 下载，失效后读取原消息刷新。
+    if (/^https?:\/\//i.test(segment.url)) {
+      try {
+        const payload = await downloadHttpMedia(segment, signal, maxBytes)
+        return { ...payload, mimeType: detectMimeType(payload.data, payload.mimeType) }
+      } catch (error) {
+        signal.throwIfAborted()
+        if (error instanceof MediaSizeError) throw error
+      }
+    }
+    const result = record(await rpc('get_msg', { message_id: message.id }, signal))
+    signal.throwIfAborted()
+    if (
+      id(result.message_id) !== message.id ||
+      result.message_type !== message.chat.type ||
+      id(message.chat.type === 'group' ? result.group_id : result.user_id) !== message.chat.id
+    )
+      throw new Error('视频消息不属于当前聊天')
+    const refreshed = normalizeSegments(result.message)?.[index]
+    if (
+      !refreshed ||
+      refreshed.type !== 'video' ||
+      !refreshed.reference ||
+      refreshed.reference !== url ||
+      !/^https?:\/\//i.test(refreshed.url)
+    )
+      throw new Error('平台未提供可下载的视频 URL')
+    if (refreshed.size !== undefined && refreshed.size > maxBytes) throw new MediaSizeError()
+    const payload = await downloadHttpMedia({ ...segment, url: refreshed.url }, signal, maxBytes)
+    return { ...payload, mimeType: detectMimeType(payload.data, payload.mimeType) }
+  }
   // 图片直链不依赖平台文件缓存；失效时才使用保留的文件引用刷新。
   if (segment.type === 'image' && /^https?:\/\//i.test(segment.url)) {
     try {
@@ -60,9 +97,23 @@ export async function downloadMedia(
       await rpc(
         action,
         groupFile
-          ? { group_id: message.chat.id, file_id: file, busid: Number(parts[1] ?? 0) }
+          ? {
+              group_id: message.chat.id,
+              file_id: file,
+              ...(provider === 'napcat' || parts[1] !== undefined
+                ? { busid: Number(parts[1] ?? 0) }
+                : {}),
+            }
           : privateFile
-            ? { file_id: file }
+            ? {
+                file_id: file,
+                ...(provider === 'snowluma'
+                  ? {
+                      user_id: message.chat.id,
+                      file_hash: reference.searchParams.get('file_hash') ?? '',
+                    }
+                  : {}),
+              }
             : { file, ...(segment.type === 'audio' ? { out_format: 'mp3' } : {}) },
         signal,
       ),

@@ -248,7 +248,7 @@ it('OneBot 无直链的文件保留资源 ID，语音通过平台 RPC 获取二�
   expect(segment).toEqual({
     type: 'audio',
     url: 'onebot://file/opaque%2Fid',
-    reference: 'onebot://file/opaque%2Fid/0',
+    reference: 'onebot://file/opaque%2Fid',
   })
   if (!('url' in segment)) throw new Error('媒体段缺失')
   const signal = new AbortController().signal
@@ -334,6 +334,7 @@ it.each([
         new AbortController().signal,
         8,
         rpc,
+        'napcat',
       )
       expect(result).toMatchObject({
         filename: '图片.png',

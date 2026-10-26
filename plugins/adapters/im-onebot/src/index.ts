@@ -132,7 +132,7 @@ export function apply(ctx: Context, input: Config) {
     },
     async downloadMedia(message, segment, signal, maxBytes) {
       if (!allowed(message.chat)) throw new Error('目标聊天未获准接入')
-      return downloadMedia(message, segment, signal, maxBytes, rpc)
+      return downloadMedia(message, segment, signal, maxBytes, rpc, config.provider)
     },
     async send(target, segments, options) {
       if (!allowed(target)) throw new Error('目标聊天未获准接入')
