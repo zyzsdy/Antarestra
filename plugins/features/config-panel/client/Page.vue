@@ -108,6 +108,9 @@ const groups = computed(() => [
   { id: '', name: '未分组' },
   ...(snapshot.value?.layout.groups ?? []),
 ])
+const visibleGroups = computed(() =>
+  groups.value.filter((group) => group.id || rows.value.some((row) => row.group === '')),
+)
 const current = computed(() =>
   snapshot.value?.instances.find((item) => item.instanceId === selected.value),
 )
@@ -441,7 +444,7 @@ onUnmounted(() => {
           as="section"
           :open="!collapsed.has(group.id)"
           @update:open="$event ? collapsed.delete(group.id) : collapsed.add(group.id)"
-          v-for="group in groups"
+          v-for="group in visibleGroups"
           :key="group.id"
           class="plugin-group"
           :class="{ 'drop-at-end': insertion?.group === group.id && !insertion.before }"
