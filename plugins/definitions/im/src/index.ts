@@ -257,8 +257,11 @@ export class ImService extends Service<ServiceOptions> {
     return this.aiHistoryReader
   }
   /** 仅供已授权的管理入口读取；群空间由持久化路由解析。 */
-  async listGroups(offset = 0, limit = 20) {
-    const query = this.db().selectFrom('route').where('chat_type', '=', 'group')
+  async listGroups(offset = 0, limit = 20, archived = false) {
+    const query = this.db()
+      .selectFrom('route')
+      .where('chat_type', '=', 'group')
+      .where('archived_at', archived ? 'is not' : 'is', null)
     const count = await query
       .select((eb) => eb.fn.countAll<number>().as('total'))
       .executeTakeFirstOrThrow()
@@ -287,6 +290,11 @@ export class ImService extends Service<ServiceOptions> {
           platform: entry?.snapshot.platform ?? archived?.platform ?? '',
           chatId: route.chat_id,
           name: route.chat_name || archived?.message.chatName || route.chat_id,
+          archived: route.archived_at !== null,
+          connected:
+            !!entry &&
+            this.getChatPolicy(entry.snapshot.id, { type: 'group', id: route.chat_id }).enabled !==
+              false,
           lastMessageAt: latest?.timestamp ?? null,
         }
       }),
@@ -301,6 +309,40 @@ export class ImService extends Service<ServiceOptions> {
       .where('chat_type', '=', 'group')
       .executeTakeFirst()
     if (!route) throw new ImError(404, 'not_found', '群聊记录不存在')
+    return route
+  }
+  async archiveGroup(workspaceId: string, archived: boolean) {
+    return this.exclusive(`route:${workspaceId}`, async () => {
+      await this.requireGroup(workspaceId)
+      await this.db()
+        .updateTable('route')
+        .set({ archived_at: archived ? Date.now() : null })
+        .where('workspace_id', '=', workspaceId)
+        .execute()
+    })
+  }
+  /** 仅供已授权管理入口调用；所有参与者在同一事务内删除自己的历史。 */
+  async deleteGroup(workspaceId: string) {
+    return this.exclusive(`route:${workspaceId}`, () =>
+      this.exclusive(`dispatch:${workspaceId}`, async () => {
+        const route = await this.requireGroup(workspaceId)
+        if (route.archived_at === null)
+          throw new ImError(409, 'not_archived', '请先归档群聊再永久删除')
+        const reader = this.aiHistoryReader
+        if (!reader?.remove)
+          throw new ImError(
+            503,
+            'unavailable',
+            '请启用 IM AI 历史服务后再永久删除，以确保 AI 历史一并清除',
+          )
+        await reader.remove(workspaceId, async (transaction) => {
+          const db = transaction.scope<Tables>(this.ctx, pluginId)
+          await db.deleteFrom('history').where('workspace_id', '=', workspaceId).execute()
+          await db.deleteFrom('message_reference').where('workspace_id', '=', workspaceId).execute()
+          await db.deleteFrom('route').where('workspace_id', '=', workspaceId).execute()
+        })
+      }),
+    )
   }
   getPolicy(connectionId: string): ConnectionPolicy {
     return structuredClone(this.entry(connectionId).policy)
@@ -485,6 +527,7 @@ export class ImService extends Service<ServiceOptions> {
           chat_type: message.chat.type,
           chat_id: message.chat.id,
           chat_name: message.chatName || null,
+          archived_at: null,
         }
         if (!route) await this.db().insertInto('route').values(values).execute()
         else if (
@@ -501,6 +544,15 @@ export class ImService extends Service<ServiceOptions> {
             .execute()
       })
       return this.exclusive(`dispatch:${identity.workspaceId}`, async () => {
+        // 路由建立后可能排队等待删除；不能把消息写回已删除的群历史。
+        if (
+          !(await this.db()
+            .selectFrom('route')
+            .select('workspace_id')
+            .where('workspace_id', '=', identity.workspaceId)
+            .executeTakeFirst())
+        )
+          return { status: 'ignored' }
         const request = Object.freeze({})
         this.requests.set(request, { entry, identity, input, resolver })
         if (!(await this.authenticate(request))) return { status: 'ignored' }

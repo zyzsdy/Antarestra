@@ -36,6 +36,32 @@ export function historyRoutes(ctx: Context) {
     'admin',
   ])
   const guards = [ctx.rbac.require('admin.console.view'), ctx.rbac.require('admin.im.history.view')]
+  ctx.rbac.registerPermission(ctx, 'admin.im.history.manage', '归档和永久删除群历史', ['admin'])
+  const manageGuards = [...guards, ctx.rbac.require('admin.im.history.manage')]
+  ctx.server.route(ctx, 'PUT', '/im/groups/:workspaceId/archive', ...manageGuards, async (http) => {
+    const id = String(http.params.workspaceId)
+    await requireGroup(id)
+    const input = await readJson(http, 1024)
+    if (typeof input.archived !== 'boolean') throw new AuthError(400, '归档状态无效')
+    try {
+      await ctx.im.archiveGroup(id, input.archived)
+    } catch (error) {
+      if (error instanceof ImError) throw new AuthError(error.status, error.message)
+      throw error
+    }
+    http.set('Cache-Control', 'no-store')
+    http.body = { ok: true }
+  })
+  ctx.server.route(ctx, 'DELETE', '/im/groups/:workspaceId', ...manageGuards, async (http) => {
+    try {
+      await ctx.im.deleteGroup(String(http.params.workspaceId))
+    } catch (error) {
+      if (error instanceof ImError) throw new AuthError(error.status, error.message)
+      throw error
+    }
+    http.set('Cache-Control', 'no-store')
+    http.body = { ok: true }
+  })
   ctx.rbac.registerPermission(ctx, 'admin.im.bot.manage', '管理各群 bot 管理员', ['admin'])
   const adminGuards = [...guards, ctx.rbac.require('admin.im.bot.manage')]
   ctx.server.route(ctx, 'GET', '/im/groups/:workspaceId/admins', ...adminGuards, async (http) => {
@@ -55,7 +81,16 @@ export function historyRoutes(ctx: Context) {
   })
   ctx.server.route(ctx, 'GET', '/im/groups', ...guards, async (http) => {
     http.set('Cache-Control', 'no-store')
-    http.body = await ctx.im.listGroups(integer(http.query.offset, 0), 20)
+    if (
+      http.query.archived !== undefined &&
+      !['true', 'false'].includes(String(http.query.archived))
+    )
+      throw new AuthError(400, '归档筛选无效')
+    http.body = await ctx.im.listGroups(
+      integer(http.query.offset, 0),
+      20,
+      http.query.archived === 'true',
+    )
   })
   ctx.server.route(ctx, 'GET', '/im/groups/:workspaceId/messages', ...guards, async (http) => {
     const workspaceId = String(http.params.workspaceId)

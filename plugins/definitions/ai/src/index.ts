@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
-import { defineDatabasePlugin } from '@antarestra/database'
+import { defineDatabasePlugin, type DatabaseTransaction } from '@antarestra/database'
 import type { RequestAccess } from '@antarestra/rbac'
 import type {
   AgentPreset,
@@ -626,6 +626,32 @@ export class AiService extends Service<Config> {
       conversation.revision++
       this.notifyConversation(conversation, true)
     })
+  }
+  /** 可信服务端管理操作；调用方校验群空间、管理权限并阻止该空间新任务进入。 */
+  async deleteWorkspaceHistory(
+    workspaceId: string,
+    removeRelated: (transaction: DatabaseTransaction) => Promise<void>,
+  ) {
+    this.ctx.fiber.assertActive()
+    return this.locked(() =>
+      this.ctx.database.transaction(this.ctx, async (transaction) => {
+        const db = transaction.scope<Tables>(this.ctx, pluginId)
+        const runs = await db
+          .selectFrom('runs')
+          .selectAll()
+          .where('workspace_id', '=', workspaceId)
+          .execute()
+        if (
+          runs.some((run) => run.status === 'running') ||
+          [...this.running.values()].some((run) => run.record.workspaceId === workspaceId)
+        )
+          throw new AiError('busy', '请等待该群的 AI 任务结束后再永久删除', 409)
+        for (const run of runs) await db.deleteFrom('events').where('run_id', '=', run.id).execute()
+        for (const table of ['runs', 'nodes', 'summaries', 'conversations'] as const)
+          await db.deleteFrom(table).where('workspace_id', '=', workspaceId).execute()
+        await removeRelated(transaction)
+      }),
+    )
   }
   /** 只接受核心签发的正在执行的工具上下文，更新在会话队列内原子完成。 */
   async updateRunConversation(

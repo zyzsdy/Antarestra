@@ -272,3 +272,22 @@
     flex: 1 1 180px;
   }
 }
+
+.im-stopped {
+  display: inline-block;
+  margin-left: 8px;
+  border: 1px solid #ccd4e1;
+  border-radius: 7px;
+  padding: 2px 6px;
+  color: #657087;
+  font-size: 12px;
+}
+.im-page button.im-danger {
+  color: #a32b24;
+}
+@media (max-width: 760px) {
+  .im-page > .im-toolbar > .im-hint {
+    flex-basis: 100%;
+    margin-bottom: 0;
+  }
+}

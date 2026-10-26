@@ -18,11 +18,23 @@ import {
 import { feedbackKey } from '../src/client.js'
 import { XMarkIcon } from '../src/icons.js'
 const messages = ref<{ id: number; text: string; duration: number }[]>([])
-const current = ref<{ id: number; title: string; message: string }>()
+const current = ref<{
+  id: number
+  title: string
+  message: string
+  confirmLabel?: string
+  danger?: boolean
+}>()
 let previous: Element | null = null
 let sequence = 0
-const queue: { id: number; title: string; message: string; resolve: (value: boolean) => void }[] =
-  []
+const queue: {
+  id: number
+  title: string
+  message: string
+  confirmLabel?: string
+  danger?: boolean
+  resolve: (value: boolean) => void
+}[] = []
 function remove(id: number) {
   messages.value = messages.value.filter((item) => item.id !== id)
 }
@@ -39,9 +51,13 @@ function restoreFocus(event: Event) {
   event.preventDefault()
   if (!current.value && previous instanceof HTMLElement && previous.isConnected) previous.focus()
 }
-function modal(title: string, message: string) {
+function modal(
+  title: string,
+  message: string,
+  options: { confirmLabel?: string; danger?: boolean } = {},
+) {
   return new Promise<boolean>((resolve) => {
-    queue.push({ id: ++sequence, title, message, resolve })
+    queue.push({ id: ++sequence, title, message, ...options, resolve })
     if (queue.length === 1) {
       previous = document.activeElement
       current.value = queue[0]
@@ -87,8 +103,11 @@ onUnmounted(() => {
         <AlertDialogDescription as="p">{{ current.message }}</AlertDialogDescription>
         <div class="feedback-actions">
           <AlertDialogCancel @click.prevent="finish(false)">取消</AlertDialogCancel>
-          <AlertDialogAction class="feedback-confirm" @click.prevent="finish(true)"
-            >确定</AlertDialogAction
+          <AlertDialogAction
+            class="feedback-confirm"
+            :data-danger="current.danger || undefined"
+            @click.prevent="finish(true)"
+            >{{ current.confirmLabel || '确定' }}</AlertDialogAction
           >
         </div>
       </AlertDialogContent>
@@ -223,5 +242,12 @@ onUnmounted(() => {
 }
 .feedback-actions .feedback-confirm:active {
   background: #1d3e95;
+}
+.feedback-actions .feedback-confirm[data-danger] {
+  background: #a32b24;
+  border-color: #a32b24;
+}
+.feedback-actions .feedback-confirm[data-danger]:hover {
+  background: #84221d;
 }
 </style>

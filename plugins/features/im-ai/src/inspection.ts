@@ -1,4 +1,6 @@
 import type { Context } from '@antarestra/plugin-sdk'
+import { AiError } from '@antarestra/ai'
+import { ImError } from '@antarestra/im'
 import type { AiHistoryEntry } from '@antarestra/im'
 import { pluginId, type JobRow, type Tables } from './store.js'
 
@@ -13,9 +15,41 @@ const summary = (row: JobRow): AiHistoryEntry => ({
   hasAnswer: !!row.answer,
 })
 
-export function registerInspection(ctx: Context) {
+export function registerInspection(
+  ctx: Context,
+  exclusive: (workspaceId: string, task: () => Promise<void>) => Promise<void>,
+) {
   const db = () => ctx.database.scope<Tables>(ctx, pluginId)
   ctx.im.registerAiHistory(ctx, {
+    async remove(workspaceId, removeMessages) {
+      await exclusive(workspaceId, async () => {
+        await ctx.ai
+          .deleteWorkspaceHistory(workspaceId, async (transaction) => {
+            const scope = transaction.scope<Tables>(ctx, pluginId)
+            const pending = await scope
+              .selectFrom('jobs')
+              .select('id')
+              .where('workspace_id', '=', workspaceId)
+              .where((eb) =>
+                eb.or([eb('status', 'in', ['queued', 'running']), eb('delivery', '=', 'pending')]),
+              )
+              .executeTakeFirst()
+            if (pending)
+              throw new ImError(
+                409,
+                'busy',
+                '请等待该群的 AI 任务和消息投递结束，或先停止任务，再永久删除',
+              )
+            for (const table of ['jobs', 'sessions', 'cursors', 'statuses'] as const)
+              await scope.deleteFrom(table).where('workspace_id', '=', workspaceId).execute()
+            await removeMessages(transaction)
+          })
+          .catch((error: unknown) => {
+            if (error instanceof AiError) throw new ImError(error.status, error.code, error.message)
+            throw error
+          })
+      })
+    },
     async list(workspaceId, offset, limit) {
       const query = db().selectFrom('jobs').where('workspace_id', '=', workspaceId)
       const count = await query

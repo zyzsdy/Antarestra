@@ -6,7 +6,11 @@ export type { SessionSnapshot } from '@antarestra/contracts'
 export interface Feedback {
   notice(message: string): () => void
   toast(message: string): () => void
-  modal(title: string, message: string): Promise<boolean>
+  modal(
+    title: string,
+    message: string,
+    options?: { confirmLabel?: string; danger?: boolean },
+  ): Promise<boolean>
   messagebox(message: string): Promise<boolean>
 }
 /** 扩展通过 ctx.vue.inject(feedbackKey) 获取公共交互服务。 */

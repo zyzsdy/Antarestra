@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { Service } from '@antarestra/plugin-sdk'
 import type { Context } from '@antarestra/plugin-sdk'
 import { AiError, type Access, type RunCommand } from '@antarestra/ai'
-import type { MessageContext, MessageSegment } from '@antarestra/im'
+import { ImError, type MessageContext, type MessageSegment } from '@antarestra/im'
 import '@antarestra/plugin-im-commands'
 import { activationReason, finalText } from './messages.js'
 import { parseReplyWithStatus } from './reply.js'
@@ -67,7 +67,21 @@ export class ImAiService extends Service<Config> {
       (row) => this.cancelWake(row),
       config.queueLimit,
     )
-    registerInspection(ctx)
+    registerInspection(ctx, (workspaceId, task) =>
+      this.serial(workspaceId, async () => {
+        if (this.workers.has(workspaceId))
+          throw new ImError(409, 'busy', '请等待该群的 AI 任务和消息投递结束后再永久删除')
+        this.stopping.add(workspaceId)
+        try {
+          await task()
+          this.dynamicReplies.delete(workspaceId)
+          this.activatedAt.delete(workspaceId)
+          this.lastActivatedAt.delete(workspaceId)
+        } finally {
+          this.stopping.delete(workspaceId)
+        }
+      }),
+    )
     ctx.ai.registerTemplateVariable(ctx, {
       id: 'im_status',
       description: '当前工作空间最近保存的 IM 状态原文；由模型自由书写，无状态时为空。',
@@ -338,6 +352,10 @@ export class ImAiService extends Service<Config> {
       : this.ai.authorizeBackground(this.ctx, 'im', row.actor_id, row.workspace_id)
   }
   private async execute(row: JobRow) {
+    if (
+      !(await this.db.selectFrom('jobs').select('id').where('id', '=', row.id).executeTakeFirst())
+    )
+      return
     this.activeJobs.set(row.workspace_id, row.id)
     const epoch = this.epochs.get(row.workspace_id) ?? 0
     const delivery = new AbortController()

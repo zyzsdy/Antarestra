@@ -20,6 +20,7 @@ export interface Tables {
     connection_key: string
     chat_type: string
     chat_id: string
+    archived_at: number | null
     chat_name: string | null
   }
   outbox: { id: string; status: string; result: string }
@@ -127,5 +128,11 @@ export const migrations = [
   defineMigration({
     id: '004_chat_name',
     steps: [{ kind: 'addColumn', table: 'route', column: { name: 'chat_name', type: 'text' } }],
+  }),
+  defineMigration({
+    id: '005_group_archive',
+    steps: [
+      { kind: 'addColumn', table: 'route', column: { name: 'archived_at', type: 'timestamp' } },
+    ],
   }),
 ]

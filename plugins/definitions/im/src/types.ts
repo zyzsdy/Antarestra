@@ -1,3 +1,4 @@
+import type { DatabaseTransaction } from '@antarestra/database'
 import type { Context } from '@antarestra/plugin-sdk'
 import type { RunRecord } from '@antarestra/contracts'
 
@@ -7,6 +8,8 @@ export interface GroupSummary {
   platform: string
   chatId: string
   name: string
+  archived: boolean
+  connected: boolean
   lastMessageAt: number | null
 }
 export interface AiHistoryEntry {
@@ -24,8 +27,12 @@ export interface AiHistoryDetail extends AiHistoryEntry {
   answer: string | null
   run: Pick<RunRecord, 'status' | 'model' | 'messages' | 'requests' | 'error' | 'endedAt'> | null
 }
-/** 可信服务端只读扩展；HTTP 消费方必须先校验管理权限与群空间。 */
+/** 可信服务端历史扩展；HTTP 消费方必须先校验相应的查看或管理权限与群空间。 */
 export interface AiHistoryReader {
+  remove?(
+    workspaceId: string,
+    removeMessages: (transaction: DatabaseTransaction) => Promise<void>,
+  ): Promise<void>
   list(
     workspaceId: string,
     offset: number,
