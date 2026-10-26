@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context, Service } from '@antarestra/plugin-sdk'
+import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import type { ChatTarget, ConnectionDescriptor, IncomingMessage } from '@antarestra/im'
 import Server from '@antarestra/plugin-server'
 import { WebSocket } from 'ws'
@@ -79,6 +80,13 @@ const event = (changes: Record<string, unknown> = {}) => ({
 })
 
 describe('OneBot 11 反向 WebSocket', () => {
+  it('提供方默认为 snowluma，拒绝未知提供方', () => {
+    const schema = new URL('../../plugins/adapters/im-onebot/config.schema.json', import.meta.url)
+    const input = { id: 'test', selfId: '152408856', token: 'test-secret' }
+    expect(schemaConfig<OneBot.Config>(schema, input).provider).toBe('snowluma')
+    expect(() => schemaConfig(schema, { ...input, provider: 'unknown' })).toThrow('配置校验失败')
+  })
+
   it('平台返回 file not found 只拒绝当前请求，不关闭 WebSocket', async () => {
     const app = await setup()
     const socket = await app.connect()
@@ -322,52 +330,60 @@ describe('OneBot 11 反向 WebSocket', () => {
     expect(app.statuses.at(-1)).toBe('online')
   })
 
-  it('RPC echo 关联回复、验证引用，拒绝越界发送，超时和卸载取消待处理调用', async () => {
-    const app = await setup()
-    const socket = await app.connect()
-    socket.once('message', (raw) => {
-      const request = JSON.parse(raw.toString()) as {
-        echo: string
-        action: string
-        params: Record<string, unknown>
-      }
-      expect(request.action).toBe('send_group_msg')
-      expect(request.params.group_id).toBe('40894918')
+  it.each(['snowluma', 'napcat'] as const)(
+    '%s 共用 RPC 收发、引用校验、准入与卸载清理',
+    async (provider) => {
+      const app = await setup([], { provider })
+      const socket = await app.connect()
+      socket.once('message', (raw) => {
+        const request = JSON.parse(raw.toString()) as {
+          echo: string
+          action: string
+          params: Record<string, unknown>
+        }
+        expect(request.action).toBe('send_group_msg')
+        expect(request.params.group_id).toBe('40894918')
+        socket.send(
+          JSON.stringify({
+            echo: request.echo,
+            status: 'ok',
+            retcode: 0,
+            data: { message_id: 42 },
+          }),
+        )
+      })
+      expect(
+        await app.descriptor.send({ type: 'group', id: '40894918' }, [
+          { type: 'text', text: '测试回复' },
+        ]),
+      ).toEqual({ messageId: '42' })
       socket.send(
-        JSON.stringify({ echo: request.echo, status: 'ok', retcode: 0, data: { message_id: 42 } }),
+        JSON.stringify(
+          event({
+            message: [
+              { type: 'reply', data: { id: 42 } },
+              { type: 'text', data: { text: '继续' } },
+            ],
+          }),
+        ),
       )
-    })
-    expect(
-      await app.descriptor.send({ type: 'group', id: '40894918' }, [
-        { type: 'text', text: '测试回复' },
-      ]),
-    ).toEqual({ messageId: '42' })
-    socket.send(
-      JSON.stringify(
-        event({
-          message: [
-            { type: 'reply', data: { id: 42 } },
-            { type: 'text', data: { text: '继续' } },
-          ],
-        }),
-      ),
-    )
-    await expect.poll(() => app.received.length).toBe(1)
-    expect(app.received[0]?.replyToBot).toBe(true)
-    await expect(
-      app.descriptor.send({ type: 'group', id: '123' }, [{ type: 'text', text: '禁止' }]),
-    ).rejects.toThrow('未获准')
-    await expect(
-      app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '超时' }]),
-    ).rejects.toThrow('超时')
-    const pending = app.descriptor.send({ type: 'group', id: '40894918' }, [
-      { type: 'text', text: '卸载' },
-    ])
-    const rejected = expect(pending).rejects.toThrow('卸载')
-    await app.adapter.dispose()
-    await rejected
-    await expect.poll(() => socket.readyState).toBe(WebSocket.CLOSED)
-  })
+      await expect.poll(() => app.received.length).toBe(1)
+      expect(app.received[0]?.replyToBot).toBe(true)
+      await expect(
+        app.descriptor.send({ type: 'group', id: '123' }, [{ type: 'text', text: '禁止' }]),
+      ).rejects.toThrow('未获准')
+      await expect(
+        app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '超时' }]),
+      ).rejects.toThrow('超时')
+      const pending = app.descriptor.send({ type: 'group', id: '40894918' }, [
+        { type: 'text', text: '卸载' },
+      ])
+      const rejected = expect(pending).rejects.toThrow('卸载')
+      await app.adapter.dispose()
+      await rejected
+      await expect.poll(() => socket.readyState).toBe(WebSocket.CLOSED)
+    },
+  )
 
   it('重连替换旧连接，旧连接未完成的请求不会由新连接回应完成', async () => {
     const app = await setup()

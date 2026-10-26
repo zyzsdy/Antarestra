@@ -15,6 +15,7 @@ export const name = 'im-onebot'
 export const inject = ['server', 'im']
 
 export interface Config {
+  provider?: 'napcat' | 'snowluma'
   id: string
   selfId: string
   tokenEnv?: string

@@ -38,6 +38,7 @@ plugins:
   im-commands: {}
   im-stickers-lib: {}
   im-onebot:
+    provider: snowluma
     id: qq-qianqian
     label: 浅浅
     selfId: '152408856'
