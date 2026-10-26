@@ -200,12 +200,14 @@ watch(
                 <td>{{ formatTime(item.lastMessageAt) }}</td>
                 <td>
                   <div class="im-command-actions">
-                    <template v-if="!archived">
-                      <button @click="navigate(item.workspaceId)">查看记录</button
-                      ><button v-if="canManageAdmins" :disabled="busy" @click="adminGroup = item">
-                        bot 管理员
-                      </button>
-                    </template>
+                    <button @click="navigate(item.workspaceId)">查看记录</button>
+                    <button
+                      v-if="!archived && canManageAdmins"
+                      :disabled="busy"
+                      @click="adminGroup = item"
+                    >
+                      bot 管理员
+                    </button>
                     <button
                       v-if="canManageHistory"
                       :disabled="busy"

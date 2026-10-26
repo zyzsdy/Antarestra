@@ -41,6 +41,7 @@ async function mount() {
       else row.archived = JSON.parse(String(options.body)).archived
       return Response.json({ ok: true })
     }
+    if (url.includes('/messages?')) return Response.json({ messages: [], nextBefore: null })
     const visible = !deleted && row.archived === url.includes('archived=true')
     return Response.json({ groups: visible ? [{ ...row }] : [], total: visible ? 1 : 0 })
   })
@@ -77,7 +78,7 @@ async function mount() {
     },
   }
 }
-it('归档先确认，归档列表仅含恢复和删除，永久删除确认后清除列表', async () => {
+it('归档先确认，归档列表可查看记录、恢复和删除，永久删除确认后清除列表', async () => {
   const page = await mount()
   expect(page.host.textContent).toContain('已停止接入')
   page.modal.mockResolvedValueOnce(false)
@@ -89,7 +90,18 @@ it('归档先确认，归档列表仅含恢复和删除，永久删除确认后�
   await expect.poll(() => page.host.textContent).toContain('取消归档')
   expect(page.router.currentRoute.value.query.archived).toBe('true')
   expect(page.host.textContent).not.toContain('bot 管理员')
-  expect(page.host.textContent).not.toContain('查看记录')
+  expect(page.host.textContent).toContain('查看记录')
+  await page.click('查看记录')
+  expect(page.router.currentRoute.value.query).toMatchObject({ archived: 'true', group: 'group' })
+  await expect
+    .poll(() =>
+      page.fetcher.mock.calls.some(([url]) => url.startsWith('/api/im/groups/group/messages?')),
+    )
+    .toBe(true)
+  await page.click('返回群列表')
+  expect(page.router.currentRoute.value.query.archived).toBe('true')
+  expect(page.router.currentRoute.value.query.group).toBeUndefined()
+  expect(page.host.textContent).toContain('取消归档')
   await page.click('永久删除')
   await expect.poll(() => page.host.textContent).toContain('暂无已归档群聊')
   expect(page.modal).toHaveBeenLastCalledWith(
