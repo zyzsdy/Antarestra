@@ -1,13 +1,18 @@
 # 网页工具
 
-为 AI 提供本地搜索、网页阅读、全文查找、交互和截图。依赖 `ai`、`http`、`playwright`；保存截图另需工作空间文件服务和支持服务端写入的存储后端。
+为 AI 提供多来源搜索、远程正文抓取、本地网页阅读、全文查找、交互和截图。依赖 `ai`、`http`、`playwright`；保存截图另需工作空间文件服务和支持服务端写入的存储后端。
 
 ```yaml
 plugins:
   playwright: {}
   web-tools:
+    serperEnabled: true
     apiKey: $SERPER_API_KEY
-    # 仅搜索 API 使用；省略或留空直连，此地址不是插件默认值。
+    deepseekEnabled: false
+    # 启用 DeepSeek 搜索或使用 web_fetch 时配置。
+    # deepseekApiKey: $DEEPSEEK_API_KEY
+    webFetchEnabled: true
+    # 搜索与 DeepSeek 抓取 API 使用；省略或留空直连，此地址不是插件默认值。
     searchProxy: socks5://127.0.0.1:7890
     timeoutMs: 60000
     idleMinutes: 30
@@ -16,7 +21,13 @@ plugins:
     maxCharacters: 24000
 ```
 
-搜索通过 `ctx.http` 请求 Serper；浏览器网络由 `playwright.proxy` 或 `playwright.args` 配置，PDF 独立 HTTP 获取不使用搜索代理。不修改全局代理或读取环境代理。Key 仅传给搜索 API，不进入工具参数、结果或日志。主配置中的环境变量引用由加载器解析，缺少变量会被加载器拒绝；插件本身允许不设置 `apiKey`，此时仅搜索返回配置错误。
+搜索通过 `ctx.http` 请求 Serper 和 DeepSeek。`serperEnabled` 默认 true，`deepseekEnabled` 默认 false；两者同时启用时并发搜索，按查询合并 `items`，每项 `source` 分别为 `google search` 或 `deepseek`。相同 URL 的两份结果均保留，以便区分各来源摘要。`count` 为每个来源的条数，一方失败会在 `errors` 中标明来源并保留另一方结果；所有来源失败或均关闭时才返回工具错误。DeepSeek 使用长摘要 `summary` 供 AI 阅读，并保留短摘要 `snippet`。
+
+DeepSeek 按[官方 Search / Fetch 文档](https://api-docs.deepseek.com/zh-cn/guides/search/)接入。其查询（含追加的域名与语言筛选语法）最多 128 个 Unicode 字符；超长时仅该来源返回错误，不截断搜索意图。支持 `domains`、`language`，不支持 Serper 的 `page/country/timeRange`，传入时在 `warnings` 中明确说明未应用的条件。需要日期范围时可在查询中使用 `after:/before:`。
+
+`webFetchEnabled` 默认 true，控制 `web_fetch` 的注册，与 DeepSeek 搜索开关独立。抓取使用 `deepseekApiKey`，返回 Markdown 正文及来源，不创建本地浏览器页面。正文受 `maxCharacters` 限制；可使用 `nextOffset` 续读，每次重新请求上游，页面变化可能引起偏移。缺少密钥时只影响对应服务的调用；关闭 `webFetchEnabled` 后不注册抓取工具。
+
+浏览器网络由 `playwright.proxy` 或 `playwright.args` 配置，PDF 独立 HTTP 获取不使用搜索代理。不修改全局代理或读取环境代理。Key 仅传给对应 API，不进入工具参数、结果或日志。主配置中的环境变量引用由加载器解析，缺少变量会被加载器拒绝；未使用对应服务时可省略其密钥配置。
 
 从旧版迁移时启用 `playwright` 服务，将浏览器代理和视口配置移入该服务；`puppeteer.defaultViewport` 对应 `playwright.context.viewport`，缩放和移动设备选项直接放在 `context` 下，`acceptInsecureCerts` 对应 `context.ignoreHTTPSErrors`。已有 Puppeteer 消费插件可以继续使用原服务，网页工具不再依赖它。
 
@@ -25,6 +36,7 @@ plugins:
 | 工具             | 主要参数与行为                                                                                                                                              |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `web_search`     | `query` 或 `queries` 二选一；可选 `count/page/language/country/timeRange/domains`。时间范围为 `h/d/w/m/y`，域名不包含协议。返回独立查询结果与来源链接。     |
+| `web_fetch`      | `url` 获取 Markdown 正文；可选 `offset/maxCharacters` 分段读取，不返回浏览器 pageId。                                                                       |
 | `web_open`       | `url` 打开网页或 PDF，指定 `pageId` 复用页面；`action` 支持 `open/back/forward/reload/list/close`。默认直接返回页面内容。                                   |
 | `web_snapshot`   | `pageId`；`view` 为 `combined/main/interactive/full`，`ref` 读取子树，`cursor` 继续读取。PDF 使用 `pdfPage`。                                               |
 | `web_find`       | `pageId/text`；可选 `caseSensitive/includeHidden/offset/limit`。返回全文命中片段、节点引用或 PDF 页码。                                                     |

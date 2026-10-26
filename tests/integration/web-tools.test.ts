@@ -5,7 +5,9 @@ import { Context, Service } from '@antarestra/plugin-sdk'
 import * as http from '@antarestra/http'
 import * as playwright from '@antarestra/playwright'
 import { BrowserTools } from '@antarestra/plugin-web-tools'
-import type { GeneratedImage, RunContext, ToolImage } from '@antarestra/ai'
+import * as webTools from '@antarestra/plugin-web-tools'
+import { fetchTool } from '../../plugins/features/web-tools/src/fetch.js'
+import type { GeneratedImage, RunContext, ToolImage, Tool } from '@antarestra/ai'
 import { searchTool } from '../../plugins/features/web-tools/src/search.js'
 import { PdfDocument } from '../../plugins/features/web-tools/src/pdf.js'
 import {
@@ -395,3 +397,277 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
   },
   45000,
 )
+
+it('双来源并发合并、独立开关、筛选与部分失败保留来源且不泄露密钥', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(http)
+  const requests: { url: string; body: unknown; headers: Pick<Headers, 'get'> }[] = []
+  let failDeepseek = false
+  ctx.on('http/fetch', async (url, init, config) => {
+    requests.push({
+      url: String(url),
+      body: JSON.parse(String(init.body)),
+      headers: new ctx.http.undici.Headers(init.headers),
+    })
+    expect(config.proxyAgent).toBe('')
+    if (String(url).includes('deepseek')) {
+      if (failDeepseek) return new Response('{}', { status: 402 })
+      return Response.json({
+        results: [
+          {
+            title: '深度搜索',
+            url: 'https://example.com/a',
+            snippet: '短摘要',
+            summary: '给模型的长摘要',
+          },
+          { url: 'https://evil-example.com/a' },
+          { url: 'file:///private/file' },
+        ],
+      })
+    }
+    return Response.json({
+      organic: [{ title: '谷歌搜索', link: 'https://example.com/a', snippet: '谷歌摘要' }],
+    })
+  })
+  const config = {
+    apiKey: 'serper-secret',
+    deepseekApiKey: 'deepseek-secret',
+    deepseekEnabled: true,
+  }
+  const args = {
+    query: '资料',
+    count: 3,
+    domains: ['example.com'],
+    language: 'zh',
+    page: 2,
+    country: 'cn',
+    timeRange: 'd',
+  }
+  const result = await searchTool(ctx, config)(args, context())
+  expect(result).toMatchObject({
+    isError: false,
+    content: {
+      results: [
+        {
+          items: [
+            { source: 'google search', url: 'https://example.com/a' },
+            { source: 'deepseek', url: 'https://example.com/a', summary: '给模型的长摘要' },
+          ],
+          errors: [],
+          warnings: [{ source: 'deepseek' }, { source: 'deepseek' }, { source: 'deepseek' }],
+        },
+      ],
+    },
+  })
+  expect(JSON.stringify(result)).not.toContain('secret')
+  expect(JSON.stringify(result)).not.toContain('evil-example')
+  expect(requests).toHaveLength(2)
+  expect(requests[0]?.headers.get('X-API-KEY')).toBe('serper-secret')
+  expect(requests[1]?.headers.get('Authorization')).toBe('Bearer deepseek-secret')
+  expect(requests[1]).toMatchObject({
+    url: 'https://api.deepseek.com/v1/tools/search',
+    body: {
+      query: '资料 (site:example.com) lang:zh',
+      count: 3,
+      need_content: false,
+    },
+  })
+  failDeepseek = true
+  expect(await searchTool(ctx, config)({ query: '资料' }, context())).toMatchObject({
+    isError: false,
+    content: {
+      results: [
+        {
+          items: [{ source: 'google search' }],
+          errors: [{ source: 'deepseek', error: 'search_quota' }],
+        },
+      ],
+    },
+  })
+  requests.length = 0
+  failDeepseek = false
+  expect(
+    (await searchTool(ctx, { ...config, serperEnabled: false })({ query: '资料' }, context()))
+      .isError,
+  ).toBe(false)
+  expect(requests.map((request) => request.url)).toEqual([
+    'https://api.deepseek.com/v1/tools/search',
+  ])
+  requests.length = 0
+  expect(
+    (
+      await searchTool(ctx, { ...config, serperEnabled: false, deepseekEnabled: false })(
+        { query: '资料' },
+        context(),
+      )
+    ).isError,
+  ).toBe(true)
+  expect(requests).toHaveLength(0)
+  expect(
+    await searchTool(ctx, { serperEnabled: false, deepseekEnabled: true })(
+      { query: '资料' },
+      context(),
+    ),
+  ).toMatchObject({
+    isError: true,
+    content: { results: [{ errors: [{ source: 'deepseek', error: 'missing_api_key' }] }] },
+  })
+  expect(await searchTool(ctx, config)({ query: '字'.repeat(129) }, context())).toMatchObject({
+    isError: false,
+    content: { results: [{ errors: [{ source: 'deepseek', error: 'invalid_query' }] }] },
+  })
+})
+
+it('DeepSeek 抓取正文、分页、代理、地址校验和脱敏错误', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(http)
+  let status = 200
+  let content = '# 页面正文'
+  let calls = 0
+  ctx.on('http/fetch', async (url, init, config) => {
+    calls++
+    expect(String(url)).toBe('https://api.deepseek.com/v1/tools/fetch')
+    expect(JSON.parse(String(init.body))).toEqual({ url: 'https://example.com/' })
+    expect(new ctx.http.undici.Headers(init.headers).get('Authorization')).toBe(
+      'Bearer fetch-secret',
+    )
+    expect(config.proxyAgent).toBe('socks5://127.0.0.1:7890')
+    return Response.json(
+      status === 200 ? { title: '标题', content } : { error: { message: 'fetch-secret' } },
+      { status },
+    )
+  })
+  const fetch = fetchTool(ctx, {
+    deepseekApiKey: 'fetch-secret',
+    searchProxy: 'socks5://127.0.0.1:7890',
+    maxCharacters: 4,
+  })
+  expect(await fetch({ url: 'https://example.com', maxCharacters: 10 }, context())).toMatchObject({
+    content: {
+      source: 'deepseek',
+      title: '标题',
+      content: '# 页面',
+      truncated: true,
+      nextOffset: 4,
+    },
+  })
+  expect(await fetch({ url: 'https://example.com', offset: 4 }, context())).toMatchObject({
+    content: { content: '正文', truncated: false, nextOffset: null },
+  })
+  expect(await fetch({ url: 'https://user:password@example.com' }, context())).toMatchObject({
+    isError: true,
+    content: { error: 'invalid_url' },
+  })
+  expect(await fetch({ url: 'file:///private/file' }, context())).toMatchObject({
+    isError: true,
+    content: { error: 'invalid_url' },
+  })
+  expect(await fetchTool(ctx, {})({ url: 'https://example.com' }, context())).toMatchObject({
+    isError: true,
+    content: { error: 'missing_api_key' },
+  })
+  expect(calls).toBe(2)
+  content = ''
+  expect(await fetch({ url: 'https://example.com' }, context())).toMatchObject({
+    isError: true,
+    content: { error: 'fetch_empty_content' },
+  })
+  status = 403
+  const failed = await fetch({ url: 'https://example.com' }, context())
+  expect(failed.isError).toBe(true)
+  expect(JSON.stringify(failed)).not.toContain('fetch-secret')
+  expect(JSON.stringify(failed)).toContain('403')
+})
+
+it('web_fetch 默认注册，可独立关闭，卸载与依赖恢复正确回收和重新注册', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  const registered = new Map<string, Tool>()
+  class Tools extends Service {
+    constructor() {
+      super(ctx, 'ai')
+    }
+    registerTool(owner: Context, tool: Tool) {
+      owner.effect(() => {
+        registered.set(tool.id, tool)
+        return () => {
+          registered.delete(tool.id)
+        }
+      })
+    }
+  }
+  new Tools()
+  const dependency = await ctx.plugin(http)
+  await ctx.plugin(playwright)
+  const fiber = await ctx.plugin(webTools)
+  expect(registered.has('web_fetch')).toBe(true)
+  expect(registered.get('web_open')?.description).toContain('本地浏览器')
+  await fiber.dispose()
+  expect(registered.size).toBe(0)
+  const disabled = await ctx.plugin(webTools, { webFetchEnabled: false })
+  expect(registered.has('web_fetch')).toBe(false)
+  expect(registered.has('web_search')).toBe(true)
+  await dependency.dispose()
+  expect(registered.size).toBe(0)
+  await ctx.plugin(http)
+  await disabled
+  expect(registered.has('web_search')).toBe(true)
+  expect(registered.has('web_fetch')).toBe(false)
+  await disabled.dispose()
+  expect(registered.size).toBe(0)
+})
+
+it('搜索和抓取的进行中请求随运行取消或所属插件卸载终止', async () => {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(http)
+  const signals: AbortSignal[] = []
+  let started = () => {}
+  ctx.on('http/fetch', async (_url, init) => {
+    const signal = init.signal!
+    signals.push(signal)
+    started()
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal.aborted) reject(signal.reason)
+      else signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  })
+  for (const kind of ['search', 'fetch'] as const) {
+    const controller = new AbortController()
+    const ready = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const run =
+      kind === 'search'
+        ? searchTool(ctx, { serperEnabled: false, deepseekEnabled: true, deepseekApiKey: 'secret' })
+        : fetchTool(ctx, { deepseekApiKey: 'secret' })
+    const pending = run(
+      { query: '资料', url: 'https://example.com' },
+      context('actor', 'space', controller.signal),
+    )
+    const assertion = expect(pending).rejects.toBeDefined()
+    await ready
+    controller.abort()
+    await assertion
+    expect(signals.at(-1)?.aborted).toBe(true)
+  }
+  let pending: Promise<unknown> | undefined
+  const ready = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  const owner = await ctx.plugin({
+    inject: ['http'],
+    apply(owner: Context) {
+      pending = fetchTool(owner, { deepseekApiKey: 'secret' })(
+        { url: 'https://example.com' },
+        context(),
+      )
+    },
+  })
+  await ready
+  await owner.dispose()
+  await pending
+  expect(signals.at(-1)?.aborted).toBe(true)
+})

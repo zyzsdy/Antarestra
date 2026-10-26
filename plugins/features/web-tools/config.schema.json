@@ -3,11 +3,36 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "apiKey": { "type": "string", "title": "Serper 密钥", "format": "password" },
+    "serperEnabled": {
+      "type": "boolean",
+      "default": true,
+      "title": "启用 Serper 搜索"
+    },
+    "deepseekEnabled": {
+      "type": "boolean",
+      "default": false,
+      "title": "启用 DeepSeek 搜索"
+    },
+    "deepseekApiKey": {
+      "type": "string",
+      "title": "DeepSeek 搜索与抓取密钥",
+      "format": "password"
+    },
+    "webFetchEnabled": {
+      "type": "boolean",
+      "default": true,
+      "title": "启用 web_fetch",
+      "description": "通过 DeepSeek 获取网页正文，需要配置 DeepSeek 密钥；不受 DeepSeek 搜索开关影响。"
+    },
+    "apiKey": {
+      "type": "string",
+      "title": "Serper 密钥",
+      "format": "password"
+    },
     "searchProxy": {
       "type": "string",
       "title": "搜索 API 代理",
-      "description": "仅搜索 API 使用，留空直连；支持 HTTP、HTTPS 和 SOCKS5。"
+      "description": "搜索与 DeepSeek 网页抓取 API 使用，留空直连；支持 HTTP、HTTPS 和 SOCKS5。"
     },
     "timeoutMs": {
       "type": "integer",

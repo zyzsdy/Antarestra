@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto'
 import type { Json, JsonObject, StructuredToolResult } from '@antarestra/ai'
 
 export interface Config {
+  serperEnabled?: boolean
+  deepseekEnabled?: boolean
+  deepseekApiKey?: string
+  webFetchEnabled?: boolean
   apiKey?: string
   searchProxy?: string
   timeoutMs?: number
