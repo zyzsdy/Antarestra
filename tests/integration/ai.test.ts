@@ -2221,3 +2221,270 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect(await tail).toContain('event: ready')
   })
 })
+
+it('引导消息在完整工具结果后插入同一运行，保持顺序、幂等和空间隔离', async () => {
+  let release!: () => void
+  let entered = false
+  const app = await setup({
+    agent: agent({ steeringEnabled: true, toolIds: ['wait'] }),
+    driver: {
+      id: 'driver',
+      async generate(request) {
+        if (!request.messages.some((message) => message.role === 'tool'))
+          return { content: [{ type: 'tool-call', id: 'waiting', name: 'wait', arguments: {} }] }
+        return { content: [{ type: 'text', text: '按引导完成' }] }
+      },
+    },
+  })
+  app.ctx.ai.registerTool(app.ctx, {
+    id: 'wait',
+    description: '等待',
+    parameters: { type: 'object' },
+    async execute() {
+      entered = true
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return '工具结果'
+    },
+  })
+  const run = await app.ctx.ai.start(
+    app.access,
+    app.conversation.id,
+    await command(app.ctx, app.access, app.conversation.id),
+  )
+  await expect.poll(() => entered).toBe(true)
+  const first = await command(app.ctx, app.access, app.conversation.id, {
+    activeRunId: run.id,
+    input: { text: '先修正方向' },
+  })
+  const second = { ...first, idempotencyKey: randomUUID(), input: { text: '再缩小范围' } }
+  await expect(app.ctx.ai.start(app.other, app.conversation.id, first)).rejects.toThrow()
+  const accepted = await app.ctx.ai.start(app.access, app.conversation.id, first)
+  expect(accepted.id).toBe(run.id)
+  expect(accepted.steering?.[0]?.position).toBeNull()
+  await app.ctx.ai.start(app.access, app.conversation.id, first)
+  await expect(
+    app.ctx.ai.start(app.access, app.conversation.id, {
+      ...first,
+      input: { text: '改变幂等参数' },
+    }),
+  ).rejects.toThrow('幂等键')
+  await app.ctx.ai.start(app.access, app.conversation.id, second)
+  release()
+  const result = await finish(app.ctx, app.access, run.id)
+  expect(result.status).toBe('completed')
+  expect(result.requests).toHaveLength(2)
+  expect(result.requests[1]?.messages.map((message) => message.role)).toEqual([
+    'user',
+    'assistant',
+    'tool',
+    'user',
+    'user',
+  ])
+  expect(result.requests[1]?.messages.slice(-2).map((message) => message.content)).toEqual([
+    [{ type: 'text', text: '先修正方向' }],
+    [{ type: 'text', text: '再缩小范围' }],
+  ])
+  expect(result.steering).toHaveLength(2)
+  expect(result.steering?.every((entry) => entry.position === 1)).toBe(true)
+  expect((await app.ctx.ai.start(app.access, app.conversation.id, first)).id).toBe(run.id)
+  expect((await app.ctx.ai.getConversation(app.access, app.conversation.id)).nodes).toHaveLength(2)
+  await expect(
+    app.ctx.ai.start(app.access, app.conversation.id, { ...first, idempotencyKey: randomUUID() }),
+  ).rejects.toThrow('目标运行已结束')
+})
+
+it.each([true, false])(
+  '无工具响应期间的引导开关 %s，开启时立即续写且关闭时仍拒绝并发',
+  async (enabled) => {
+    let release!: () => void
+    let calls = 0
+    const app = await setup({
+      agent: agent({ steeringEnabled: enabled }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (++calls === 1)
+            await new Promise<void>((resolve) => {
+              release = resolve
+            })
+          return { content: [{ type: 'text', text: '回答' }] }
+        },
+      },
+    })
+    const run = await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id),
+    )
+    await expect.poll(() => calls).toBe(1)
+    const input = await command(app.ctx, app.access, app.conversation.id, {
+      input: { text: '补充' },
+    })
+    if (enabled) await app.ctx.ai.start(app.access, app.conversation.id, input)
+    else
+      await expect(app.ctx.ai.start(app.access, app.conversation.id, input)).rejects.toThrow(
+        '会话正在运行',
+      )
+    release()
+    const result = await finish(app.ctx, app.access, run.id)
+    expect(result.status).toBe('completed')
+    expect(calls).toBe(enabled ? 2 : 1)
+  },
+)
+
+it('取消或卸载运行保留尚未插入的引导消息，拒绝越界附件且不破坏当前运行', async () => {
+  let calls = 0
+  const app = await setup({
+    agent: agent({ steeringEnabled: true }),
+    driver: {
+      id: 'driver',
+      async generate(_request, _connection, context) {
+        calls++
+        await delay(10000, undefined, { signal: context.signal })
+        return { content: [] }
+      },
+    },
+  })
+  app.ctx.ai.registerResources(app.ctx, {
+    async validate() {
+      throw new AiError('forbidden', '跨空间附件', 403)
+    },
+  })
+  const run = await app.ctx.ai.start(
+    app.access,
+    app.conversation.id,
+    await command(app.ctx, app.access, app.conversation.id),
+  )
+  await expect.poll(() => calls).toBe(1)
+  await expect(
+    app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id, {
+        input: {
+          text: '附件',
+          attachments: [{ type: 'file', resourceId: 'other', mimeType: 'text/plain' }],
+        },
+      }),
+    ),
+  ).rejects.toThrow('跨空间附件')
+  await app.ctx.ai.start(
+    app.access,
+    app.conversation.id,
+    await command(app.ctx, app.access, app.conversation.id, { input: { text: '保留补充' } }),
+  )
+  await app.backend.dispose()
+  const result = await finish(app.ctx, app.access, run.id)
+  expect(result.status).toBe('cancelled')
+  expect(result.steering).toHaveLength(1)
+  expect(result.steering?.[0]?.position).toBeNull()
+})
+
+it('后端结束前到达的引导消息继续执行，并在 SQLite 重开后保持幂等', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'antarestra-steering-'))
+  directories.push(directory)
+  const filename = join(directory, 'ai.sqlite')
+  const app = await setup({ filename, agent: agent({ steeringEnabled: true }) })
+  await app.backend.dispose()
+  let release!: () => void
+  let finishing = false
+  let calls = 0
+  app.ctx.ai.registerBackend(app.ctx, {
+    id: 'ai-agent-core',
+    async run(runtime) {
+      await runtime.request()
+      if (++calls === 1) {
+        finishing = true
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+      }
+    },
+  })
+  const run = await app.ctx.ai.start(
+    app.access,
+    app.conversation.id,
+    await command(app.ctx, app.access, app.conversation.id),
+  )
+  await expect.poll(() => finishing).toBe(true)
+  const guide = await command(app.ctx, app.access, app.conversation.id, {
+    input: { text: '收尾前补充' },
+  })
+  await app.ctx.ai.start(app.access, app.conversation.id, guide)
+  release()
+  const result = await finish(app.ctx, app.access, run.id)
+  expect(result.status).toBe('completed')
+  expect(calls).toBe(2)
+  expect(result.requests[1]?.messages.at(-1)?.content).toEqual([
+    { type: 'text', text: '收尾前补充' },
+  ])
+  await app.ctx.fiber.dispose()
+  const restored = await setup({ filename })
+  expect((await restored.ctx.ai.start(restored.access, app.conversation.id, guide)).id).toBe(run.id)
+  expect((await restored.ctx.ai.getRun(restored.access, run.id)).steering).toEqual(result.steering)
+})
+
+it('并发工具批次结果完整前不插入引导，不提前发起下一次模型请求', async () => {
+  const releases: (() => void)[] = []
+  let calls = 0
+  const app = await setup({
+    agent: agent({ steeringEnabled: true, toolIds: ['wait'] }),
+    driver: {
+      id: 'driver',
+      async generate() {
+        if (++calls === 1)
+          return {
+            content: ['first', 'second'].map((id) => ({
+              type: 'tool-call' as const,
+              id,
+              name: 'wait',
+              arguments: {},
+            })),
+          }
+        return { content: [{ type: 'text', text: '完成' }] }
+      },
+    },
+  })
+  app.ctx.ai.registerTool(app.ctx, {
+    id: 'wait',
+    description: '等待',
+    parameters: { type: 'object' },
+    async execute() {
+      await new Promise<void>((resolve) => releases.push(resolve))
+      return '完成'
+    },
+  })
+  const run = await app.ctx.ai.start(
+    app.access,
+    app.conversation.id,
+    await command(app.ctx, app.access, app.conversation.id),
+  )
+  await expect.poll(() => releases.length).toBe(2)
+  await app.ctx.ai.start(
+    app.access,
+    app.conversation.id,
+    await command(app.ctx, app.access, app.conversation.id, { input: { text: '改方向' } }),
+  )
+  releases[1]!()
+  await expect
+    .poll(
+      async () =>
+        (await app.ctx.ai.events(app.access, run.id)).filter((event) => event.type === 'tool-end')
+          .length,
+    )
+    .toBe(1)
+  expect(calls).toBe(1)
+  expect((await app.ctx.ai.getRun(app.access, run.id)).steering?.[0]?.position).toBeNull()
+  releases[0]!()
+  const result = await finish(app.ctx, app.access, run.id)
+  expect(result.status).toBe('completed')
+  expect(result.requests[1]?.messages.map((message) => message.role)).toEqual([
+    'user',
+    'assistant',
+    'tool',
+    'tool',
+    'user',
+  ])
+})

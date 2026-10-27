@@ -8,6 +8,7 @@ import type {
   ModelRef,
   RequestSnapshot,
   RunRecord,
+  UserInput,
   ContextSummary,
   ContextBudget,
   ContextOperation,
@@ -90,6 +91,7 @@ export class Running {
   private requesting = false
   private executing = false
   private finishing = false
+  private templateInputs = new WeakMap<RunContext, UserInput>()
   private done: Promise<void> = Promise.resolve()
   constructor(
     readonly service: AiService,
@@ -160,6 +162,97 @@ export class Running {
     await abortable(this.service.context.serial(name, this.context), this.context.signal)
     this.active()
   }
+  hasSteering() {
+    return this.record.steering?.some((entry) => entry.position === null) ?? false
+  }
+  canSteer() {
+    return !this.finishing && !this.controller.signal.aborted && this.record.status === 'running'
+  }
+  async validateSteering(input: UserInput) {
+    this.active()
+    await this.validateResources(input.attachments ?? [])
+    this.active()
+  }
+  finishInput() {
+    this.finishing = true
+  }
+  inputForContext(context: RunContext): UserInput | undefined {
+    const templateInput = this.templateInputs.get(context)
+    if (templateInput) return freeze(json(templateInput))
+    if (context !== this.context && !this.ownsToolContext(context)) return undefined
+    return freeze(
+      json(
+        this.record.steering?.findLast((entry) => entry.position !== null)?.input ??
+          this.record.input,
+      ),
+    )
+  }
+  private async renderInput(input: UserInput, context = this.context) {
+    const variables: JsonObject = {
+      ...input.variables,
+      input: input.text,
+    }
+    const sources = [
+      this.record.agent.systemTemplate,
+      this.record.agent.userTemplate,
+      ...(input.expandTemplateVariables === false ? [] : [input.text]),
+    ]
+    const used = new Set(
+      sources.flatMap((source) =>
+        [...source.matchAll(/\{\{\s*([\w.-]+)\s*\}\}/g)].map((match) => match[1]!),
+      ),
+    )
+    for (const [id, registration] of this.bound.templateVariables) {
+      check(!Object.hasOwn(input.variables ?? {}, id), `不能覆盖服务端模板变量：${id}`)
+      if (used.has(id))
+        variables[id] = await abortable(registration.value.resolve(context), context.signal)
+    }
+    if (used.has('global_memory'))
+      check(this.bound.templateVariables.has('global_memory'), '记忆插件未启用')
+    variables.input =
+      input.expandTemplateVariables === false
+        ? input.text
+        : input.text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, key: string) =>
+            this.bound.templateVariables.has(key) ? String(variables[key]) : match,
+          )
+    const draft = {
+      systemPrompt: template(this.record.agent.systemTemplate, variables),
+      userPrompt: template(this.record.agent.userTemplate, variables),
+    }
+    await abortable(this.service.context.serial('ai/template', context, draft), context.signal)
+    check(
+      typeof draft.systemPrompt === 'string' && typeof draft.userPrompt === 'string',
+      '模板结果无效',
+    )
+    return draft
+  }
+  private async consumeSteering() {
+    // 接收记录先落库，只有已提交的条目会出现在此队列中。
+    const pending = (this.record.steering ?? []).filter((entry) => entry.position === null)
+    for (const entry of pending) {
+      this.active()
+      const context = Object.freeze({ ...this.context })
+      this.templateInputs.set(context, entry.input)
+      let draft: { systemPrompt: string; userPrompt: string }
+      try {
+        draft = await this.renderInput(entry.input, context)
+      } finally {
+        this.templateInputs.delete(context)
+      }
+      const message: ChatMessage = {
+        id: `steering:${entry.id}`,
+        role: 'user',
+        content: [{ type: 'text', text: draft.userPrompt }, ...(entry.input.attachments ?? [])],
+      }
+      await this.validateResources(message.content, context)
+      this.active()
+      entry.position = this.position()
+      this.transcript.push(json(message))
+      this.record.messages.push(json(message))
+      await this.service.persist(this, 'steering', entry)
+      await this.service.persist(this, 'message', message)
+    }
+  }
   private async execute() {
     try {
       await this.service.persist(this, 'run-start', { status: 'running' })
@@ -177,51 +270,7 @@ export class Running {
           Object.freeze({ ...tool, parameters: freeze(json(tool.parameters)) }),
         )
       }
-      const variables: JsonObject = {
-        ...this.record.input.variables,
-        input: this.record.input.text,
-      }
-      const sources = [
-        this.record.agent.systemTemplate,
-        this.record.agent.userTemplate,
-        ...(this.record.input.expandTemplateVariables === false ? [] : [this.record.input.text]),
-      ]
-      const used = new Set(
-        sources.flatMap((source) =>
-          [...source.matchAll(/\{\{\s*([\w.-]+)\s*\}\}/g)].map((match) => match[1]!),
-        ),
-      )
-      for (const [id, registration] of this.bound.templateVariables) {
-        check(
-          !Object.hasOwn(this.record.input.variables ?? {}, id),
-          `不能覆盖服务端模板变量：${id}`,
-        )
-        if (used.has(id))
-          variables[id] = await abortable(
-            registration.value.resolve(this.context),
-            this.context.signal,
-          )
-      }
-      if (used.has('global_memory'))
-        check(this.bound.templateVariables.has('global_memory'), '记忆插件未启用')
-      variables.input =
-        this.record.input.expandTemplateVariables === false
-          ? this.record.input.text
-          : this.record.input.text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (match, key: string) =>
-              this.bound.templateVariables.has(key) ? String(variables[key]) : match,
-            )
-      const draft = {
-        systemPrompt: template(this.record.agent.systemTemplate, variables),
-        userPrompt: template(this.record.agent.userTemplate, variables),
-      }
-      await abortable(
-        this.service.context.serial('ai/template', this.context, draft),
-        this.context.signal,
-      )
-      check(
-        typeof draft.systemPrompt === 'string' && typeof draft.userPrompt === 'string',
-        '模板结果无效',
-      )
+      const draft = await this.renderInput(this.record.input)
       this.systemPrompt = draft.systemPrompt
       const message: ChatMessage = {
         id: `user:${this.record.userNodeId}`,
@@ -254,8 +303,11 @@ export class Running {
           return toolResultContent(block, resources)
         },
       }
-      await abortable(this.bound.backend.value.run(runtime), this.context.signal)
-      this.active()
+      do {
+        await abortable(this.bound.backend.value.run(runtime), this.context.signal)
+        this.active()
+        // 与消息接收使用同一把锁，覆盖最终响应结束与新消息到达之间的竞态。
+      } while (await this.service.continueSteering(this))
       check(!this.pending.length && !this.requesting && !this.executing, '后端未完成模型或工具调用')
       check(this.record.messages.at(-1)?.role === 'assistant', '后端未生成最终回复')
       this.finishing = true
@@ -303,12 +355,12 @@ export class Running {
       this.service.running.delete(this.record.id)
     }
   }
-  private async validateResources(content: ContentBlock[]) {
+  private async validateResources(content: ContentBlock[], context = this.context) {
     for (const block of content) {
       check(block && typeof block === 'object', '消息内容无效')
       if (block.type === 'tool-result' && block.images) {
         validateToolImages(block.images)
-        await this.validateResources(block.images)
+        await this.validateResources(block.images, context)
       }
       if (block.type === 'image' || block.type === 'file') {
         check(
@@ -318,10 +370,7 @@ export class Running {
         if (block.type === 'image' && block.resourceId.startsWith('ai-transient:')) continue
         if (!this.bound.resources)
           throw new AiError('capability_unavailable', '附件解析器不可用', 503)
-        await abortable(
-          this.bound.resources.value.validate(block, this.context),
-          this.context.signal,
-        )
+        await abortable(this.bound.resources.value.validate(block, context), this.context.signal)
       } else if (block.type === 'text' || block.type === 'thinking')
         check(typeof block.text === 'string', '文本内容无效')
       else
@@ -346,6 +395,7 @@ export class Running {
     const local = new AbortController()
     const signal = AbortSignal.any([local.signal, this.context.signal])
     try {
+      await this.consumeSteering()
       // 等待同一响应中的客户端工具结果完整，不能将反馈插入调用与结果之间。
       if (this.providerFeedback) {
         const feedback = this.providerFeedback
@@ -641,6 +691,7 @@ export class Running {
           actual === undefined ? 'estimate' : 'usage',
         ),
       )
+      if (this.hasSteering()) output.continue = true
       return json(output)
     } finally {
       if (timer) clearTimeout(timer)

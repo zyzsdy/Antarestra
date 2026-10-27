@@ -87,19 +87,32 @@ export class ImAiService extends Service<Config> {
       description: '当前工作空间最近保存的 IM 状态原文；由模型自由书写，无状态时为空。',
       resolve: (context) => this.readStatus(context.workspaceId),
     })
-    registerHistoryTools(ctx, async (context) => {
+    registerHistoryTools(ctx, async (context, messageId) => {
       const run = this.ai.running.get(context.runId)
-      const jobId = run?.record.input.variables?.imJobId
+      const jobId = run?.inputForContext(context)?.variables?.imJobId
       if (typeof jobId !== 'string') return undefined
-      const job = await this.db
+      const jobIds = messageId
+        ? [
+            jobId,
+            run!.record.input.variables?.imJobId,
+            ...(run!.record.steering ?? [])
+              .filter((entry) => entry.position !== null)
+              .map((entry) => entry.input.variables?.imJobId),
+          ].filter((id): id is string => typeof id === 'string')
+        : [jobId]
+      const jobs = await this.db
         .selectFrom('jobs')
         .selectAll()
-        .where('id', '=', jobId)
+        .where('id', 'in', jobIds)
         .where('workspace_id', '=', context.workspaceId)
-        .where('actor_id', '=', context.actorId)
         .where('conversation_id', '=', context.conversationId)
-        .executeTakeFirst()
-      return job?.snapshot ? (JSON.parse(job.snapshot) as InputSnapshot) : undefined
+        .execute()
+      const snapshots = jobs.flatMap((job) =>
+        job.snapshot ? [JSON.parse(job.snapshot) as InputSnapshot] : [],
+      )
+      return messageId
+        ? snapshots.find((snapshot) => snapshot.privateMedia?.message.id === messageId)
+        : snapshots[0]
     })
     ctx.im.registerHandler(ctx, {
       id: 'im-ai',
@@ -295,6 +308,12 @@ export class ImAiService extends Service<Config> {
       if (dynamicState) recordDynamicActivation(dynamicState)
       this.activatedAt.set(message.workspaceId, [...times, now])
       this.lastActivatedAt.set(message.workspaceId, now)
+      const queued = await this.db
+        .selectFrom('jobs')
+        .selectAll()
+        .where('id', '=', id)
+        .executeTakeFirstOrThrow()
+      await this.steer(queued)
       void this.pump()
       return 'consumed' as const
     })
@@ -324,6 +343,14 @@ export class ImAiService extends Service<Config> {
         .execute()
       for (const row of rows) {
         if (
+          this.active &&
+          !this.stopping.has(row.workspace_id) &&
+          this.workers.has(row.workspace_id)
+        ) {
+          await this.serial(row.workspace_id, () => this.steer(row))
+          continue
+        }
+        if (
           !this.active ||
           this.workers.has(row.workspace_id) ||
           this.stopping.has(row.workspace_id)
@@ -351,11 +378,102 @@ export class ImAiService extends Service<Config> {
       ? this.ai.authorize('im', message.request)
       : this.ai.authorizeBackground(this.ctx, 'im', row.actor_id, row.workspace_id)
   }
+  private async steer(row: JobRow) {
+    const saved = await this.db
+      .selectFrom('jobs')
+      .selectAll()
+      .where('id', '=', row.id)
+      .executeTakeFirst()
+    if (!saved) return false
+    Object.assign(row, saved)
+    if (row.status !== 'queued' || this.stopping.has(row.workspace_id)) return false
+    const policy = this.ctx.im.getChatPolicy(row.connection_id, {
+      type: row.chat_type,
+      id: row.chat_id,
+    })
+    if (!this.active || !policy.enabled || policy.ai === false) return false
+    const savedCommand = row.command ? (JSON.parse(row.command) as RunCommand) : undefined
+    // 定时唤醒仍使用自己的守卫和串行任务；这里只处理普通激活消息。
+    if (savedCommand && !savedCommand.activeRunId) return false
+    const activeId = savedCommand?.activeRunId ?? this.activeRuns.get(row.workspace_id)
+    const live = activeId ? this.ai.running.get(activeId) : undefined
+    if (
+      !savedCommand &&
+      (!live?.record.agent.steeringEnabled ||
+        !live.canSteer() ||
+        live.record.agent.id !== (policy.agentId ?? this.ai.defaultAgentId))
+    )
+      return false
+    const access = await this.authorize(row)
+    let command = savedCommand
+    if (!command) {
+      const { conversation } = await this.ai.getConversation(access, live!.record.conversationId)
+      const snapshot = row.snapshot
+        ? await refreshAttachments(JSON.parse(row.snapshot) as InputSnapshot, (id) =>
+            this.ctx.im.mediaAvailable(row.workspace_id, id),
+          )
+        : undefined
+      if (snapshot) {
+        snapshot.im_status = await this.readStatus(row.workspace_id)
+        row.snapshot = JSON.stringify(snapshot)
+        row.input = renderInput(snapshot)
+      }
+      command = {
+        operation: 'send',
+        activeRunId: activeId!,
+        expectedRevision: conversation.revision,
+        expectedNodeId: conversation.selectedNodeId,
+        idempotencyKey: row.id,
+        input: {
+          text: row.input,
+          expandTemplateVariables: false,
+          variables: { imActorId: row.actor_id, imWorkspaceId: row.workspace_id, imJobId: row.id },
+          ...(snapshot ? { attachments: snapshot.attachments } : {}),
+        },
+      }
+      row.conversation_id = conversation.id
+      row.command = JSON.stringify(command)
+      await this.db
+        .updateTable('jobs')
+        .set({
+          conversation_id: row.conversation_id,
+          command: row.command,
+          input: row.input,
+          snapshot: row.snapshot,
+        })
+        .where('id', '=', row.id)
+        .execute()
+    }
+    try {
+      const run = await this.ai.start(access, row.conversation_id!, command)
+      // 最终回复由原任务统一投递，引导任务不重复投递同一个 Run 的答案。
+      await this.db
+        .updateTable('jobs')
+        .set({ run_id: run.id, status: 'completed', delivery: 'sent' })
+        .where('id', '=', row.id)
+        .execute()
+      this.requests.delete(row.id)
+      return true
+    } catch (error) {
+      if (!(error instanceof AiError) || !['conflict', 'busy'].includes(error.code)) throw error
+      // 运行恰好结束且消息尚未被接收时恢复普通队列，不丢失这次激活。
+      await this.db
+        .updateTable('jobs')
+        .set({ command: null, conversation_id: null })
+        .where('id', '=', row.id)
+        .execute()
+      row.command = null
+      row.conversation_id = null
+      return false
+    }
+  }
   private async execute(row: JobRow) {
     if (
       !(await this.db.selectFrom('jobs').select('id').where('id', '=', row.id).executeTakeFirst())
     )
       return
+    if (await this.steer(row)) return
+    if (row.delivery !== 'pending') return
     this.activeJobs.set(row.workspace_id, row.id)
     const epoch = this.epochs.get(row.workspace_id) ?? 0
     const delivery = new AbortController()

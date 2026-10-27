@@ -35,6 +35,7 @@ export class EventDecoder<T extends { sequence: number } = AiEvent> {
 }
 
 export interface ReplyState {
+  steering: import('@antarestra/contracts').SteeringMessage[]
   budget?: ContextBudget
   contextOperations: ContextOperation[]
   sequence: number
@@ -45,6 +46,7 @@ export interface ReplyState {
   ended: boolean
 }
 export const emptyReply = (): ReplyState => ({
+  steering: [],
   contextOperations: [],
   sequence: 0,
   completed: [],
@@ -59,6 +61,13 @@ export function applyEvent(state: ReplyState, event: AiEvent) {
   if (event.sequence !== state.sequence + 1) throw new Error('回复事件缺失，请重新连接')
   const data = event.data as Record<string, unknown>
   switch (event.type) {
+    case 'steering': {
+      const entry = event.data as unknown as import('@antarestra/contracts').SteeringMessage
+      const index = state.steering.findIndex((item) => item.id === entry.id)
+      if (index < 0) state.steering.push(entry)
+      else state.steering[index] = entry
+      break
+    }
     case 'context-budget':
       state.budget = event.data as unknown as ContextBudget
       break

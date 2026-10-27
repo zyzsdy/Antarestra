@@ -45,6 +45,7 @@ export async function cleanup() {
 export async function setup(
   options: {
     ai?: boolean
+    steeringEnabled?: boolean
     aiConfig?: Partial<import('@antarestra/ai').Config>
     autoResetUnavailableConversation?: boolean
     commands?: Partial<CommandsConfig>
@@ -166,6 +167,7 @@ export async function setup(
       version: '1',
       title: '测试助理',
       backendId: 'ai-agent-core',
+      steeringEnabled: options.steeringEnabled ?? false,
       systemTemplate: options.systemTemplate ?? '系统',
       userTemplate: options.userTemplate ?? '{{input}}',
       models: [{ providerId: 'provider', modelId: 'model' }],

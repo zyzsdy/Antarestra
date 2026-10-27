@@ -1119,3 +1119,10 @@
   cursor: pointer;
   white-space: normal;
 }
+/* 引导输入复用普通用户消息气泡，仅增加顶部的小字标记。 */
+.chat-guidance-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #737373;
+  font-size: 12px;
+}

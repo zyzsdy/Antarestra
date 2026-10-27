@@ -60,6 +60,8 @@ export interface ModelDefinition {
   tools: boolean
 }
 export interface AgentPreset {
+  /** 运行期间发送的消息在下一次模型请求前插入当前运行。默认关闭。 */
+  steeringEnabled?: boolean
   contextPolicy?: ContextPolicy
   id: string
   version: string
@@ -137,6 +139,7 @@ export interface RequestSnapshot {
   }[]
 }
 export interface RunRecord {
+  steering?: SteeringMessage[]
   contextBudgets?: ContextBudget[]
   contextOperations?: ContextOperation[]
   id: string
@@ -157,6 +160,8 @@ export interface RunRecord {
   endedAt: number | null
 }
 export interface RunCommand {
+  /** 引导消息绑定的运行；已结束时拒绝，不意外启动新一轮。 */
+  activeRunId?: string
   operation: 'send' | 'edit' | 'regenerate'
   expectedRevision: number
   expectedNodeId: string | null
@@ -166,12 +171,21 @@ export interface RunCommand {
   model?: ModelRef
   thinking?: string | null
 }
+export interface SteeringMessage {
+  id: string
+  actorId: string
+  input: UserInput
+  createdAt: number
+  /** null 表示已接收，尚未进入模型上下文。 */
+  position: number | null
+}
 export interface AiEvent {
   runId: string
   conversationId: string
   workspaceId: string
   sequence: number
   type:
+    | 'steering'
     | 'run-start'
     | 'request'
     | 'model-activity'

@@ -26,6 +26,7 @@ const draft = reactive<AgentRecord>(
 )
 const extensionText = ref(JSON.stringify(draft.extensions, null, 2))
 draft.contextPolicy ??= defaultContextPolicy()
+draft.steeringEnabled ??= false
 const skillText = ref(draft.skillIds?.join('\n') ?? '')
 const initial = JSON.stringify({ draft, extensions: extensionText.value, skills: skillText.value })
 watch(
@@ -229,6 +230,14 @@ function save(event: Event) {
           />
         </div>
       </div>
+      <label class="agents-check">
+        <CheckboxField v-model="draft.steeringEnabled" aria-describedby="agent-steering-help" />
+        引导 AI 会话
+      </label>
+      <p id="agent-steering-help" class="agents-hint">
+        执行期间的新消息会在当前工具结果返回后插入，及时调整方向。适用于网页和 IM；IM
+        仍需满足原有激活条件。修改后从下一次运行生效。
+      </p>
       <label for="agent-system">系统提示词模板</label>
       <textarea
         ref="systemInput"

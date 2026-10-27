@@ -277,10 +277,19 @@ it('运行固定配置快照；更新不打断运行，卸载清理运行与默�
   const run = await start(app)
   const original = app.ctx.aiAgents.detail(defaultAgentId)
   await app.ctx.aiAgents.save(
-    { ...original, title: '修改名称', systemTemplate: '新的提示词', models: [], toolIds: [] },
+    {
+      ...original,
+      title: '修改名称',
+      steeringEnabled: true,
+      systemTemplate: '新的提示词',
+      models: [],
+      toolIds: [],
+    },
     defaultAgentId,
   )
   expect((await app.ctx.ai.getRun(app.access, run.id)).agent.title).toBe('默认助理')
+  expect((await app.ctx.ai.getRun(app.access, run.id)).agent.steeringEnabled).toBe(false)
+  expect(app.ctx.aiAgents.detail(defaultAgentId).steeringEnabled).toBe(true)
   expect((await app.ctx.ai.getRun(app.access, run.id)).status).toBe('running')
   await app.fiber.dispose()
   expect((await app.ctx.ai.getRun(app.access, run.id)).status).toBe('cancelled')

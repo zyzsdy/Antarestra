@@ -36,6 +36,7 @@ export function newAgent(id = '', title = ''): AgentRecord {
     title,
     revision: 1,
     backendId: 'ai-agent-core',
+    steeringEnabled: false,
     systemTemplate: defaultSystemTemplate,
     userTemplate: '{{input}}',
     models: null,

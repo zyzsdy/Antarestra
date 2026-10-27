@@ -30,6 +30,8 @@ const props = defineProps<{
   run?: RunRecord | undefined
   live?: ReplyState | undefined
   disabled?: boolean
+  steering?: boolean
+  partial?: boolean
   branches?: MessageNode[]
 }>()
 defineEmits<{ edit: []; regenerate: []; branch: [id: string] }>()
@@ -71,7 +73,7 @@ const presentation = computed(() =>
 const running = computed(() => (props.live ? !props.live.ended : props.run?.status === 'running'))
 const processingNow = ref(Date.now())
 const processingTime = computed(() => {
-  if (!props.run) return ''
+  if (!props.run || props.partial) return ''
   const end = running.value ? processingNow.value : props.run.endedAt
   return end === null ? '' : formatProcessingTime(end - props.run.createdAt)
 })
@@ -99,11 +101,12 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
 <template>
   <article
     class="chat-message"
-    :class="node.role"
+    :class="[node.role, { 'chat-guidance': steering }]"
     :aria-label="node.role === 'user' ? '你的消息' : '助理回复'"
     @mouseenter="now = new Date()"
     @focusin="now = new Date()"
   >
+    <small v-if="steering" class="chat-guidance-label">引导消息</small>
     <CollapsibleRoot
       v-if="node.role === 'assistant' && (running || presentation.details.length)"
       v-model:open="detailsOpen"
@@ -191,9 +194,11 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
       :streaming="!!live && !live.ended"
     />
     <p v-else-if="body" class="chat-plain">{{ body }}</p>
-    <p v-if="live && !live.ended" class="chat-run-status" role="status">{{ live.status }}…</p>
+    <p v-if="!partial && live && !live.ended" class="chat-run-status" role="status">
+      {{ live.status }}…
+    </p>
     <p
-      v-else-if="node.role === 'assistant' && run && run.status !== 'completed'"
+      v-else-if="!partial && node.role === 'assistant' && run && run.status !== 'completed'"
       class="chat-run-status"
       :class="{ 'chat-run-error': run.status === 'failed' }"
       :role="run.status === 'failed' ? 'alert' : 'status'"
@@ -211,7 +216,7 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
         错误代码：{{ run.error.code }}
       </span>
     </p>
-    <TooltipProvider :delay-duration="250">
+    <TooltipProvider v-if="!partial" :delay-duration="250">
       <div
         class="chat-message-actions"
         :aria-label="node.role === 'user' ? '用户消息操作' : '助理回复操作'"
@@ -223,13 +228,13 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
           ><CopyIcon class="ui-icon"
         /></MessageAction>
         <MessageAction
-          v-if="node.role === 'user'"
+          v-if="node.role === 'user' && !steering"
           label="编辑"
           :disabled="disabled"
           @click="$emit('edit')"
           ><PencilSquareIcon class="ui-icon"
         /></MessageAction>
-        <template v-else>
+        <template v-if="node.role === 'assistant'">
           <MessageAction label="重新生成" :disabled="disabled" @click="$emit('regenerate')"
             ><ArrowPathIcon class="ui-icon"
           /></MessageAction>

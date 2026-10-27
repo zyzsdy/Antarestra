@@ -52,6 +52,7 @@ export function validateRecord(body: Record<string, unknown>): AgentRecord {
   }
   const value = JSON.parse(JSON.stringify(body)) as AgentRecord
   value.contextPolicy ??= defaultContextPolicy()
+  value.steeringEnabled ??= false
   check(!value.toolIds?.includes('use_skill'), 'use_skill 由 Skill 服务提供，请通过 Skill 范围配置')
   check(
     value.defaultModel === null ||

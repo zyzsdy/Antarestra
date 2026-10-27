@@ -420,3 +420,52 @@ it('超过一分钟的冷却不会随每分钟计数清理提前结束', async (
     clock.mockRestore()
   }
 })
+
+it.each(['{{input}}', '{{last_message}}'])(
+  'IM 仅将已激活消息作为引导，模板 %s 使用最新输入并只投递一次最终回复',
+  async (userTemplate) => {
+    let release!: () => void
+    let calls = 0
+    const requests: import('@antarestra/ai').RequestSnapshot[] = []
+    const app = await setup({
+      ai: true,
+      steeringEnabled: true,
+      userTemplate,
+      driver: {
+        id: 'driver',
+        async generate(request) {
+          requests.push(request)
+          if (++calls === 1) {
+            await new Promise<void>((resolve) => {
+              release = resolve
+            })
+            return { content: [] }
+          }
+          return { content: [{ type: 'text', text: '按引导完成' }] }
+        },
+      },
+    })
+    await app.connection.receive('/ai 第一条')
+    await poll(() => calls).toBe(1)
+    await app.connection.receive('普通群消息不应激活')
+    expect(await app.jobs()).toHaveLength(1)
+    await app.connection.receive('/ai 改为中文', {
+      id: 'steer',
+      sender: { id: 'other-user', name: '另一位成员' },
+    })
+    await app.connection.receive('/ai 改为中文', {
+      id: 'steer',
+      sender: { id: 'other-user', name: '另一位成员' },
+    })
+    await poll(async () => (await app.jobs()).length).toBe(2)
+    const jobs = await app.jobs()
+    expect(jobs[1]?.run_id).toBe(jobs[0]?.run_id)
+    expect(jobs[1]?.delivery).toBe('sent')
+    expect(app.sent).toHaveLength(0)
+    release()
+    await poll(() => app.sent.length).toBe(1)
+    expect(calls).toBe(2)
+    expect(requests[1]?.messages.at(-1)?.role).toBe('user')
+    expect(JSON.stringify(requests[1]?.messages.at(-1))).toContain('改为中文')
+  },
+)

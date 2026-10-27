@@ -40,7 +40,7 @@ import type { Session } from './session.js'
 import type { WorkspaceFilesClient } from '@antarestra/plugin-workspace-file/client'
 import AttachmentTile from './AttachmentTile.vue'
 import ChatHistory from './ChatHistory.vue'
-import ChatMessage from './ChatMessage.vue'
+import ChatTurn from './ChatTurn.vue'
 import ChatNotice from './ChatNotice.vue'
 import ContextMeter from './ContextMeter.vue'
 import TodoPanel from './TodoPanel.vue'
@@ -212,6 +212,7 @@ const {
   thinking,
   levels,
   activeRunId,
+  steeringEnabled,
   lastRun,
   interrupted,
   unavailable,
@@ -312,7 +313,7 @@ const canSend = computed(
     (!currentId.value || !!detail.value) &&
     !sending.value &&
     !fileBusy.value &&
-    !activeRunId.value &&
+    (!activeRunId.value || steeringEnabled.value) &&
     !archivedConversation.value &&
     !unavailable.value &&
     (!!pending.get(currentId.value) ||
@@ -553,7 +554,7 @@ onUnmounted(() => {
               <p>从一次对话开始。</p>
             </div>
             <div v-if="detail?.path.length" class="chat-transcript">
-              <ChatMessage
+              <ChatTurn
                 v-for="node in detail.path"
                 :key="node.id"
                 :node="node"
@@ -647,7 +648,9 @@ onUnmounted(() => {
               style="resize: none"
               aria-label="消息输入框"
               :disabled="archivedConversation"
-              placeholder="随意问些什么"
+              :placeholder="
+                steeringEnabled ? '补充要求或调整方向，发送以引导当前会话' : '随意问些什么'
+              "
               @keydown="keydown"
               @paste="paste"
             />
@@ -744,11 +747,11 @@ onUnmounted(() => {
                   <StopIcon class="ui-icon" />
                 </button>
                 <button
-                  v-else
+                  v-if="!activeRunId || steeringEnabled"
                   type="submit"
                   class="chat-send"
                   :disabled="!canSend"
-                  :aria-label="sending ? '正在发送' : '发送消息'"
+                  :aria-label="sending ? '正在发送' : steeringEnabled ? '发送引导消息' : '发送消息'"
                 >
                   <ArrowUpIcon class="ui-icon" />
                 </button>

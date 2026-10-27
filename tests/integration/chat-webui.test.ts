@@ -1099,3 +1099,98 @@ describe('聊天会话状态', () => {
     expect(chat.draft.value).toBe('问题')
   })
 })
+
+it('网页引导复用运行和正文连接，发送失败保留草稿并使用同一幂等键重试', async () => {
+  const source = structuredClone(catalog)
+  Object.assign(source.agents[0]!, { steeringEnabled: true })
+  let fail = false
+  const streaming = vi.fn(async () => new Response(new ReadableStream()))
+  vi.stubGlobal('fetch', streaming)
+  let run: import('@antarestra/contracts').RunRecord
+  harness.api.mockImplementation(async (path: string, body?: RunCommand) => {
+    if (path === '/ai/catalog') return source
+    if (path.includes('?')) return []
+    if (path === '/ai/conversations') return history('new').conversation
+    if (path.endsWith('/runs')) {
+      if (!run) {
+        run = {
+          id: 'run',
+          conversationId: 'new',
+          workspaceId: 'w',
+          actorId: 'a',
+          userNodeId: 'user',
+          replyNodeId: 'reply',
+          status: 'running',
+          agent: {
+            ...source.agents[0]!,
+            version: '1',
+            backendId: 'test',
+            systemTemplate: '',
+            userTemplate: '{{input}}',
+            toolIds: [],
+            skillIds: [],
+            extensions: {},
+          },
+          model,
+          thinking: null,
+          input: body!.input!,
+          messages: [],
+          requests: [],
+          error: null,
+          createdAt: 1,
+          endedAt: null,
+        }
+        return run
+      }
+      if (fail) throw new Error('网络断开')
+      return {
+        ...run,
+        steering: [
+          { id: 'guide', actorId: 'a', input: body!.input!, createdAt: 2, position: null },
+        ],
+      }
+    }
+    return history('new')
+  })
+  const chat = await mount()
+  chat.draft.value = '开始'
+  await chat.send()
+  await tick()
+  expect(chat.steeringEnabled.value).toBe(true)
+  const detail = chat.detail.value
+  chat.draft.value = '调整方向'
+  fail = true
+  await chat.send()
+  expect(chat.draft.value).toBe('调整方向')
+  const key = chat.pending.get('new')!.idempotencyKey
+  fail = false
+  await chat.send()
+  expect(chat.pending.size).toBe(0)
+  expect(chat.draft.value).toBe('')
+  expect(chat.detail.value).toBe(detail)
+  expect(streaming).toHaveBeenCalledTimes(1)
+  const command = harness.api.mock.calls.filter(([path]) => path.endsWith('/runs')).at(-1)![1]
+  expect(command).toMatchObject({ idempotencyKey: key, activeRunId: 'run' })
+  expect(chat.runs.get('run')?.steering).toHaveLength(1)
+})
+
+it('引导事件从等待更新为插入，重复帧不重复显示且保留已有输出', () => {
+  const reply = emptyReply()
+  applyEvent(
+    reply,
+    event(1, 'message', { role: 'assistant', content: [{ type: 'text', text: '先前说明' }] }),
+  )
+  const entry = {
+    id: 'guide',
+    actorId: 'a',
+    input: { text: '修改要求' },
+    createdAt: 1,
+    position: null,
+  }
+  applyEvent(reply, event(2, 'steering', entry))
+  applyEvent(reply, event(2, 'steering', entry))
+  expect(reply.steering).toHaveLength(1)
+  applyEvent(reply, event(3, 'steering', { ...entry, position: 1 }))
+  expect(reply.steering[0]?.position).toBe(1)
+  expect(reply.completed).toEqual([{ type: 'text', text: '先前说明' }])
+})

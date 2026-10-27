@@ -619,6 +619,7 @@ export class AiService extends Service<Config> {
           .execute()
         for (const run of runs) await db.deleteFrom('events').where('run_id', '=', run.id).execute()
         await db.deleteFrom('runs').where('conversation_id', '=', id).execute()
+        await db.deleteFrom('steering_requests').where('conversation_id', '=', id).execute()
         await db.deleteFrom('nodes').where('conversation_id', '=', id).execute()
         await db.deleteFrom('summaries').where('conversation_id', '=', id).execute()
         await db.deleteFrom('conversations').where('id', '=', id).execute()
@@ -646,7 +647,10 @@ export class AiService extends Service<Config> {
           [...this.running.values()].some((run) => run.record.workspaceId === workspaceId)
         )
           throw new AiError('busy', '请等待该群的 AI 任务结束后再永久删除', 409)
-        for (const run of runs) await db.deleteFrom('events').where('run_id', '=', run.id).execute()
+        for (const run of runs) {
+          await db.deleteFrom('events').where('run_id', '=', run.id).execute()
+          await db.deleteFrom('steering_requests').where('run_id', '=', run.id).execute()
+        }
         for (const table of ['runs', 'nodes', 'summaries', 'conversations'] as const)
           await db.deleteFrom(table).where('workspace_id', '=', workspaceId).execute()
         await removeRelated(transaction)
@@ -912,6 +916,23 @@ export class AiService extends Service<Config> {
     const fingerprint = canonical(command)
     return this.locked(async () => {
       const conversation = await this.conversation(access, id)
+      const steeringRequest = await this.db()
+        .selectFrom('steering_requests')
+        .selectAll()
+        .where('conversation_id', '=', id)
+        .where('request_key', '=', command.idempotencyKey)
+        .executeTakeFirst()
+      if (steeringRequest) {
+        if (steeringRequest.fingerprint !== fingerprint)
+          throw new AiError('conflict', '幂等键参数不一致', 409)
+        return decode<RunRecord>(
+          await this.db()
+            .selectFrom('runs')
+            .selectAll()
+            .where('id', '=', steeringRequest.run_id)
+            .executeTakeFirstOrThrow(),
+        )
+      }
       const prior = await this.db()
         .selectFrom('runs')
         .selectAll()
@@ -925,6 +946,66 @@ export class AiService extends Service<Config> {
       }
       if (conversation.archivedAt !== null)
         throw new AiError('archived', '请先取消归档再继续对话', 409)
+      if (command.activeRunId && command.activeRunId !== conversation.activeRunId)
+        throw new AiError('conflict', '目标运行已结束，请核对后重新发送', 409)
+      const current = conversation.activeRunId
+        ? this.running.get(conversation.activeRunId)
+        : undefined
+      if (
+        command.operation === 'send' &&
+        current?.record.agent.steeringEnabled &&
+        current.canSteer()
+      ) {
+        if (
+          conversation.revision !== command.expectedRevision ||
+          conversation.selectedNodeId !== command.expectedNodeId
+        )
+          throw new AiError('conflict', '会话版本已变化', 409)
+        check(command.input, '缺少用户输入')
+        await current.validateSteering(command.input)
+        check(
+          (current.record.steering ?? []).filter((entry) => entry.position === null).length < 100,
+          '等待插入的引导消息过多',
+        )
+        const entry = {
+          id: randomUUID(),
+          actorId: access.actorId,
+          input: json(command.input),
+          createdAt: Date.now(),
+          position: null,
+        }
+        const event: AiEvent = {
+          runId: current.record.id,
+          conversationId: id,
+          workspaceId: access.workspaceId,
+          sequence: current.sequence + 1,
+          type: 'steering',
+          data: payload(entry),
+          createdAt: entry.createdAt,
+        }
+        await this.db().transaction(async (db) => {
+          await db
+            .insertInto('steering_requests')
+            .values({
+              conversation_id: id,
+              request_key: command.idempotencyKey,
+              fingerprint,
+              run_id: current.record.id,
+            })
+            .execute()
+          await saveRun(db, {
+            ...current.record,
+            steering: [...(current.record.steering ?? []), entry],
+          })
+          await appendEvent(db, event)
+        })
+        ;(current.record.steering ??= []).push(entry)
+        current.sequence = event.sequence
+        void this.ctx
+          .parallel('ai/event', freeze(json(event)), freeze(json(current.record.agent)))
+          .catch(() => this.ctx.logger.warn('AI 通知监听器执行失败'))
+        return json(current.record)
+      }
       this.expected(conversation, command.expectedRevision, command.expectedNodeId)
       const bound = this.bind(conversation.agentId)
       const nodes = await this.nodes(id)
@@ -1071,6 +1152,14 @@ export class AiService extends Service<Config> {
       this.notifyConversation(conversation)
       live.start()
       return json(run)
+    })
+  }
+  /** 与接收引导消息串行决定终态，避免最后一个模型响应附近丢消息。 */
+  continueSteering(live: Running) {
+    return this.locked(async () => {
+      if (live.hasSteering()) return true
+      live.finishInput()
+      return false
     })
   }
   async persist(live: Running, type: AiEvent['type'], data: unknown, summary?: ContextSummary) {

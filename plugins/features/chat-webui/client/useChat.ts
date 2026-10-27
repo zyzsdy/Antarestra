@@ -90,6 +90,9 @@ export function useChat(identity: () => Session | undefined) {
   const model = computed(() => modelOptions.value.find((item) => item.id === selectedModel.value))
   const levels = computed(() => model.value?.model.thinkingLevels ?? [])
   const activeRunId = computed(() => detail.value?.conversation.activeRunId ?? null)
+  const steeringEnabled = computed(
+    () => !!activeRunId.value && runs.get(activeRunId.value)?.agent?.steeringEnabled === true,
+  )
   const lastRun = computed(() => {
     const node = detail.value?.path.at(-1)
     return node ? runs.get(node.runId) : undefined
@@ -378,6 +381,7 @@ export function useChat(identity: () => Session | undefined) {
                   error: result.error ?? null,
                   endedAt: event.createdAt,
                   messages,
+                  steering: reply.value.steering,
                   contextOperations: reply.value.contextOperations,
                   contextBudgets: reply.value.budget
                     ? [reply.value.budget]
@@ -549,7 +553,7 @@ export function useChat(identity: () => Session | undefined) {
       sending.value ||
       loading.value ||
       (currentId.value && !detail.value) ||
-      activeRunId.value ||
+      (activeRunId.value && (!steeringEnabled.value || regenerate || !!target)) ||
       !model.value ||
       !agent.value ||
       detail.value?.conversation.archivedAt
@@ -603,6 +607,7 @@ export function useChat(identity: () => Session | undefined) {
         if (!alive || owner !== identityEpoch) return
         command = {
           operation: regenerate ? 'regenerate' : target ? 'edit' : 'send',
+          ...(activeRunId.value ? { activeRunId: activeRunId.value } : {}),
           expectedRevision: fresh.conversation.revision,
           expectedNodeId: fresh.conversation.selectedNodeId,
           idempotencyKey: crypto.randomUUID(),
@@ -638,10 +643,24 @@ export function useChat(identity: () => Session | undefined) {
         if (remaining.length) attachmentDrafts.set(id, remaining)
         else attachmentDrafts.delete(id)
       }
-      runs.set(result.id, result)
+      const latestRun = runs.get(result.id)
+      runs.set(
+        result.id,
+        latestRun && latestRun.status !== 'running' && result.status === 'running'
+          ? { ...latestRun, steering: result.steering ?? latestRun.steering ?? [] }
+          : result,
+      )
       if (currentId.value === id && history) {
-        acceptRun(history, result, command)
-        void connect(result.id)
+        if (
+          result.steering?.some((entry) => entry.id) &&
+          history.nodes.some((node) => node.runId === result.id)
+        ) {
+          // 当前运行的正文流继续消费；接收回执不清空输出、不重建历史节点。
+          if (disconnected.value) void connect(result.id)
+        } else {
+          acceptRun(history, result, command)
+          void connect(result.id)
+        }
       }
       return result
     } catch (cause) {
@@ -830,6 +849,7 @@ export function useChat(identity: () => Session | undefined) {
     thinking,
     levels,
     activeRunId,
+    steeringEnabled,
     lastRun,
     interrupted,
     unavailable,

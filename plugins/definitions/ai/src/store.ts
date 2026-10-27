@@ -19,6 +19,12 @@ interface EventRow {
   payload: string
 }
 export interface Tables {
+  steering_requests: {
+    conversation_id: string
+    request_key: string
+    fingerprint: string
+    run_id: string
+  }
   summaries: RecordRow
   conversations: RecordRow & { last_activity_at: number | null; archived_at: number | null }
   nodes: RecordRow
@@ -116,6 +122,28 @@ export const migrations = [
         table: 'summaries',
         name: 'conversation_summaries',
         columns: ['workspace_id', 'conversation_id'],
+      },
+    ],
+  }),
+  defineMigration({
+    id: '004_steering_requests',
+    steps: [
+      {
+        kind: 'createTable',
+        table: 'steering_requests',
+        columns: [
+          { name: 'conversation_id', type: 'string', length: 200, notNull: true },
+          { name: 'request_key', type: 'string', length: 200, notNull: true },
+          { name: 'fingerprint', type: 'text', notNull: true },
+          { name: 'run_id', type: 'string', length: 200, notNull: true },
+        ],
+      },
+      {
+        kind: 'createIndex',
+        table: 'steering_requests',
+        name: 'steering_request_key',
+        columns: ['conversation_id', 'request_key'],
+        unique: true,
       },
     ],
   }),

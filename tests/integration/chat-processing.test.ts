@@ -107,3 +107,69 @@ it('运行计时、独立思考折叠、终态固定时长和卸载清理', asyn
   mounted = false
   expect(vi.getTimerCount()).toBe(0)
 })
+
+it('引导消息沿用普通用户气泡，只显示顶部标记并位于助理输出之间', async () => {
+  const { default: ChatTurn } =
+    await import('../../plugins/features/chat-webui/client/ChatTurn.vue')
+  const run: RunRecord = {
+    id: 'run',
+    conversationId: 'conversation',
+    workspaceId: 'space',
+    actorId: 'actor',
+    userNodeId: 'user',
+    replyNodeId: 'reply',
+    input: { text: '原始问题' },
+    requests: [],
+    error: null,
+    model: { providerId: 'provider', modelId: 'model' },
+    thinking: null,
+    agent: {
+      id: 'agent',
+      title: '助理',
+      version: '1',
+      backendId: 'test',
+      systemTemplate: '',
+      userTemplate: '{{input}}',
+      models: [],
+      defaultModel: { providerId: 'provider', modelId: 'model' },
+      toolIds: [],
+      skillIds: [],
+      extensions: {},
+    },
+    createdAt: 0,
+    endedAt: 1000,
+    status: 'completed',
+    messages: [],
+    steering: [
+      { id: 'guide', actorId: 'actor', input: { text: '改为中文' }, createdAt: 500, position: 1 },
+    ],
+  }
+  const node: MessageNode = {
+    id: 'reply',
+    conversationId: 'conversation',
+    parentId: null,
+    runId: 'run',
+    role: 'assistant',
+    createdAt: 0,
+    version: 1,
+    versionCount: 1,
+    content: [
+      { type: 'text', text: '原来的说明' },
+      { type: 'text', text: '修正后的回复' },
+    ],
+  }
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp({ render: () => h(ChatTurn, { node, run }) })
+  app.mount(host)
+  cleanups.push(() => app.unmount())
+  const messages = [...host.querySelectorAll('.chat-message')]
+  expect(messages).toHaveLength(3)
+  expect(messages[1]?.classList.contains('user')).toBe(true)
+  expect(messages[1]?.querySelector('small')?.textContent).toBe('引导消息')
+  expect(messages[1]?.querySelector('.chat-plain')?.textContent).toBe('改为中文')
+  expect(messages[0]?.textContent).toContain('原来的说明')
+  expect(messages[2]?.textContent).toContain('修正后的回复')
+  expect(messages[1]?.querySelector('[aria-label="编辑"]')).toBeNull()
+  expect(messages[1]?.textContent).not.toContain('已插入')
+})

@@ -6,7 +6,7 @@ import { replyFormatGuide, replyFormatVariable } from './reply.js'
 
 export function registerHistoryTools(
   ctx: Context,
-  snapshot: (context: RunContext) => Promise<InputSnapshot | undefined>,
+  snapshot: (context: RunContext, messageId?: string) => Promise<InputSnapshot | undefined>,
 ) {
   ctx.ai.registerTool(ctx, {
     id: 'im_download_file',
@@ -29,7 +29,7 @@ export function registerHistoryTools(
       if (typeof args.messageId !== 'string' || typeof args.mediaId !== 'string')
         throw new AiError('invalid_input', '必须填写消息和媒体 ID')
       context.signal.throwIfAborted()
-      const input = await snapshot(context)
+      const input = await snapshot(context, args.messageId)
       try {
         const resource = await ctx.im.downloadArchivedMedia(
           context.workspaceId,
