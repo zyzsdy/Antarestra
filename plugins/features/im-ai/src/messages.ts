@@ -1,5 +1,5 @@
 import type { ActivationPolicy, MessageContext } from '@antarestra/im'
-import type { RunRecord } from '@antarestra/ai'
+import type { ContentBlock, RunRecord } from '@antarestra/ai'
 
 export function messageText(message: MessageContext) {
   return message.message.segments
@@ -55,28 +55,51 @@ export function activationReason(
 export function activated(message: MessageContext, activation?: ActivationPolicy, dynamic = false) {
   return !!activationReason(message, activation, dynamic)
 }
+function isCommentary(block: ContentBlock) {
+  if (block.type !== 'text' || !block.continuation) return false
+  try {
+    const signature: unknown = JSON.parse(block.continuation.signature)
+    return (
+      !!signature &&
+      typeof signature === 'object' &&
+      'v' in signature &&
+      signature.v === 1 &&
+      'phase' in signature &&
+      signature.phase === 'commentary'
+    )
+  } catch {
+    return false
+  }
+}
+
+/** 从完整模型消息提取中间正文，不读取流式增量、思考或工具内容。 */
+export function intermediateTexts(run: Pick<RunRecord, 'messages'>) {
+  const last = run.messages.findLastIndex((message) => message.role === 'assistant')
+  return run.messages.flatMap((message, index) => {
+    if (
+      message.role !== 'assistant' ||
+      (message.stopReason && !['stop', 'toolUse'].includes(message.stopReason))
+    )
+      return []
+    const intermediate =
+      index !== last || message.content.some((block) => block.type === 'tool-call')
+    const text = message.content
+      .flatMap((block) =>
+        block.type === 'text' && (intermediate || isCommentary(block)) ? [block.text] : [],
+      )
+      .join('\n')
+      .trim()
+    return text ? [{ id: message.id ?? `message-${index}`, text }] : []
+  })
+}
+
 /** 只输出最后助理消息中位于最后一个思考/工具块之后的正文。 */
 export function finalText(run: Pick<RunRecord, 'messages'>) {
   const content = run.messages.findLast((message) => message.role === 'assistant')?.content ?? []
   let start = 0
   content.forEach((block, index) => {
-    let commentary = false
-    if (block.type === 'text' && block.continuation) {
-      try {
-        const signature: unknown = JSON.parse(block.continuation.signature)
-        commentary =
-          !!signature &&
-          typeof signature === 'object' &&
-          'v' in signature &&
-          signature.v === 1 &&
-          'phase' in signature &&
-          signature.phase === 'commentary'
-      } catch {
-        /* 非 JSON 签名不改变正文语义。 */
-      }
-    }
     if (
-      commentary ||
+      isCommentary(block) ||
       ['thinking', 'tool-call', 'tool-result', 'provider-tool'].includes(block.type)
     )
       start = index + 1

@@ -13,7 +13,7 @@
       "minimum": 20,
       "maximum": 5000,
       "default": 250,
-      "description": "检查运行终态的间隔。"
+      "description": "检查完整中间回复与运行终态的间隔。"
     },
     "queueLimit": {
       "type": "integer",

@@ -5,7 +5,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import { AiError, type Access, type RunCommand } from '@antarestra/ai'
 import { ImError, type MessageContext, type MessageSegment } from '@antarestra/im'
 import '@antarestra/plugin-im-commands'
-import { activationReason, finalText } from './messages.js'
+import { activationReason, finalText, intermediateTexts } from './messages.js'
 import { parseReplyWithStatus } from './reply.js'
 import {
   prepareInput,
@@ -515,9 +515,32 @@ export class ImAiService extends Service<Config> {
           .where('id', '=', row.id)
           .execute()
         let current = run
-        while (current.status === 'running') {
+        const forwarded = new Set<string>()
+        while (true) {
           live()
-          await delay(this.config.pollIntervalMs, undefined, { signal: this.abort.signal })
+          if (current.status !== 'cancelled' && current.status !== 'interrupted') {
+            for (const reply of intermediateTexts(current)) {
+              if (forwarded.has(reply.id)) continue
+              live()
+              await verify()
+              forwarded.add(reply.id)
+              try {
+                await this.ctx.im.send(target, [{ type: 'text', text: reply.text }], {
+                  idempotencyKey: `im-ai-${row.id}-intermediate-${reply.id}`,
+                  signal,
+                  beforeSend: async () => {
+                    live()
+                    await verify()
+                  },
+                })
+              } catch {
+                // 中间说明投递失败不终止模型；未知结果由发件箱阻止重复发送。
+                this.ctx.logger.warn('IM AI 中间回复未送达或结果未知（任务 %s）', row.id)
+              }
+            }
+          }
+          if (current.status !== 'running') break
+          await delay(this.config.pollIntervalMs, undefined, { signal })
           current = await this.ai.getRun(access, run.id)
         }
         live()
