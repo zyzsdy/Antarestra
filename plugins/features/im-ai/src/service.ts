@@ -643,17 +643,30 @@ export class ImAiService extends Service<Config> {
               await verify()
               forwarded.add(reply.id)
               try {
-                await this.ctx.im.send(target, [{ type: 'text', text: reply.text }], {
-                  idempotencyKey: `im-ai-${row.id}-intermediate-${reply.id}`,
-                  signal,
-                  beforeSend: async () => {
-                    live()
-                    await verify()
-                  },
-                })
+                const { messages } = parseReplyWithStatus(
+                  reply.text,
+                  this.ctx.im.listConnections().find((item) => item.id === row.connection_id)
+                    ?.capabilities,
+                )
+                // 中间回复也必须整份预检，避免先发送正文后才发现无效引用或资源。
+                for (const segments of messages) await this.ctx.im.validateSend(target, segments)
+                for (const [index, segments] of messages.entries()) {
+                  live()
+                  await verify()
+                  await this.ctx.im.send(target, segments, {
+                    // 首条沿用旧键，恢复任务时避免重复投递已发送的中间回复。
+                    idempotencyKey: `im-ai-${row.id}-intermediate-${reply.id}${index ? `-${index}` : ''}`,
+                    continuation: index > 0,
+                    signal,
+                    beforeSend: async () => {
+                      live()
+                      await verify()
+                    },
+                  })
+                }
               } catch {
-                // 中间说明投递失败不终止模型；未知结果由发件箱阻止重复发送。
-                this.ctx.logger.warn('IM AI 中间回复未送达或结果未知（任务 %s）', row.id)
+                // 中间说明解析或投递失败不终止模型；未知结果由发件箱阻止重复发送。
+                this.ctx.logger.warn('IM AI 中间回复无效、未送达或结果未知（任务 %s）', row.id)
               }
             }
           }

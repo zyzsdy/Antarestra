@@ -421,11 +421,20 @@ it('超过一分钟的冷却不会随每分钟计数清理提前结束', async (
   }
 })
 
-it.each(['{{input}}', '{{last_message}}'])(
-  'IM 仅将已激活消息作为引导，模板 %s 使用最新输入并只投递一次最终回复',
-  async (userTemplate) => {
+it.each(
+  ['{{input}}', '{{last_message}}'].flatMap((userTemplate) =>
+    ['纯文本', '完整封装', '省略外层'].map((format) => ({ userTemplate, format })),
+  ),
+)(
+  'IM 仅将已激活消息作为引导，模板 $userTemplate 的$format回复解析后各投递一次',
+  async ({ userTemplate, format }) => {
     let release!: () => void
     let calls = 0
+    const reply = (text: string) => {
+      if (format === '纯文本') return text
+      const body = `<message>${text}</message><sticker>https://example.com/happy.gif</sticker>`
+      return format === '完整封装' ? `<im_reply>${body}</im_reply>` : body
+    }
     const requests: import('@antarestra/ai').RequestSnapshot[] = []
     const app = await setup({
       ai: true,
@@ -440,9 +449,9 @@ it.each(['{{input}}', '{{last_message}}'])(
             await new Promise<void>((resolve) => {
               release = resolve
             })
-            return { content: [{ type: 'text', text: '引导前已生成的回复' }] }
+            return { content: [{ type: 'text', text: reply('引导前已生成的回复') }] }
           }
-          return { content: [{ type: 'text', text: '按引导完成' }] }
+          return { content: [{ type: 'text', text: reply('按引导完成') }] }
         },
       },
     })
@@ -471,12 +480,16 @@ it.each(['{{input}}', '{{last_message}}'])(
     expect(jobs[1]?.delivery).toBe('sent')
     expect(app.sent).toHaveLength(0)
     release()
-    await poll(() => app.sent.length).toBe(2)
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
     expect(calls).toBe(2)
-    expect(app.sent.map((message) => message.segments)).toEqual([
-      [{ type: 'text', text: '引导前已生成的回复' }],
-      [{ type: 'text', text: '按引导完成' }],
-    ])
+    expect(app.sent.map((message) => message.segments)).toEqual(
+      ['引导前已生成的回复', '按引导完成'].flatMap((text) => [
+        [{ type: 'text', text }],
+        ...(format === '纯文本'
+          ? []
+          : [[{ type: 'image', url: 'https://example.com/happy.gif', sticker: true }]]),
+      ]),
+    )
     expect(requests[1]?.messages.at(-1)?.role).toBe('user')
     expect(JSON.stringify(requests[1]?.messages.at(-1))).toContain('改为中文')
   },
