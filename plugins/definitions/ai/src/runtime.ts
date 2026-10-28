@@ -123,6 +123,9 @@ export class Running {
   ownsToolContext(context: RunContext) {
     return this.toolContexts.has(context) && !context.signal.aborted
   }
+  ownsRunContext(context: RunContext) {
+    return (context === this.context || this.templateInputs.has(context)) && !context.signal.aborted
+  }
   async cancel() {
     if (!this.finishing) this.controller.abort(new AiError('cancelled', '运行已取消'))
     await this.done
@@ -233,18 +236,19 @@ export class Running {
       this.active()
       const context = Object.freeze({ ...this.context })
       this.templateInputs.set(context, entry.input)
-      let draft: { systemPrompt: string; userPrompt: string }
+      let message: ChatMessage
       try {
-        draft = await this.renderInput(entry.input, context)
+        const draft = await this.renderInput(entry.input, context)
+        message = {
+          id: `steering:${entry.id}`,
+          role: 'user',
+          content: [{ type: 'text', text: draft.userPrompt }, ...(entry.input.attachments ?? [])],
+        }
+        await this.validateResources(message.content, context)
       } finally {
+        // 模板与附件共用本次输入的临时上下文，处理结束即撤销授权。
         this.templateInputs.delete(context)
       }
-      const message: ChatMessage = {
-        id: `steering:${entry.id}`,
-        role: 'user',
-        content: [{ type: 'text', text: draft.userPrompt }, ...(entry.input.attachments ?? [])],
-      }
-      await this.validateResources(message.content, context)
       this.active()
       entry.position = this.position()
       this.transcript.push(json(message))

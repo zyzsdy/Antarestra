@@ -430,6 +430,7 @@ it.each(['{{input}}', '{{last_message}}'])(
     const app = await setup({
       ai: true,
       steeringEnabled: true,
+      systemTemplate: '{{protected}}',
       userTemplate,
       driver: {
         id: 'driver',
@@ -439,10 +440,17 @@ it.each(['{{input}}', '{{last_message}}'])(
             await new Promise<void>((resolve) => {
               release = resolve
             })
-            return { content: [] }
+            return { content: [{ type: 'text', text: '引导前已生成的回复' }] }
           }
           return { content: [{ type: 'text', text: '按引导完成' }] }
         },
+      },
+    })
+    app.ctx.ai.registerTemplateVariable(app.ctx, {
+      id: 'protected',
+      async resolve(context) {
+        await app.ctx.ai.authorizeRunContext(context)
+        return '受保护的模板变量'
       },
     })
     await app.connection.receive('/ai 第一条')
@@ -463,8 +471,12 @@ it.each(['{{input}}', '{{last_message}}'])(
     expect(jobs[1]?.delivery).toBe('sent')
     expect(app.sent).toHaveLength(0)
     release()
-    await poll(() => app.sent.length).toBe(1)
+    await poll(() => app.sent.length).toBe(2)
     expect(calls).toBe(2)
+    expect(app.sent.map((message) => message.segments)).toEqual([
+      [{ type: 'text', text: '引导前已生成的回复' }],
+      [{ type: 'text', text: '按引导完成' }],
+    ])
     expect(requests[1]?.messages.at(-1)?.role).toBe('user')
     expect(JSON.stringify(requests[1]?.messages.at(-1))).toContain('改为中文')
   },

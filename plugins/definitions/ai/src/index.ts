@@ -153,7 +153,7 @@ export class AiService extends Service<Config> {
       !live ||
       live.record.status !== 'running' ||
       context.signal.aborted ||
-      !(live.ownsToolContext(context) || (!toolOnly && live.context === context))
+      !(live.ownsToolContext(context) || (!toolOnly && live.ownsRunContext(context)))
     )
       throw new AiError('forbidden', '运行上下文已失效', 403)
     await this.verify(live.access)

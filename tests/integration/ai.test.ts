@@ -22,6 +22,7 @@ import type {
   RunCommand,
   Tool,
   Provider,
+  RunContext,
 } from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
 import type { ConversationStateEvent } from '@antarestra/contracts'
@@ -2331,6 +2332,105 @@ it.each([true, false])(
     const result = await finish(app.ctx, app.access, run.id)
     expect(result.status).toBe('completed')
     expect(calls).toBe(enabled ? 2 : 1)
+  },
+)
+
+it.each([false, true])(
+  '引导上下文允许模板和附件鉴权，处理失败 %s 时也回收且不授予工具权限',
+  async (failTemplate) => {
+    let release!: () => void
+    let calls = 0
+    let rootContext: RunContext | undefined
+    let steeringContext: RunContext | undefined
+    let templateChecks = 0
+    let resourceChecks = 0
+    const app = await setup({
+      agent: agent({ steeringEnabled: true, systemTemplate: '{{protected}}' }),
+      driver: {
+        id: 'driver',
+        async generate() {
+          if (++calls === 1)
+            await new Promise<void>((resolve) => {
+              release = resolve
+            })
+          else {
+            // 运行仍在继续时，上一阶段泄漏的引导上下文就必须已失效。
+            await expect(app.ctx.ai.authorizeRunContext(steeringContext!)).rejects.toMatchObject({
+              code: 'forbidden',
+            })
+          }
+          return { content: [{ type: 'text', text: '已生成的回复' }] }
+        },
+      },
+    })
+    app.ctx.ai.registerTemplateVariable(app.ctx, {
+      id: 'protected',
+      async resolve(context) {
+        rootContext ??= context
+        if (context !== rootContext) steeringContext = context
+        const access = await app.ctx.ai.authorizeRunContext(context)
+        expect(access.workspaceId).toBe(app.access.workspaceId)
+        await expect(app.ctx.ai.authorizeRunContext({ ...context })).rejects.toMatchObject({
+          code: 'forbidden',
+        })
+        await expect(app.ctx.ai.authorizeRunContext(context, true)).rejects.toMatchObject({
+          code: 'forbidden',
+        })
+        const input = app.ctx.ai.running.get(context.runId)!.inputForContext(context)
+        if (context === steeringContext) {
+          expect(input?.text).toBe('引导补充')
+          if (failTemplate) throw new AiError('template_failed', '模板解析失败')
+        }
+        return '受保护的模板变量'
+      },
+    })
+    app.ctx.on('ai/template', async (context) => {
+      await app.ctx.ai.authorizeRunContext(context)
+      templateChecks++
+    })
+    app.ctx.ai.registerResources(app.ctx, {
+      resolve: async () => ({ data: 'YWJj', mimeType: 'text/plain', filename: '附件.txt' }),
+      async validate(_block, context) {
+        await app.ctx.ai.authorizeRunContext(context)
+        if (context === steeringContext) {
+          expect(app.ctx.ai.running.get(context.runId)!.inputForContext(context)?.text).toBe(
+            '引导补充',
+          )
+          resourceChecks++
+        }
+      },
+    })
+    const run = await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id),
+    )
+    await expect.poll(() => calls).toBe(1)
+    await app.ctx.ai.start(
+      app.access,
+      app.conversation.id,
+      await command(app.ctx, app.access, app.conversation.id, {
+        input: {
+          text: '引导补充',
+          attachments: [{ type: 'file', resourceId: 'attachment', mimeType: 'text/plain' }],
+        },
+      }),
+    )
+    const live = app.ctx.ai.running.get(run.id)!
+    release()
+    const result = await finish(app.ctx, app.access, run.id)
+    expect(result.status).toBe(failTemplate ? 'failed' : 'completed')
+    expect(result.error).toEqual(
+      failTemplate ? { code: 'template_failed', message: '模板解析失败' } : null,
+    )
+    expect(calls).toBe(failTemplate ? 1 : 2)
+    expect(templateChecks).toBe(failTemplate ? 1 : 2)
+    expect(resourceChecks).toBe(failTemplate ? 0 : 1)
+    expect(result.steering?.[0]?.position).toBe(failTemplate ? null : 1)
+    expect(live.inputForContext(steeringContext!)).toBeUndefined()
+    await expect(app.ctx.ai.authorizeRunContext(steeringContext!)).rejects.toMatchObject({
+      code: 'forbidden',
+    })
   },
 )
 
