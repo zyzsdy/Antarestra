@@ -24,6 +24,9 @@ it('缺少外层的用户示例分离状态并生成两条消息', () => {
 
 it.each([
   '<message>单条消息</message>',
+  '<message extra="1">兼容属性</message>',
+  '<message>正常</message><status x="1">状态</status>',
+  '<status x="1">状态</status><message cut="false">正文</message>',
   body,
   answer,
   `${body}<status>${status}</status>`,
@@ -44,7 +47,6 @@ it.each([
 it.each([
   '<message>未闭合',
   '<message/>',
-  '<message extra="1">无效属性</message>',
   '<message quote="">无效引用</message>',
   '<message quote="a&b">无效属性实体</message>',
   '<message><at id=""></at></message>',
@@ -57,7 +59,6 @@ it.each([
   '<message>正常</message><status>一</status><status>二</status>',
   '<status>一</status><message>正常</message><status>二</status>',
   '<message>正常</message><status>未闭合',
-  '<message>正常</message><status x="1">状态</status>',
   '<message>消息</message>'.repeat(21),
   '<message></message>'.repeat(21),
 ])('省略外层仍拒绝无效回复：%s', (text) => {

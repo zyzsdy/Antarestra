@@ -27,6 +27,7 @@ const settled = (app: Awaited<ReturnType<typeof setup>>, count: number) =>
 
 it.each([
   block(),
+  `<status x="1">${content}</status>`,
   `<im_reply>${block()}</im_reply>`,
   `${block()}<message></message>`,
   `<message></message>${block()}`,
@@ -66,7 +67,6 @@ it('状态不限制字段、格式或标签，不解码实体、不裁剪空白�
 it.each([
   '<status>未闭合',
   '正文\n<status>未闭合',
-  '<status x="1">状态</status>',
   '</status>',
   `${block()}${block()}`,
   `<im_reply>${block()}${block()}</im_reply>`,

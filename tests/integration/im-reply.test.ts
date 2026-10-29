@@ -147,7 +147,6 @@ it.each([
   '<at id="123\u0000"></at>',
   `<at id="${'x'.repeat(201)}"></at>`,
   '<at id="123" id="456"></at>',
-  '<at id="123" name="某人"></at>',
   '<at id="123">某人</at>',
   '<at id="123"><at id="456"></at></at>',
   '<at id="123"/>',
@@ -161,7 +160,6 @@ it.each([
 it.each([
   '<im_reply>',
   '<im_reply></im_reply>',
-  '<im_reply x="1"><message>好</message></im_reply>',
   '<im_reply><message>好</message>额外文字</im_reply>',
   '<im_reply><message>好</message></im_reply>额外文字',
   '<im_reply><image> </image></im_reply>',

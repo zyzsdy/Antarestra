@@ -53,15 +53,37 @@ function decodeAttribute(value: string) {
   return decode(value)
 }
 
+// 先按完整属性值划分标签，避免未知属性中的 > 或标签文本被误当成正文。
+const attributeValue = /"[^"]*"|'[^']*'|[^\s"'=<>`]+/.source
+const attributeName = /[a-zA-Z_:][\w:.-]*/.source
+const attributes = `((?:\\s+${attributeName}(?:\\s*=\\s*(?:${attributeValue}))?)*\\s*)`
+const openingTag = (names: string) => `<(${names})(?=[\\s>])${attributes}>`
+const statusTag = new RegExp(`^${openingTag('status')}`)
+const wrapperTag = new RegExp(`^${openingTag('im_reply')}`)
+const messageTag = new RegExp(`^${openingTag('message|image|sticker|file')}`)
+const mentionTag = new RegExp(`${openingTag('at')}<\\/at>`, 'g')
+
+function knownAttribute(source: string, name: string) {
+  const attribute = new RegExp(`\\s+(${attributeName})(?:\\s*=\\s*(${attributeValue}))?`, 'g')
+  let value: string | undefined
+  for (const match of source.matchAll(attribute)) {
+    if (match[1] !== name) continue
+    if (value !== undefined) throw new Error(`IM 回复属性 ${name} 重复`)
+    const raw = match[2]
+    if (raw === undefined) throw new Error(`IM 回复属性 ${name} 缺少值`)
+    value = decodeAttribute(/^["']/.test(raw) ? raw.slice(1, -1) : raw)
+  }
+  return value
+}
+
 function messageSegments(value: string): MessageSegment[] {
   const source = value.trim()
   const segments: MessageSegment[] = []
-  const at = /<at\s+id="([^"<>]*)"><\/at>/g
   let offset = 0
-  for (const match of source.matchAll(at)) {
+  for (const match of source.matchAll(mentionTag)) {
     const text = decode(source.slice(offset, match.index))
     if (text) segments.push({ type: 'text', text })
-    const userId = decodeAttribute(match[1]!)
+    const userId = knownAttribute(match[2]!, 'id')
     if (!userId || userId.length > 200 || /\s|[\u0000-\u001f]/.test(userId))
       throw new Error('IM 提及用户 ID 无效')
     segments.push({ type: 'mention', userId })
@@ -114,14 +136,15 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
   let status: string | undefined
   const consumeStatus = () => {
     if (status !== undefined) throw new Error('IM 回复只能包含一个状态块')
-    if (!source.startsWith('<status>')) throw new Error('IM 状态外层格式无效')
-    const end = source.indexOf('</status>', '<status>'.length)
+    const opening = statusTag.exec(source)
+    if (!opening) throw new Error('IM 状态外层格式无效')
+    const end = source.indexOf('</status>', opening[0].length)
     if (end < 0) throw new Error('IM 状态标签未闭合')
     // 状态正文是模型自由文本：保留空白、实体和模板标记，不解析内部格式。
-    status = source.slice('<status>'.length, end)
+    status = source.slice(opening[0].length, end)
     source = source.slice(end + '</status>'.length).trimStart()
   }
-  if (source.startsWith('<status>')) consumeStatus()
+  if (/^<status(?:\s|>|\/|$)/.test(source)) consumeStatus()
   const wrapped = /^<im_reply(?:\s|>|\/|$)/.test(source)
   // 兼容模型遗漏外层的消息标签序列，后续复用完整的白名单校验。
   if (!wrapped && !/^<(?:message|image|sticker|file)(?:\s|>|\/|$)/.test(source)) {
@@ -138,37 +161,50 @@ export function parseReplyWithStatus(text: string, capabilities?: readonly strin
     return { messages, ...(status !== undefined ? { status } : {}) }
   }
   if (wrapped) {
-    if (!source.startsWith('<im_reply>')) throw new Error('IM 回复外层格式无效')
-    source = source.slice('<im_reply>'.length).trimStart()
+    const opening = wrapperTag.exec(source)
+    if (!opening) throw new Error('IM 回复外层格式无效')
+    source = source.slice(opening[0].length).trimStart()
   }
-  const tag = /^<(message|image|sticker|file)(?:\s+quote="([^"<>]*)")?>([\s\S]*?)<\/\1>/
   const messages: MessageSegment[][] = []
   let count = 0
   let hasStatus = false
   while (wrapped ? !source.startsWith('</im_reply>') : source.length > 0) {
-    if (source.startsWith('<status>')) {
+    if (/^<status(?:\s|>|\/|$)/.test(source)) {
       consumeStatus()
       hasStatus = true
       continue
     }
-    const match = tag.exec(source)
+    const match = messageTag.exec(source)
     if (!match) throw new Error('IM 回复标签格式无效')
-    source = source.slice(match[0].length).trimStart()
+    const closing = `</${match[1]}>`
+    // message 内的 at 属性也可包含结束标签文本，查找正文边界时须跳过完整开标签。
+    const boundary = new RegExp(
+      match[1] === 'message' ? `${openingTag('at')}|${closing}` : closing,
+      'g',
+    )
+    boundary.lastIndex = match[0].length
+    let end: RegExpExecArray | null
+    do {
+      end = boundary.exec(source)
+    } while (end && end[0] !== closing)
+    if (!end) throw new Error('IM 回复标签未闭合')
+    const body = source.slice(match[0].length, end.index)
+    source = source.slice(end.index + closing.length).trimStart()
     if (++count > maxReplyMessages) throw new Error('IM 回复条数超过上限')
     const segments: MessageSegment[] = []
-    if (match[2] !== undefined) {
+    const messageId = knownAttribute(match[2]!, 'quote')
+    if (messageId !== undefined) {
       if (match[1] === 'file') throw new Error('文件发送不支持引用消息')
-      const messageId = decodeAttribute(match[2])
       if (!messageId || messageId.length > 200 || /\s|[\u0000-\u001f]/.test(messageId))
         throw new Error('IM 引用消息 ID 无效')
       segments.push({ type: 'reply', messageId })
     }
     if (match[1] === 'message') {
-      const content = messageSegments(match[3]!)
+      const content = messageSegments(body)
       if (!content.length) continue
       segments.push(...content)
     } else {
-      const value = decode(match[3]!).trim()
+      const value = decode(body).trim()
       if (!value)
         throw new Error(match[1] === 'file' ? 'IM 文件地址不能为空' : 'IM 图片地址不能为空')
       segments.push({
