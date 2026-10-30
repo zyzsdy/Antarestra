@@ -5,10 +5,75 @@ import imAi from '@antarestra/plugin-im-ai'
 import { AiError } from '@antarestra/ai'
 import { pluginId } from '../../plugins/features/im-ai/src/store.js'
 import type { Tables } from '../../plugins/features/im-ai/src/store.js'
+import { normalizeMessage } from '../../plugins/adapters/im-onebot/src/message.js'
 import { cleanup, setup } from './im-features-fixture.js'
 
 afterEach(cleanup)
 const poll = (read: () => unknown) => expect.poll(read, { timeout: 5000, interval: 20 })
+
+it.each(['数组', 'CQ 字符串'] as const)(
+  'OneBot %s 的纯 @ 和引用加多个 @ 均按被 at 激活，无需附带正文',
+  async (format) => {
+    const app = await setup({ ai: true })
+    const connection = await app.connect('qq-mention', '152408856')
+    for (const quoted of [false, true]) {
+      const message = normalizeMessage(
+        {
+          post_type: 'message',
+          message_type: 'group',
+          self_id: 152408856,
+          user_id: quoted ? 974863709 : 79338528,
+          group_id: 40894918,
+          message_id: quoted ? -144870531 : -505868758,
+          message:
+            format === '数组'
+              ? [
+                  ...(quoted
+                    ? [
+                        { type: 'reply', data: { id: '-1678607898' } },
+                        { type: 'at', data: { qq: '427793137' } },
+                      ]
+                    : []),
+                  { type: 'at', data: { qq: '152408856' } },
+                  { type: 'text', data: { text: ' ' } },
+                ]
+              : `${quoted ? '[CQ:reply,id=-1678607898][CQ:at,qq=427793137]' : ''}[CQ:at,qq=152408856] `,
+        },
+        '152408856',
+      )!
+      expect(message.segments).toContainEqual({ type: 'mention', userId: '152408856' })
+      await connection.handle.receive(message)
+      expect(await app.jobs()).toHaveLength(quoted ? 2 : 1)
+      await poll(() => app.sent.length).toBe(quoted ? 2 : 1)
+      const job = (await app.jobs()).at(-1)!
+      expect(job.status).toBe('completed')
+      expect(job.input).toContain('激活原因：被 at')
+      expect(job.input).toContain('[@,152408856]')
+      if (quoted) expect(job.input).toContain('[引用,-1678607898][@,427793137]')
+    }
+    expect(app.aiState.calls).toBe(2)
+  },
+)
+
+it('无正文的 @ 仍遵循目标账号、启用条件和 all 组合，空白消息不激活', async () => {
+  const app = await setup({ ai: true })
+  await app.connection.receive(' \n ')
+  await app.connection.receive('', { segments: [] })
+  await app.connection.receive('', { segments: [{ type: 'mention', userId: '06' }] })
+  expect(await app.jobs()).toEqual([])
+  for (const activation of [
+    { mention: false },
+    { mode: 'all' as const, mention: true, keywords: ['问题'] },
+  ]) {
+    await app.ctx.im.setPolicy('qq-a', {
+      ...app.defaultPolicy,
+      chats: { 'group:40894918': { activation } },
+    })
+    await app.connection.receive('', { segments: [{ type: 'mention', userId: '05' }] })
+  }
+  expect(await app.jobs()).toEqual([])
+  expect(app.aiState.calls).toBe(0)
+})
 
 it('上游 503 后同一运行自动重试，IM 只投递一次成功回复', async () => {
   let calls = 0

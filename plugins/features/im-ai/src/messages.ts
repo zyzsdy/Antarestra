@@ -14,7 +14,11 @@ export function activationReason(
   dynamic = false,
 ) {
   const text = messageText(message)
-  if (!text && !message.message.segments.some((part) => 'url' in part)) return ''
+  const mentioned = message.message.segments.some(
+    (part) => part.type === 'mention' && part.userId === message.connection.accountId,
+  )
+  // 纯 @ 也是有效激活输入，不能因没有正文或媒体而提前丢弃。
+  if (!text && !mentioned && !message.message.segments.some((part) => 'url' in part)) return ''
   const rule =
     activation ??
     (message.message.chat.type === 'private'
@@ -27,13 +31,7 @@ export function activationReason(
     if (value) reasons.push(reason)
   }
   if (rule.always) check(true, '每条消息')
-  if (rule.mention)
-    check(
-      message.message.segments.some(
-        (part) => part.type === 'mention' && part.userId === message.connection.accountId,
-      ),
-      '被 at',
-    )
+  if (rule.mention) check(mentioned, '被 at')
   if (rule.reply) check(message.message.replyToBot === true, '回复或引用机器人')
   if (rule.prefixes?.length)
     check(

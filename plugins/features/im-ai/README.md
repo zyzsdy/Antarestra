@@ -46,7 +46,7 @@ policy:
         maxPerMinute: 20
 ```
 
-`activation` 支持 `always`、`mention`、`reply`、`prefixes`、`keywords`；`mode` 为 `any` 或 `all`。同类多个前缀、关键词内部采用任意匹配。回复激活信任适配器核实后的 `replyToBot` 或当前空间归档中已验证的机器人原消息，不会信任用户输入的引用文字。激活判定在本地完成，不调用模型。默认每空间每分钟最多接受 20 次激活，默认无冷却；可通过策略修改。
+`activation` 支持 `always`、`mention`、`reply`、`prefixes`、`keywords`；`mode` 为 `any` 或 `all`。同类多个前缀、关键词内部采用任意匹配。`mention` 匹配当前连接的机器人账号，单独 @ 或“引用 + @”无需附带正文或媒体即可命中，仍遵循 `mode` 组合条件。回复激活信任适配器核实后的 `replyToBot` 或当前空间归档中已验证的机器人原消息，不会信任用户输入的引用文字。激活判定在本地完成，不调用模型。默认每空间每分钟最多接受 20 次激活，默认无冷却；可通过策略修改。
 
 群消息由 IM 核心持久化，先归档再处理命令与 AI；AI 关闭时仍记录已准入的群消息。私聊不重复归档。旧 context、recentLimit 与 recentMaxAgeMs 配置已移除；数据库中已保存的旧策略会转换为模板和条数配置。新设置在“IM 接入”面板按接入、聊天类型或指定聊天继承。
 
