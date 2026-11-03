@@ -11,7 +11,7 @@ import { imageSize } from 'image-size'
 import { prepareForwardImages } from './forward.js'
 import { id } from './message.js'
 
-export const emojiIds = ['424', '10068', '264', '128560', '265', '76', '123', '128557', '49', '66']
+export const emojiIds = ['424', '10068', '264', '128560', '265', '76', '123', '128557', '49', '66', '29']
 const emojiGuide = `可用的 emoji_id 与含义：
 - 续标识（ID：424，外观：快速按一个红色按钮，描述：抽象回复，万能回复，既可以表示“太对了”，“赞同”，也可以表示“太搞笑了”“不正常”“太抽象了”，不知道回复什么的时候就回复这个！）
 - 问号（ID：10068，外观：emoji 问号，描述：“怎么回事”，“什么鬼”）
@@ -22,7 +22,8 @@ const emojiGuide = `可用的 emoji_id 与含义：
 - NO（ID：123，外观：摇动手指，描述：玩笑意味多的“不赞同”）
 - 大哭（ID：128557，外观：emoji 大哭，描述：玩笑意味多的“不——”）
 - 拥抱（ID：49，描述：安慰）
-- 爱心（ID：66）`
+- 爱心（ID：66）
+- 悠闲 (ID：29，外观：一个戴着绿色帽子，嘴里叼着绿色叶子的表情。 描述：比起悠闲和放松现在更类似于“戴绿帽”和其他的引申义。)`
 
 export function registerTools(ctx: Context) {
   // 多实例注册的实现相同；实际连接始终由本次运行的空间解析。
