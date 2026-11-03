@@ -1,6 +1,19 @@
 import type { ContentBlock, ToolImage } from '@antarestra/contracts'
 import type { ResolvedResource, StructuredToolResult } from './types.js'
-import { check } from './utils.js'
+import { AiError, check } from './utils.js'
+
+export function validateImagePixels(width: number, height: number) {
+  check(
+    Number.isSafeInteger(width) && width > 0 && Number.isSafeInteger(height) && height > 0,
+    '图片尺寸无效',
+  )
+  // 单张图片的宽高乘积上限；压缩后的文件大小不能代表解码后的像素数。
+  if (width * height > 36_000_000)
+    throw new AiError(
+      'image_too_large',
+      `图片尺寸 ${width}×${height}（${width * height} 像素）超过 36000000 像素上限，请缩小图片后重试`,
+    )
+}
 
 export function validateToolImages(images: unknown): asserts images is ToolImage[] {
   check(Array.isArray(images) && images.length <= 20, '工具图片列表无效')
@@ -13,13 +26,7 @@ export function validateToolImages(images: unknown): asserts images is ToolImage
       Number.isSafeInteger(image.size) && image.size > 0 && image.size <= 8 * 1024 ** 2,
       '图片超过 8 MiB',
     )
-    check(
-      Number.isSafeInteger(image.width) &&
-        image.width > 0 &&
-        Number.isSafeInteger(image.height) &&
-        image.height > 0,
-      '图片尺寸无效',
-    )
+    validateImagePixels(image.width, image.height)
   }
 }
 export function structuredResult(value: unknown): StructuredToolResult {

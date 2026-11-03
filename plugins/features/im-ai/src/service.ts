@@ -409,8 +409,8 @@ export class ImAiService extends Service<Config> {
     if (!command) {
       const { conversation } = await this.ai.getConversation(access, live!.record.conversationId)
       const snapshot = row.snapshot
-        ? await refreshAttachments(JSON.parse(row.snapshot) as InputSnapshot, (id) =>
-            this.ctx.im.mediaAvailable(row.workspace_id, id),
+        ? await refreshAttachments(JSON.parse(row.snapshot) as InputSnapshot, (id, type) =>
+            this.ctx.im.mediaAttachmentAvailable(row.workspace_id, id, type),
           )
         : undefined
       if (snapshot) {
@@ -515,7 +515,7 @@ export class ImAiService extends Service<Config> {
         if (backgroundGuard && row.status === 'queued' && row.snapshot && row.command) {
           const snapshot = await refreshAttachments(
             JSON.parse(row.snapshot) as InputSnapshot,
-            (id) => this.ctx.im.mediaAvailable(row.workspace_id, id),
+            (id, type) => this.ctx.im.mediaAttachmentAvailable(row.workspace_id, id, type),
           )
           snapshot.im_status = await this.readStatus(row.workspace_id)
           const command = JSON.parse(row.command) as RunCommand
@@ -580,8 +580,8 @@ export class ImAiService extends Service<Config> {
           }
           const { conversation } = await this.ai.getConversation(access, session.conversation_id)
           const snapshot = row.snapshot
-            ? await refreshAttachments(JSON.parse(row.snapshot) as InputSnapshot, (id) =>
-                this.ctx.im.mediaAvailable(row.workspace_id, id),
+            ? await refreshAttachments(JSON.parse(row.snapshot) as InputSnapshot, (id, type) =>
+                this.ctx.im.mediaAttachmentAvailable(row.workspace_id, id, type),
               )
             : undefined
           if (snapshot) {

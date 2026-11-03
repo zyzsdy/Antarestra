@@ -668,6 +668,66 @@ describe('AI 核心与实际 SQLite 数据库', () => {
       expect((await send(app)).status).toBe('completed')
     }
   })
+  it.each(['持久化', '临时', '结构化返回'] as const)(
+    '%s工具图片超出像素上限时返回错误，模型可以继续回复',
+    async (mode) => {
+      let calls = 0
+      const app = await setup({
+        imageInput: true,
+        agent: agent({ toolIds: ['large_image'] }),
+        driver: {
+          id: 'driver',
+          async generate(request, connection) {
+            if (calls++ === 0)
+              return {
+                content: [{ type: 'tool-call', id: 'large', name: 'large_image', arguments: {} }],
+              }
+            const result = request.messages
+              .flatMap((message) => message.content)
+              .find((block) => block.type === 'tool-result')
+            expect(result).toMatchObject({
+              isError: true,
+              content: { code: 'image_too_large', error: expect.stringContaining('36000001') },
+            })
+            expect(result).not.toHaveProperty('images')
+            expect(connection.resources?.size ?? 0).toBe(0)
+            return { content: [{ type: 'text', text: '图片太大，请缩小后重试' }] }
+          },
+        },
+      })
+      const store = vi.fn(async () => {
+        throw new Error('超限图片不应上传')
+      })
+      app.ctx.ai.registerResources(app.ctx, { validate: async () => {}, storeImage: store })
+      app.ctx.ai.registerTool(app.ctx, {
+        id: 'large_image',
+        description: '',
+        parameters: { type: 'object' },
+        resultMode: 'structured',
+        async execute(_args, context) {
+          const image = {
+            data: Buffer.from('abc'),
+            mimeType: 'image/png',
+            filename: 'large.png',
+            width: 36_000_001,
+            height: 1,
+          }
+          if (mode === '结构化返回')
+            return {
+              content: {},
+              images: [{ type: 'image', resourceId: 'oversized', size: 3, ...image }],
+            }
+          return {
+            content: {},
+            images: [await app.ctx.ai.storeToolImage(context, image, mode === '持久化')],
+          }
+        },
+      })
+      expect((await send(app)).status).toBe('completed')
+      expect(calls).toBe(2)
+      expect(store).not.toHaveBeenCalled()
+    },
+  )
   it('工具读取资源使用真实上下文及运行固定的解析器，拒绝伪造上下文', async () => {
     let calls = 0
     const app = await setup({

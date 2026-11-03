@@ -9,6 +9,46 @@ import { cleanup, setup } from './im-features-fixture.js'
 
 afterEach(cleanup)
 
+it('附件预检随归档插件卸载等待完成，重新注册后使用新实现', async () => {
+  const app = await setup()
+  let entered = false
+  let release!: () => void
+  const owner = await app.ctx.plugin({
+    apply(ctx) {
+      app.ctx.im.registerMediaArchive(ctx, {
+        store: async () => {
+          throw new Error('本测试不归档文件')
+        },
+        retain: async () => {},
+        available: async () => true,
+        async attachmentAvailable() {
+          entered = true
+          await new Promise<void>((resolve) => {
+            release = resolve
+          })
+          return false
+        },
+      })
+    },
+  })
+  const checking = app.ctx.im.mediaAttachmentAvailable('workspace', 'image', 'image')
+  await expect.poll(() => entered).toBe(true)
+  let disposed = false
+  const disposal = owner.dispose().then(() => {
+    disposed = true
+  })
+  await expect.poll(() => app.ctx.im.mediaAvailable('workspace', 'image')).toBe(false)
+  expect(disposed).toBe(false)
+  release()
+  expect(await checking).toBe(false)
+  await disposal
+  expect(disposed).toBe(true)
+  const replacement = archive(app)
+  expect(await app.ctx.im.mediaAttachmentAvailable('workspace', 'image', 'image')).toBe(true)
+  await replacement.dispose()
+  expect(await app.ctx.im.mediaAttachmentAvailable('workspace', 'image', 'image')).toBe(false)
+})
+
 function archive(app: Awaited<ReturnType<typeof setup>>) {
   const store = vi.fn<MediaArchive['store']>(async (_message, media, download, signal) => {
     const result = await download(1000, signal)

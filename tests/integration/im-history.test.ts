@@ -57,6 +57,121 @@ const download = async (_message: unknown, media: MediaSegment) => ({
   filename: media.name ?? 'file.pdf',
 })
 
+function imageBytes(width = 1, height = 1) {
+  const bytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=',
+    'base64',
+  )
+  // 尺寸检查只读取文件头，无需分配超大解码像素缓冲区。
+  bytes.writeUInt32BE(width, 16)
+  bytes.writeUInt32BE(height, 20)
+  return bytes
+}
+
+it.each(['group', 'private'] as const)(
+  '%s 自动附图跳过超大像素图片，保留其他附件和归档，主动读取返回工具错误',
+  async (chatType) => {
+    let calls = 0
+    let oversizedId = ''
+    let failure: unknown
+    const app = await setup({
+      ai: true,
+      contextWindow: 100000,
+      modelInput: ['text', 'image', 'file'],
+      toolIds: ['workspace_file_read'],
+      driver: {
+        id: 'driver',
+        async generate(request, connection) {
+          calls++
+          try {
+            const blocks = request.messages.flatMap((message) => message.content)
+            const text = blocks
+              .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+              .join('\n')
+            expect(text).toContain('[图片,')
+            oversizedId = text.match(/\[图片,([^\]]+)\]/)![1]!
+            expect(connection.resources?.has(oversizedId)).toBe(false)
+            const attachments = blocks.flatMap((block) =>
+              block.type === 'image' || block.type === 'file' ? [block] : [],
+            )
+            expect(attachments.map((file) => file.filename)).toEqual([
+              'normal.png',
+              'boundary.png',
+              'note.pdf',
+            ])
+            attachments.forEach((file, index) => {
+              expect(text).toContain(`附件${index + 1}）`)
+              expect(connection.resources?.has(file.resourceId)).toBe(true)
+            })
+            if (calls === 1)
+              return {
+                content: [
+                  {
+                    type: 'tool-call',
+                    id: 'read-large',
+                    name: 'workspace_file_read',
+                    arguments: { resourceId: oversizedId },
+                  },
+                ],
+              }
+            expect(blocks).toContainEqual(
+              expect.objectContaining({
+                type: 'tool-result',
+                id: 'read-large',
+                isError: true,
+                content: { error: expect.stringContaining('超过 36000000 像素上限') },
+              }),
+            )
+            expect(blocks.find((block) => block.type === 'tool-result')).not.toHaveProperty(
+              'images',
+            )
+            return { content: [{ type: 'text', text: '已跳过超大图片' }] }
+          } catch (error) {
+            failure = error
+            throw error
+          }
+        },
+      },
+    })
+    await storage(app)
+    const connection = await app.connect(
+      'pixel-limit',
+      '22',
+      {
+        ...app.defaultPolicy,
+        private: { mode: 'blacklist', ids: [], defaults: { ai: true, agentId: 'assistant' } },
+      },
+      async (_message, media) => ({
+        data:
+          media.name === 'large.png'
+            ? imageBytes(9840, 8454)
+            : media.name === 'boundary.png'
+              ? imageBytes(6000, 6000)
+              : imageBytes(),
+        mimeType: media.type === 'image' ? 'image/png' : 'application/pdf',
+        filename: media.name!,
+      }),
+    )
+    await connection.receive('', {
+      chat: { type: chatType, id: chatType === 'group' ? '40894918' : 'user' },
+      segments: [
+        { type: 'text', text: '/ai 查看图片' },
+        { type: 'image', url: 'https://example.invalid/normal', name: 'normal.png' },
+        { type: 'image', url: 'https://example.invalid/large', name: 'large.png' },
+        { type: 'image', url: 'https://example.invalid/boundary', name: 'boundary.png' },
+        { type: 'file', url: 'https://example.invalid/note', name: 'note.pdf' },
+      ],
+    })
+    await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
+    if (failure) throw failure
+    expect(calls).toBe(2)
+    const workspaceId = app.messages.at(-1)!.workspaceId
+    expect(await app.ctx.im.mediaAvailable(workspaceId, oversizedId)).toBe(true)
+    expect(await app.ctx.im.mediaAttachmentAvailable('foreign', oversizedId, 'image')).toBe(false)
+    expect(JSON.parse((await app.jobs())[0]!.snapshot!).attachments).toHaveLength(3)
+  },
+)
+
 it('不依赖 AI 激活归档群文本、命令和机器人；去重并保持原始引用，私聊不存档', async () => {
   const app = await setup()
   await app.connection.receive('周会 100% 计划', {
@@ -682,7 +797,7 @@ it('私聊图片进入原 AI 会话附件，不进入群归档或群媒体清理
     'private-media',
     '12',
     { private: { mode: 'blacklist', ids: [], defaults: { ai: true, agentId: 'assistant' } } },
-    download,
+    async (message, media) => ({ ...(await download(message, media)), data: imageBytes() }),
   )
   await privateChat.receive('', {
     chat: { type: 'private', id: 'user' },
@@ -697,7 +812,7 @@ it('私聊图片进入原 AI 会话附件，不进入群归档或群媒体清理
   const access = await app.ctx.workspaceFile.authorize('im', message.request)
   expect(
     await app.ctx.workspaceFile.resource(access, snapshot.attachments[0].resourceId),
-  ).toMatchObject({ size: 3 })
+  ).toMatchObject({ size: imageBytes().length })
 })
 
 it('群消息中的模板字样作为原文传送，不递归替换其他消息', async () => {

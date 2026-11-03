@@ -54,7 +54,7 @@ import { defaultContextPolicy } from '@antarestra/contracts'
 export * from './types.js'
 export { AiError } from './utils.js'
 export { validateAgent } from './validation.js'
-export { toolResultContent } from './tool-results.js'
+export { toolResultContent, validateImagePixels } from './tool-results.js'
 import { validateToolImages } from './tool-results.js'
 export type * from '@antarestra/contracts'
 

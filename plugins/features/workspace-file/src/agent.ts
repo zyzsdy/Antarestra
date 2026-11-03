@@ -2,7 +2,7 @@ import type { Context } from '@antarestra/plugin-sdk'
 import type { RunContext } from '@antarestra/ai'
 import { AuthError } from '@antarestra/rbac'
 import { AiError } from '@antarestra/ai'
-import { imageDimensions } from './validation.js'
+import { aiImageDimensions } from './validation.js'
 import type { FileAccess } from './service.js'
 export const agentFiles = {
   inject: ['ai', 'workspaceFile', 'rbac'],
@@ -196,7 +196,7 @@ export const agentFiles = {
     ctx.ai.registerTool(ctx, {
       id: 'workspace_file_read',
       description:
-        '读取当前工作空间的文本或查看图片。path 和 resourceId 只填一个：path 仅用于 UTF-8 文本；resourceId 可用于文本或图片，包括 IM 消息中 [图片,ID] 的资源 ID。文本最多 1 MiB；图片支持 PNG、JPEG、GIF、WebP，最多 8 MiB，需模型支持图片输入。此工具不能读取 bash 等工具使用的共享远端文件；远端文件使用 read。',
+        '读取当前工作空间的文本或查看图片。path 和 resourceId 只填一个：path 仅用于 UTF-8 文本；resourceId 可用于文本或图片，包括 IM 消息中 [图片,ID] 的资源 ID。文本最多 1 MiB；图片支持 PNG、JPEG、GIF、WebP，最多 8 MiB、3600 万像素，超限会返回错误，需模型支持图片输入。此工具不能读取 bash 等工具使用的共享远端文件；远端文件使用 read。',
       parameters: {
         type: 'object',
         properties: {
@@ -235,7 +235,7 @@ export const agentFiles = {
               ? (await ctx.workspaceFile.readResource(access, resource.id, limit)).bytes
               : await ctx.workspaceFile.read(access, args.path)
             if (isImage && resource) {
-              const dimensions = imageDimensions(bytes, resource.mimeType)
+              const dimensions = aiImageDimensions(bytes, resource.mimeType)
               return {
                 content: {
                   resourceId: resource.id,
@@ -271,7 +271,7 @@ export const agentFiles = {
             }
           })
         } catch (error) {
-          if (!(error instanceof AuthError)) throw error
+          if (!(error instanceof AuthError) && !(error instanceof AiError)) throw error
           return { content: { error: error.message }, isError: true }
         }
       },

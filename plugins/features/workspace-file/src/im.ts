@@ -1,6 +1,8 @@
 import type { Context } from '@antarestra/plugin-sdk'
 import '@antarestra/im'
 import { AuthError } from '@antarestra/rbac'
+import { AiError } from '@antarestra/ai'
+import { aiImageDimensions } from './validation.js'
 
 export const imFiles = {
   inject: ['im', 'workspaceFile'],
@@ -79,6 +81,24 @@ export const imFiles = {
           policy.mediaRetentionDays ?? 7,
           policy.mediaMaxBytes ?? 0,
         ),
+      async attachmentAvailable(workspaceId, resourceId, type) {
+        try {
+          const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)
+          if (type === 'image') {
+            const file = await service.readResource(access, resourceId, 8 * 1024 ** 2)
+            if (!/^image\/(png|jpeg|gif|webp)$/.test(file.mimeType)) return false
+            aiImageDimensions(file.bytes, file.mimeType)
+          } else {
+            await service.resource(access, resourceId)
+          }
+          return true
+        } catch (error) {
+          if (error instanceof AuthError && [400, 404, 410, 413].includes(error.status))
+            return false
+          if (error instanceof AiError && error.code === 'image_too_large') return false
+          throw error
+        }
+      },
       async available(workspaceId, resourceId) {
         try {
           const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)

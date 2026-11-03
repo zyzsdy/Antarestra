@@ -1,5 +1,13 @@
 import { AuthError } from '@antarestra/rbac'
 import { imageSize } from 'image-size'
+import { validateImagePixels } from '@antarestra/ai'
+
+export function aiImageDimensions(bytes: Uint8Array, mimeType: string) {
+  if (bytes.byteLength > 8 * 1024 ** 2) throw new AuthError(413, '图片超过 8 MiB 读取上限')
+  const dimensions = imageDimensions(bytes, mimeType)
+  validateImagePixels(dimensions.width, dimensions.height)
+  return dimensions
+}
 
 export function imageDimensions(bytes: Uint8Array, mimeType: string) {
   let dimensions: ReturnType<typeof imageSize>

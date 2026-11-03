@@ -114,11 +114,11 @@ export function renderInput(snapshot: InputSnapshot) {
 }
 export async function refreshAttachments(
   snapshot: InputSnapshot,
-  available: (id: string) => Promise<boolean>,
+  available: (id: string, type: 'image' | 'file') => Promise<boolean>,
 ) {
   const attachments: InputSnapshot['attachments'] = []
   for (const file of snapshot.attachments)
-    if (await available(file.resourceId)) attachments.push(file)
+    if (await available(file.resourceId, file.type)) attachments.push(file)
   if (attachments.length === snapshot.attachments.length) return snapshot
   const indices = new Map(attachments.map((file, index) => [file.resourceId, index + 1]))
   const update = (text: string) =>

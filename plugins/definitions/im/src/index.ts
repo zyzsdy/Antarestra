@@ -909,6 +909,15 @@ export class ImService extends Service<ServiceOptions> {
       retain: (workspaceId, policy) => track(() => archive.retain(workspaceId, policy)),
       available: (workspaceId, resourceId) =>
         track(() => archive.available(workspaceId, resourceId)),
+      ...(archive.attachmentAvailable
+        ? {
+            attachmentAvailable: (
+              workspaceId: string,
+              resourceId: string,
+              type: 'image' | 'file',
+            ) => track(() => archive.attachmentAvailable!(workspaceId, resourceId, type)),
+          }
+        : {}),
     }
     return owner.effect(() => {
       this.mediaArchive = registered
@@ -1030,6 +1039,11 @@ export class ImService extends Service<ServiceOptions> {
   }
   async mediaAvailable(workspaceId: string, resourceId: string) {
     return this.mediaArchive ? this.mediaArchive.available(workspaceId, resourceId) : false
+  }
+  async mediaAttachmentAvailable(workspaceId: string, resourceId: string, type: 'image' | 'file') {
+    return this.mediaArchive?.attachmentAvailable
+      ? this.mediaArchive.attachmentAvailable(workspaceId, resourceId, type)
+      : this.mediaAvailable(workspaceId, resourceId)
   }
   private async archiveMessage(entry: Entry, workspaceId: string, message: IncomingMessage) {
     return this.exclusive(`history:${workspaceId}`, async () => {

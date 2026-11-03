@@ -125,6 +125,12 @@ export interface MediaArchive {
   ): Promise<NonNullable<ArchivedMedia['resource']>>
   retain(workspaceId: string, policy: Readonly<ChatPolicy>): Promise<void>
   available(workspaceId: string, resourceId: string): Promise<boolean>
+  /** 检查媒体能否作为 AI 输入；不改变归档文件是否存在的判断。 */
+  attachmentAvailable?(
+    workspaceId: string,
+    resourceId: string,
+    type: 'image' | 'file',
+  ): Promise<boolean>
 }
 export interface IncomingMessage {
   id: string
