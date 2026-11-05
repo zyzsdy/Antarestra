@@ -124,14 +124,64 @@ function fileUrl(value: string, capabilities?: readonly string[]) {
   return imageUrl(value)
 }
 
+function closingTagIndex(source: string, name: string, offset: number) {
+  const closing = `</${name}>`
+  // 跳过完整属性和自由文本状态块，避免其中的标签文本被当成外层边界。
+  const boundary = new RegExp(`${openingTag(attributeName)}|${closing}`, 'g')
+  boundary.lastIndex = offset
+  let match: RegExpExecArray | null
+  while ((match = boundary.exec(source))) {
+    if (match[0] === closing) return match.index
+    if (name === 'im_reply' && match[1] === 'status') {
+      const end = source.indexOf('</status>', boundary.lastIndex)
+      if (end < 0) return -1
+      boundary.lastIndex = end + '</status>'.length
+    }
+  }
+  return -1
+}
+
+function extractStructuredReply(text: string) {
+  const tags = 'im_reply|message|image|sticker|file|status'
+  const token = new RegExp(`${openingTag(attributeName)}|<(${tags})(?:\\s|>|/|$)`, 'g')
+  const blocks: { name: string; source: string }[] = []
+  let structured = false
+  let wrapped = false
+  let match: RegExpExecArray | null
+  while ((match = token.exec(text))) {
+    const name = match[1] ?? match[3]!
+    if (!tags.split('|').includes(name)) continue
+    const end = match[1]
+      ? name === 'status'
+        ? text.indexOf('</status>', token.lastIndex)
+        : closingTagIndex(text, name, token.lastIndex)
+      : -1
+    if (end < 0) {
+      // 已识别的格式错误留给原解析器拒绝，不能丢弃坏消息后发送部分回复。
+      blocks.push({ name, source: text.slice(match.index) })
+      break
+    }
+    token.lastIndex = end + `</${name}>`.length
+    blocks.push({ name, source: text.slice(match.index, token.lastIndex) })
+    if (name !== 'status') structured = true
+    if (name === 'im_reply') wrapped = true
+  }
+  if (!structured) return text
+  // 有完整外层时以外层为准；外部状态块沿用既有状态保存与重复校验规则。
+  return blocks
+    .filter((block) => !wrapped || block.name === 'im_reply' || block.name === 'status')
+    .map((block) => block.source)
+    .join('\n')
+}
+
 /** 小型白名单语法，不使用 HTML 容错、外部实体或自动修复不完整标签。 */
 export function parseReply(text: string, capabilities?: readonly string[]): MessageSegment[][] {
   return parseReplyWithStatus(text, capabilities).messages
 }
 
 export function parseReplyWithStatus(text: string, capabilities?: readonly string[]): ParsedReply {
-  let source = text.trim()
-  // 整份代码示例仍作为普通消息，不从围栏中执行状态更新。
+  let source = extractStructuredReply(text).trim()
+  // 没有消息标签的整份代码示例仍作为普通消息，不从围栏中执行状态更新。
   if (/^(?:```|~~~)/.test(source)) return { messages: [[{ type: 'text', text }]] }
   let status: string | undefined
   const consumeStatus = () => {

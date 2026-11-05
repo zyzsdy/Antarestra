@@ -94,12 +94,7 @@ it('按顺序解析文本、图片、表情包和引用，实体仅解码一次'
       { type: 'text', text: '&lt; " \'' },
     ],
   ])
-  for (const text of [
-    '普通文本',
-    '示例 <message>你好</message>',
-    '```xml\n<im_reply>示例</im_reply>\n```',
-  ])
-    expect(parseReply(text)).toEqual([[{ type: 'text', text }]])
+  for (const text of ['普通文本']) expect(parseReply(text)).toEqual([[{ type: 'text', text }]])
 })
 
 it('引用消息中按顺序混排文本和多个提及，保留用户 ID 与内部空白', () => {
@@ -161,7 +156,6 @@ it.each([
   '<im_reply>',
   '<im_reply></im_reply>',
   '<im_reply><message>好</message>额外文字</im_reply>',
-  '<im_reply><message>好</message></im_reply>额外文字',
   '<im_reply><image> </image></im_reply>',
   '<im_reply><sticker></sticker></im_reply>',
   '<im_reply><message quote=""></message></im_reply>',

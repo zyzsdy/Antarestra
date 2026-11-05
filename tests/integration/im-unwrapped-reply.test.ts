@@ -23,6 +23,52 @@ it('缺少外层的用户示例分离状态并生成两条消息', () => {
 })
 
 it.each([
+  `动态激活，我可以接一句。<im_reply>${answer}</im_reply>结束说明`,
+  `说明<im_reply>${answer}</im_reply>`,
+  `<im_reply>${answer}</im_reply>说明`,
+  `说明${answer}结束`,
+  `<status>${status}</status>说明${body}结束`,
+  `说明${body.replace('</message>\n', '</message>中间说明')}<status>${status}</status>结束`,
+  `\`\`\`xml\n<im_reply>${answer}</im_reply>\n\`\`\``,
+  `~~~xml\n${answer}\n~~~`,
+  `<message>外部消息</message><im_reply>${answer}</im_reply><message>外部消息</message>`,
+])('结构化回复只发送标签内容，忽略外部说明：%s', (text) => {
+  expect(parseReplyWithStatus(text)).toEqual({ status, messages })
+})
+
+it.each([
+  '普通文字中的 <message>正常</message>',
+  '<message>正常</message>标签外文字',
+  '<message>正常</message><unknown>未知标签</unknown>',
+  '<message>正常</message></im_reply>',
+  '<unknown note="<message>属性不应发送</message>"></unknown><message>正常</message>',
+])('没有外层时忽略消息标签之外的内容：%s', (text) => {
+  expect(parseReplyWithStatus(text)).toEqual({ messages: [[{ type: 'text', text: '正常' }]] })
+})
+
+it('外部说明不影响空消息保持沉默', () => {
+  expect(parseReplyWithStatus('这次保持沉默<message></message>不回复')).toEqual({ messages: [] })
+})
+
+it('状态原文中的回复标签不被提取为聊天消息', () => {
+  const raw = '<im_reply><message>只是状态内容</message></im_reply>'
+  expect(parseReplyWithStatus(`<status>${raw}</status><message>正文</message>`)).toEqual({
+    status: raw,
+    messages: [[{ type: 'text', text: '正文' }]],
+  })
+})
+
+it.each([
+  '说明<im_reply><message>未闭合</im_reply>结束',
+  '说明<message>有效</message>中间说明<message>未闭合',
+  '说明<message>有效</message><message quote="">无效引用</message>结束',
+  '说明<message>有效</message><image>file:///secret.png</image>结束',
+  `说明${'<message>消息</message>说明'.repeat(21)}`,
+])('忽略外部说明后仍整份拒绝无效结构化内容：%s', (text) => {
+  expect(() => parseReplyWithStatus(text)).toThrow()
+})
+
+it.each([
   '<message>单条消息</message>',
   '<message extra="1">兼容属性</message>',
   '<message>正常</message><status x="1">状态</status>',
@@ -51,9 +97,6 @@ it.each([
   '<message quote="a&b">无效属性实体</message>',
   '<message><at id=""></at></message>',
   '<message><status>嵌套状态</status></message>',
-  '<message>正常</message>标签外文字',
-  '<message>正常</message><unknown>未知标签</unknown>',
-  '<message>正常</message></im_reply>',
   '<image></image>',
   '<sticker>file:///C:/secret.png</sticker>',
   '<message>正常</message><status>一</status><status>二</status>',
@@ -75,18 +118,15 @@ it('省略外层仍按接入能力校验图片', () => {
   ).toThrow()
 })
 
-it.each([
-  '普通文字中的 <message>示例</message>',
-  '```xml\n<message>示例</message>\n```',
-  '~~~xml\n<status>状态</status><message>示例</message>\n~~~',
-  '&lt;message&gt;示例&lt;/message&gt;',
-  '<messageExample>普通标签</messageExample>',
-])('普通文字、代码围栏与转义示例不进入兼容解析：%s', (text) => {
-  expect(parseReplyWithStatus(text)).toEqual({ messages: [[{ type: 'text', text }]] })
-})
+it.each(['&lt;message&gt;示例&lt;/message&gt;', '<messageExample>普通标签</messageExample>'])(
+  '非协议标签与转义示例不进入兼容解析：%s',
+  (text) => {
+    expect(parseReplyWithStatus(text)).toEqual({ messages: [[{ type: 'text', text }]] })
+  },
+)
 
-it('用户示例保存状态、按顺序投递并逐条归档，后续无效回复不覆盖状态', async () => {
-  let text = answer
+it('带外部说明的回复保存状态、按顺序投递并逐条归档，后续无效回复不覆盖状态', async () => {
+  let text = `动态激活，我可以接一句。<im_reply>${answer}</im_reply>结束说明`
   const app = await setup({
     ai: true,
     driver: {
