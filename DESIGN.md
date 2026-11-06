@@ -198,3 +198,7 @@ Markdown 代码块操作由 packages/markdown 统一维护：默认显示无边�
 ## 引导会话
 
 Agents 配置复用 CheckboxField，说明沿用 agents-hint。网页引导输入复用 ChatMessage 的普通用户气泡、右对齐、字号与间距，只在顶部增加 12px、#737373 的“引导消息”标记；不使用独立卡片，不放入工具详情。ChatTurn 按插入位置拆分展示助理输出，不改变服务端会话分支。样式仍由 chat.css 维护，窄屏自然换行。
+
+## MCP 服务器管理
+
+位于 AI 设置，沿用 Agents 蓝白表格、系统字体与自然滚动。列表和工具目录各 20 项分页，表格局部横向滚动。连接状态始终有中文文字；错误与加载提示保留独立区域。编辑复用 EditorDialog、SelectField、CheckboxField，敏感值显隐复用 Reka UI Toggle，确认与通知复用 FeedbackHost，网络请求归 useApi。保存后返回列表，连接失败仍显示已保存配置及重连入口；草稿关闭须确认。请求头和环境变量的新值默认遮罩，旧值仅显示已保存占位提示。390px 窄屏编辑器保留固定底部保存按钮，键值行变为两行。局部样式由 mcp/client/style.css 维护，不新增全局令牌。

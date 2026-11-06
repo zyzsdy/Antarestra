@@ -35,6 +35,7 @@
     "@antarestra/plugin-im-stickers-lib": "workspace:*",
     "@antarestra/plugin-logger": "workspace:*",
     "@antarestra/plugin-markdown-render": "workspace:*",
+    "@antarestra/plugin-mcp": "workspace:*",
     "@antarestra/plugin-memory": "workspace:*",
     "@antarestra/plugin-open-terminal": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",

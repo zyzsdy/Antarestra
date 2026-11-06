@@ -40,6 +40,7 @@ plugins:
   ai-agent-core: {}
   ai-provider: {}
   ai-agents: {}
+  mcp: {}
   basic-tools: {}
   wake-tasks: {}
   markdown-render: {}
@@ -148,3 +149,7 @@ pnpm --filter @antarestra/plugin-chat-webui dev
 Windows 遇到临时路径或文件监视器问题时，可将 `TEMP` / `TMP` 设为仓库内绝对路径，再使用 `pnpm exec vitest run <测试文件> --maxWorkers=1` 排查。验证记录应注明实际操作系统与架构；目标平台范围不等于已完成全部组合验证。必须区分实际回归与单独复现结果，不把跳过的外部测试算作通过。
 
 依赖变更通过包管理器命令完成，例如 `pnpm --filter @antarestra/webui add 包名`、`pnpm add -Dw 包名`。提交前检查差异、运行相关验证并使用简体中文提交概要；不自动推送。完整约定见 [AGENTS.md](../AGENTS.md)。
+
+## MCP 工具接入
+
+启用 `mcp: {}` 后，在“AI 设置 → MCP 服务器”维护连接。支持 Local（stdio）、Streamable HTTP、传统 SSE，以及请求头、激活描述和工具前缀；详见 [MCP 服务器](../plugins/features/mcp/README.md)。Local 程序在 Antarestra 服务器上运行。

@@ -1,0 +1,45 @@
+{
+  "name": "@antarestra/plugin-mcp",
+  "description": "连接本地、Streamable HTTP 和 SSE MCP 服务器，管理并注册 AI 工具。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit && vite build",
+    "typecheck": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit",
+    "dev": "vite build --watch"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/contracts": "workspace:*",
+    "@antarestra/database": "workspace:*",
+    "@antarestra/plugin-admin-console": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/rbac": "workspace:*",
+    "@antarestra/webui": "workspace:*",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "image-size": "^2.0.4"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "^8.2.2",
+    "vue": "^3.5.42",
+    "vue-tsc": "^3.3.11"
+  },
+  "antarestra": {
+    "title": "MCP 服务器",
+    "multipleInstances": false,
+    "configSchema": "./config.schema.json"
+  }
+}

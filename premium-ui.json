@@ -10,7 +10,8 @@
     "plugins/implementations/auth-local/client",
     "plugins/features/config-panel/client",
     "plugins/features/ai-provider/client",
-    "plugins/features/ai-agents/client"
+    "plugins/features/ai-agents/client",
+    "plugins/features/mcp/client"
   ],
   "canonicalMap": "UX-CONTRACT.md",
   "requiredCapabilities": ["Scrollbar", "Toast", "Select/Listbox", "Form", "CRUD"],

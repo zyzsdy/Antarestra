@@ -76,6 +76,7 @@ plugins:
   admin-console: {}
   ai-provider: {}
   ai-agents: {}
+  mcp: {}
   im-ai: {}
   im-console: {}
   config-panel: {}
