@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ContentBlock } from '@antarestra/contracts'
+import ImagePreview from './ImagePreview.vue'
 import { EditorDialog } from '@antarestra/webui/components'
 import { DocumentIcon, XMarkIcon, ArrowDownTrayIcon } from '@antarestra/webui/icons'
 const props = defineProps<{
@@ -13,6 +14,7 @@ const props = defineProps<{
 }>()
 defineEmits<{ remove: [] }>()
 const opened = ref(false)
+const previewOpened = ref(false)
 const expired = ref(false)
 const failure = ref('')
 const loading = ref(false)
@@ -50,6 +52,8 @@ async function inspect() {
 watch(
   () => props.attachment.resourceId,
   () => {
+    previewOpened.value = false
+    opened.value = false
     expired.value = false
     imageFailed.value = false
     if (!props.draft) void inspect()
@@ -57,6 +61,11 @@ watch(
   { immediate: true },
 )
 async function open() {
+  if (image.value) {
+    previewOpened.value = true
+    await inspect()
+    return
+  }
   opened.value = true
   if (!props.status) await inspect()
 }
@@ -96,6 +105,16 @@ onUnmounted(() => controller?.abort())
       <XMarkIcon class="ui-icon" />
     </button>
   </div>
+  <ImagePreview
+    v-if="previewOpened"
+    :src="preview || `${base}/content`"
+    :name="name"
+    :download="`${base}/content?download=1`"
+    :loading="loading"
+    :error="expired ? '文件已过期' : failure"
+    @retry="inspect"
+    @close="previewOpened = false"
+  />
   <EditorDialog v-if="opened" :title="name" @close="opened = false">
     <div class="chat-attachment-detail">
       <p v-if="loading" role="status">正在检查文件…</p>

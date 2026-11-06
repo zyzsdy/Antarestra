@@ -20,6 +20,8 @@ import {
 } from '@antarestra/webui/icons'
 import MessageAction from './MessageAction.vue'
 import AttachmentTile from './AttachmentTile.vue'
+import ImagePreview from './ImagePreview.vue'
+import { useImagePreview } from './useImagePreview.js'
 import ContextDivider from './ContextDivider.vue'
 import { formatMessageTime } from './message-time.js'
 import { formatProcessingTime } from './processing-time.js'
@@ -36,6 +38,8 @@ const props = defineProps<{
   branches?: MessageNode[]
 }>()
 defineEmits<{ edit: []; regenerate: []; branch: [id: string] }>()
+const imageHost = ref<HTMLElement>()
+const { preview, click: previewClick, keydown: previewKeydown } = useImagePreview(imageHost)
 const feedback = inject(feedbackKey)!
 const now = ref(new Date())
 const copying = ref(false)
@@ -101,6 +105,9 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
 
 <template>
   <article
+    ref="imageHost"
+    @click="previewClick"
+    @keydown="previewKeydown"
     class="chat-message"
     :class="[node.role, { 'chat-guidance': steering }]"
     :aria-label="node.role === 'user' ? '你的消息' : '助理回复'"
@@ -160,12 +167,15 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
                   :attachment="image"
                 />
               </div>
-              <img
+              <button
                 v-if="detail.tool.image"
-                :src="detail.tool.image"
-                alt="提供商生成的图片"
-                class="chat-generated-image"
-              />
+                type="button"
+                class="chat-generated-image-open"
+                aria-label="查看大图：提供商生成的图片"
+                @click="preview = { src: detail.tool.image, name: '提供商生成的图片' }"
+              >
+                <img :src="detail.tool.image" alt="提供商生成的图片" class="chat-generated-image" />
+              </button>
               <pre
                 v-if="detail.tool.result !== undefined"
                 :class="{ 'chat-run-error': detail.tool.isError }"
@@ -265,4 +275,10 @@ const tools = computed(() => (props.live ? props.live.tools : historyToolDetails
       </div>
     </TooltipProvider>
   </article>
+  <ImagePreview
+    v-if="preview"
+    :src="preview.src"
+    :name="preview.name"
+    @close="preview = undefined"
+  />
 </template>

@@ -1126,3 +1126,24 @@
   color: #737373;
   font-size: 12px;
 }
+
+.chat-message .md-body img[src],
+.chat-generated-image-open {
+  cursor: zoom-in;
+}
+.chat-generated-image-open {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.chat-message .md-body img[src]:hover,
+.chat-generated-image-open:hover {
+  opacity: 0.9;
+}
+.chat-message .md-body img[role='button']:focus-visible,
+.chat-generated-image-open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
