@@ -17,6 +17,7 @@ import { listenForTest } from '../../scripts/test-listen.js'
 const contexts: Context[] = []
 const closers: (() => Promise<void>)[] = []
 afterEach(async () => {
+  vi.useRealTimers()
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const close of closers.splice(0).reverse()) await close()
   vi.restoreAllMocks()
@@ -300,6 +301,32 @@ it('取消工具请求传播到 SDK，服务卸载回收连接', async () => {
   await fixture.connections[0]!.cancelled
   await app.fiber.dispose()
   expect(app.ctx.ai.capabilities().tools).toEqual([])
+})
+it('MCP 长任务超过 60 秒继续等待，默认 10 分钟才超时并取消远端请求', async () => {
+  const fixture = await remote('sse', '长任务', { delay: true })
+  const app = await setup()
+  await app.ctx.mcp.save(remoteInput(fixture.url, 'sse'))
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  let settled = false
+  const call = Promise.resolve(app.latest('get_files').execute({}, runContext()))
+  void call.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    },
+  )
+  const rejected = expect(call).rejects.toThrow('MCP 工具调用失败')
+  await fixture.connections[0]!.entered
+  await vi.advanceTimersByTimeAsync(60_001)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(539_998)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  await rejected
+  vi.useRealTimers()
+  await fixture.connections[0]!.cancelled
 })
 it('WebUI 卸载不影响连接；AI 依赖恢复从 SQLite 重新装载', async () => {
   const fixture = await remote('streamable-http')

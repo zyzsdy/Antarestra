@@ -275,7 +275,10 @@ export class McpService extends Service {
           try {
             const result = await connection.client.callTool(
               { name: tool.name, arguments: args },
-              { signal: AbortSignal.any([run.signal, connection.controller.signal]) },
+              {
+                signal: AbortSignal.any([run.signal, connection.controller.signal]),
+                timeout: this.ctx.ai.config.toolTimeoutMs,
+              },
             )
             return await toolResult(this.ctx, result, run)
           } catch {
