@@ -2,6 +2,8 @@
 
 `@antarestra/webui` 只提供 Vue 运行时、Vue Router、扩展生命周期和通用交互组件，不注册首页、业务页面或导航。未注册的路径为空。首页由 `plugin-chat-webui` 注册。
 
+页面的内容安全策略允许加载任意来源的 HTTP/HTTPS 图片，以及同源和 Blob 图片。图片加载不需要通过 `addConnectOrigin` 登记；该接口仅用于授权浏览器连接目标。HTTPS 页面加载 HTTP 图片仍受浏览器混合内容规则约束。
+
 ## 后端注册
 
 消费插件依赖 `webui`，调用 `ctx.webui.addEntry(owner, { id, directory, config })` 发布浏览器入口。目录必须包含构建后的 ES 模块 `index.js`；配置和资源均为公开信息，不得包含凭据。扩展清单不代表业务授权。

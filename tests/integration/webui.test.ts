@@ -30,6 +30,13 @@ describe('WebUI 插件', () => {
       const response = await app.get(path)
       expect(response.status).toBe(200)
       expect(response.headers.get('Content-Security-Policy')).toContain("font-src 'self' data:")
+      const policy = response.headers
+        .get('Content-Security-Policy')!
+        .split(';')
+        .map((v) => v.trim())
+      expect(policy).toContain("img-src 'self' blob: http: https:")
+      expect(policy).toContain("script-src 'self'")
+      expect(policy).toContain("connect-src 'self'")
       expect(await response.text()).toContain('<div id="app"></div>')
     }
     for (const path of [
