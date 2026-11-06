@@ -1,5 +1,6 @@
 import { computed, onUnmounted, reactive, ref, shallowRef, shallowReactive, watch } from 'vue'
 import { useApi, ApiError } from '@antarestra/webui/api'
+import { createClientId } from '@antarestra/webui/client'
 import type {
   AgentPreset,
   ChatMessage,
@@ -610,7 +611,7 @@ export function useChat(identity: () => Session | undefined) {
           ...(activeRunId.value ? { activeRunId: activeRunId.value } : {}),
           expectedRevision: fresh.conversation.revision,
           expectedNodeId: fresh.conversation.selectedNodeId,
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: createClientId(),
           model: selected,
           thinking: intensity,
           ...(regenerate

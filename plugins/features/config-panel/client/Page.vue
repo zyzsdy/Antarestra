@@ -13,7 +13,7 @@ import {
   TabsContent,
 } from '@antarestra/webui/components'
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, toRaw } from 'vue'
-import { feedbackKey, refreshExtensionsKey } from '@antarestra/webui/client'
+import { createClientId, feedbackKey, refreshExtensionsKey } from '@antarestra/webui/client'
 import { PlusIcon, ArrowPathIcon } from '@antarestra/webui/icons'
 import { ApiError, useApi } from '@antarestra/webui/api'
 import SchemaForm from './SchemaForm.vue'
@@ -344,7 +344,7 @@ async function move(row: Instance, group: string, delta = 0, before?: string) {
 async function groupSave(removeGroup = false) {
   await run(async () => {
     const layout = structuredClone(toRaw(snapshot.value!.layout))
-    const id = groupId.value || crypto.randomUUID()
+    const id = groupId.value || createClientId()
     if (removeGroup) {
       if (!(await feedback.modal('删除分组？', '分组中的插件移入未分组，不删除插件配置。'))) return
       layout.groups = layout.groups.filter((group) => group.id !== id)

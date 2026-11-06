@@ -1066,38 +1066,48 @@ describe('聊天会话状态', () => {
     await tick()
     expect(chat.detail.value?.conversation.id).toBe('new')
   })
-  it('发送中防重复，结果不确定时保留原幂等命令重试', async () => {
-    let rejectSend: (error: Error) => void = () => {}
-    harness.api.mockImplementation(async (path: string) =>
-      path === '/ai/catalog'
-        ? catalog
-        : path.includes('?')
-          ? []
-          : path.endsWith('/runs')
-            ? new Promise((_resolve, reject) => {
-                rejectSend = reject
-              })
-            : history('one'),
-    )
-    const chat = await mount()
-    await chat.navigate('one')
-    await tick()
-    chat.draft.value = '问题'
-    const sending = chat.send()
-    await tick()
-    await chat.send()
-    const calls = () => harness.api.mock.calls.filter(([path]) => String(path).endsWith('/runs'))
-    expect(calls()).toHaveLength(1)
-    const firstCommand = calls()[0]?.[1]
-    rejectSend(new Error('网络中断'))
-    await sending
-    const retry = chat.send()
-    await tick()
-    expect(calls()[1]?.[1]).toEqual(firstCommand)
-    rejectSend(new Error('网络仍中断'))
-    await retry
-    expect(chat.draft.value).toBe('问题')
-  })
+  it.each([true, false])(
+    '发送中防重复，结果不确定时保留原幂等命令重试（原生 UUID：%s）',
+    async (nativeUUID) => {
+      if (!nativeUUID)
+        vi.stubGlobal('crypto', {
+          getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+        })
+      let rejectSend: (error: Error) => void = () => {}
+      harness.api.mockImplementation(async (path: string) =>
+        path === '/ai/catalog'
+          ? catalog
+          : path.includes('?')
+            ? []
+            : path.endsWith('/runs')
+              ? new Promise((_resolve, reject) => {
+                  rejectSend = reject
+                })
+              : history('one'),
+      )
+      const chat = await mount()
+      await chat.navigate('one')
+      await tick()
+      chat.draft.value = '问题'
+      const sending = chat.send()
+      await tick()
+      await chat.send()
+      const calls = () => harness.api.mock.calls.filter(([path]) => String(path).endsWith('/runs'))
+      expect(calls()).toHaveLength(1)
+      const firstCommand = calls()[0]?.[1]
+      expect(firstCommand.idempotencyKey).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      )
+      rejectSend(new Error('网络中断'))
+      await sending
+      const retry = chat.send()
+      await tick()
+      expect(calls()[1]?.[1]).toEqual(firstCommand)
+      rejectSend(new Error('网络仍中断'))
+      await retry
+      expect(chat.draft.value).toBe('问题')
+    },
+  )
 })
 
 it('网页引导复用运行和正文连接，发送失败保留草稿并使用同一幂等键重试', async () => {

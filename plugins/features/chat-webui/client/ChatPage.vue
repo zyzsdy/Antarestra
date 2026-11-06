@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { ContentBlock, Conversation, MessageNode } from '@antarestra/contracts'
-import { feedbackKey } from '@antarestra/webui/client'
+import { createClientId, feedbackKey } from '@antarestra/webui/client'
 import {
   AntarestraLogo,
   DialogRoot,
@@ -90,7 +90,7 @@ async function uploadFiles(files: File[]) {
   fileError.value = ''
   // 逐个传输，限制多选时的内存和网络占用；每个任务都能单独取消。
   const jobs = files.map((file) => {
-    const id = crypto.randomUUID()
+    const id = createClientId()
     const image = /^image\/(png|jpeg|gif|webp)$/.test(file.type)
     const upload: Upload = {
       conversationId,
