@@ -297,16 +297,16 @@ export class AiService extends Service<Config> {
   registerTool(owner: Context, value: Tool) {
     this.active()
     check(value.id !== 'use_skill', 'use_skill 为保留工具')
-    this.validateTool(value)
+    const parameters = this.validateTool(value)
     return this.tools.register(
       owner,
       value.id,
-      Object.freeze({ ...value, parameters: freeze(json(value.parameters)) }),
+      Object.freeze({ ...value, parameters: freeze(parameters) }),
     )
   }
   validateTool(value: Tool) {
     identifier(value.id)
-    compile(value.parameters)
+    const parameters = compile(value.parameters).schema
     check(
       value.resultMode === undefined ||
         value.resultMode === 'json' ||
@@ -319,6 +319,7 @@ export class AiService extends Service<Config> {
         (Number.isSafeInteger(value.timeoutMs) && value.timeoutMs > 0),
       '工具超时无效',
     )
+    return parameters
   }
   registerSkills(owner: Context, value: SkillService) {
     this.active()

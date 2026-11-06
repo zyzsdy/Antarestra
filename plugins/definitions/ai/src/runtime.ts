@@ -268,11 +268,8 @@ export class Running {
           this.context.signal,
         )
         check(tool.id === 'use_skill', 'Skill 服务必须返回 use_skill')
-        this.service.validateTool(tool)
-        this.tools.set(
-          tool.id,
-          Object.freeze({ ...tool, parameters: freeze(json(tool.parameters)) }),
-        )
+        const parameters = this.service.validateTool(tool)
+        this.tools.set(tool.id, Object.freeze({ ...tool, parameters: freeze(parameters) }))
       }
       const draft = await this.renderInput(this.record.input)
       this.systemPrompt = draft.systemPrompt

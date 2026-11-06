@@ -1,10 +1,16 @@
 import { Server } from '@modelcontextprotocol/server'
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import { fileURLToPath } from 'node:url'
+import type { JsonObject } from '@antarestra/contracts'
 
 export function createMcpServer(
   label = '测试',
-  options: { paginated?: boolean; delay?: boolean; image?: boolean } = {},
+  options: {
+    paginated?: boolean
+    delay?: boolean
+    image?: boolean
+    inputSchema?: JsonObject & { type: 'object' }
+  } = {},
 ) {
   const server = new Server(
     { name: 'antarestra-test-mcp', version: '1.0.0' },
@@ -19,7 +25,10 @@ export function createMcpServer(
       tools: list.map((name) => ({
         name,
         description: label,
-        inputSchema: { type: 'object' as const, properties: { fail: { type: 'boolean' } } },
+        inputSchema: options.inputSchema ?? {
+          type: 'object' as const,
+          properties: { fail: { type: 'boolean' } },
+        },
       })),
       ...(options.paginated && !request.params?.cursor ? { nextCursor: 'next' } : {}),
     }

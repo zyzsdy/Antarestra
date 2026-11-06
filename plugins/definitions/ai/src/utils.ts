@@ -1,5 +1,6 @@
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import type { Json, JsonObject } from '@antarestra/contracts'
+import { normalizeSchema } from './schema.js'
 export class AiError extends Error {
   constructor(
     readonly code: string,
@@ -37,11 +38,29 @@ const ajv = new Ajv2020({
   strict: false,
   allErrors: false,
   validateFormats: false,
-  addUsedSchema: false,
+  addUsedSchema: true,
 })
+type CompiledSchema = ((value: unknown) => void) & { schema: JsonObject }
+const compiledSchemas = new WeakMap<JsonObject, { source: string; validate: CompiledSchema }>()
 export function compile(schema: JsonObject) {
-  const validate = ajv.compile(schema)
-  return (value: unknown) => check(validate(value), '参数不符合声明的 Schema')
+  const source = JSON.stringify(schema)
+  const cached = compiledSchemas.get(schema)
+  if (cached?.source === source) return cached.validate
+  const normalized = freeze(normalizeSchema(schema))
+  try {
+    const validate = ajv.compile(normalized)
+    const compiled = Object.assign(
+      (value: unknown) => check(validate(value), '参数不符合声明的 Schema'),
+      {
+        schema: normalized,
+      },
+    )
+    compiledSchemas.set(schema, { source, validate: compiled })
+    return compiled
+  } finally {
+    // Ajv 的内部缓存强引用 Schema；工具可热卸载，由弱引用缓存管理其寿命。
+    ajv.removeSchema()
+  }
 }
 export function template(source: string, variables: JsonObject): string {
   return source.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_, key: string) => {

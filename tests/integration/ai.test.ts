@@ -23,6 +23,7 @@ import type {
   Tool,
   Provider,
   RunContext,
+  JsonObject,
 } from '@antarestra/ai'
 import type { Tables } from '../../plugins/definitions/ai/src/store.js'
 import type { ConversationStateEvent } from '@antarestra/contracts'
@@ -2647,4 +2648,63 @@ it('并发工具批次结果完整前不插入引导，不提前发起下一次�
     'tool',
     'user',
   ])
+})
+
+it.each([
+  ['普通工具', true],
+  ['普通工具', false],
+  ['Skill', true],
+  ['Skill', false],
+] as const)('%s 使用新版声明请求模型，并校验参数（合法：%s）', async (kind, valid) => {
+  const toolId = kind === 'Skill' ? 'use_skill' : 'legacy_tool'
+  const parameters = {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'object',
+    properties: {
+      values: { type: 'array', items: [{ type: 'integer' }], additionalItems: false },
+    },
+    required: ['values'],
+  }
+  const original = structuredClone(parameters)
+  const execute = vi.fn(async (_args: JsonObject) => '执行成功')
+  let calls = 0
+  const app = await setup({
+    agent: agent({
+      toolIds: kind === 'Skill' ? [] : [toolId],
+      skillIds: kind === 'Skill' ? null : [],
+    }),
+    driver: {
+      id: 'driver',
+      async generate(request) {
+        expect(request.tools[0]?.parameters).toEqual({
+          ...parameters,
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          properties: {
+            values: { type: 'array', prefixItems: [{ type: 'integer' }], items: false },
+          },
+        })
+        calls++
+        if (calls === 2) return { content: [{ type: 'text', text: '完成' }] }
+        return {
+          content: [
+            {
+              type: 'tool-call',
+              id: `call-${calls}`,
+              name: toolId,
+              arguments: { values: valid ? [1] : [1, 2] },
+            },
+          ],
+        }
+      },
+    },
+  })
+  const tool: Tool = { id: toolId, description: '旧版工具', parameters, execute }
+  if (kind === 'Skill') app.ctx.ai.registerSkills(app.ctx, { createTool: async () => tool })
+  else app.ctx.ai.registerTool(app.ctx, tool)
+  const result = await send(app)
+  expect(result.status, JSON.stringify(result.error)).toBe(valid ? 'completed' : 'failed')
+  expect(parameters).toEqual(original)
+  expect(execute).toHaveBeenCalledTimes(valid ? 1 : 0)
+  if (valid) expect(execute.mock.calls[0]?.[0]).toEqual({ values: [1] })
+  else expect(result.error?.code).toBe('invalid_request')
 })

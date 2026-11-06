@@ -79,7 +79,7 @@ async function setup() {
 async function remote(
   kind: 'streamable-http' | 'sse',
   label = '远端',
-  options: { paginated?: boolean; delay?: boolean; image?: boolean; stateful?: boolean } = {},
+  options: NonNullable<Parameters<typeof createMcpServer>[1]> & { stateful?: boolean } = {},
 ) {
   const connections: ReturnType<typeof createMcpServer>[] = []
   const transports = new Map<string, SSEServerTransport>()
@@ -352,10 +352,19 @@ it('管理 API 校验登录和系统权限，响应不包含凭据，卸载移�
   )
 })
 
-it('真实 AI 运行通过核心调用 MCP 并保存临时图片，跨空间不能读取运行', async () => {
-  const fixture = await remote('streamable-http', '图片', { image: true })
+it('旧版 MCP Schema 统一转换后进入模型请求，工具图片与空间隔离正常', async () => {
+  const fixture = await remote('streamable-http', '图片', {
+    image: true,
+    inputSchema: {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        values: { type: 'array', items: [{ type: 'string' }], additionalItems: false },
+      },
+    },
+  })
   const app = await setup()
-  await app.ctx.mcp.save(remoteInput(fixture.url))
+  expect((await app.ctx.mcp.save(remoteInput(fixture.url))).status).toBe('connected')
   app.ctx.rbac.registerRequestSource(app.ctx, 'mcp-run', {
     id: 'mcp-run',
     resolve: async (value) => ({ actorId: 'actor', workspaceId: String(value), roles: ['user'] }),
@@ -364,10 +373,16 @@ it('真实 AI 运行通过核心调用 MCP 并保存临时图片，跨空间不�
   const other = await app.ctx.ai.authorize('mcp-run', 'two')
   app.ctx.ai.registerDriver(app.ctx, {
     id: 'test',
-    generate: async (request) =>
-      request.messages.some((message) => message.role === 'tool')
+    generate: async (request) => {
+      expect(request.tools[0]?.parameters).toEqual({
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        properties: { values: { type: 'array', prefixItems: [{ type: 'string' }], items: false } },
+      })
+      return request.messages.some((message) => message.role === 'tool')
         ? { content: [{ type: 'text', text: '已获取图片' }] }
-        : { content: [{ type: 'tool-call', id: 'call', name: 'get_files', arguments: {} }] },
+        : { content: [{ type: 'tool-call', id: 'call', name: 'get_files', arguments: {} }] }
+    },
   })
   app.ctx.ai.registerProvider(app.ctx, {
     id: 'p',

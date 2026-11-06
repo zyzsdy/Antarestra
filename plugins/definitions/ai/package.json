@@ -30,6 +30,7 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "ajv": "^8.20.0",
+    "ajv-draft-04": "^1.0.0",
     "image-size": "^2.0.4"
   }
 }
