@@ -21,6 +21,7 @@
   "type": "module",
   "dependencies": {
     "@antarestra/database": "workspace:*",
+    "@antarestra/markdown": "workspace:*",
     "@antarestra/plugin-admin-console": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",

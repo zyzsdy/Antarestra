@@ -704,6 +704,9 @@ importers:
       '@antarestra/contracts':
         specifier: workspace:*
         version: link:../../../packages/contracts
+      '@antarestra/markdown':
+        specifier: workspace:*
+        version: link:../../../packages/markdown
       '@antarestra/plugin-markdown-render':
         specifier: workspace:*
         version: link:../markdown-render
@@ -1132,6 +1135,9 @@ importers:
       '@antarestra/database':
         specifier: workspace:*
         version: link:../../definitions/database
+      '@antarestra/markdown':
+        specifier: workspace:*
+        version: link:../../../packages/markdown
       '@antarestra/plugin-admin-console':
         specifier: workspace:*
         version: link:../../features/admin-console

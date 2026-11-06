@@ -2,6 +2,8 @@
 
 从 `Antarestra-old/packages/markdown` 迁入，保留 Markdown、语法高亮、KaTeX、任务列表、表格、复制和懒加载 Mermaid。这个包不依赖 Cordis、Plugin SDK 或 WebUI，也不负责插件注册。
 
+纯文本复制统一通过 `@antarestra/markdown/clipboard` 的 `copyText(text): Promise<boolean>`，该子入口不加载 Markdown 组件和样式。聊天消息、初始登录信息、代码块和 Mermaid 共用此实现：优先使用 Clipboard API，缺失或被拒绝时尝试传统复制；临时文本框放在当前弹窗内，结束后清理并恢复焦点与选区。调用方必须检查返回值，失败时提供手动复制提示，不能无条件显示成功。
+
 `@antarestra/markdown/core` 提供 `createMarkdownRenderer`、`createMarkdownStream` 与节点契约，可独立解析 Markdown，使用 TypeScript 构建到 `dist`；默认入口额外提供 Vue 的 `MarkdownContent` 和样式。Vue 源码由使用它的 Vite 项目构建，包自身通过 `vue-tsc` 校验。
 
 ```vue

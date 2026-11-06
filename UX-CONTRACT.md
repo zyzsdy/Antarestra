@@ -57,6 +57,8 @@
 
 ## 组件归属
 
+纯文本复制统一复用 `packages/markdown/src/clipboard.ts`（独立入口 `@antarestra/markdown/clipboard`），覆盖聊天消息、初始登录信息、Markdown 代码块与 Mermaid 源码。HTTP 页面缺失 Clipboard API 或权限被拒绝时尝试传统复制，临时选择元素留在当前弹窗内并恢复焦点、选区；仅在返回成功时显示“已复制”，失败保留原内容并提示手动复制或重试。浏览器能力检测与访问环境见 `docs/development.md`。
+
 下表列名与能力标识为自动审计协议，具体约定使用中文。
 
 | Capability     | Canonical owner                   | Source of truth | Allowed variants                           | Verification           |

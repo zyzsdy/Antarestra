@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./clipboard": "./src/clipboard.ts",
     "./core": {
       "types": "./dist/core.d.ts",
       "development": "./src/core.ts",

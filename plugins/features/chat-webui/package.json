@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@antarestra/contracts": "workspace:*",
+    "@antarestra/markdown": "workspace:*",
     "@antarestra/plugin-markdown-render": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",

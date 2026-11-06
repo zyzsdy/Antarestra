@@ -2,6 +2,18 @@
 
 macOS 原生开发、数据库迁移及 NapCat Docker 部署见 [macOS 开发与迁移](macos-development.md)。
 
+## 局域网 HTTP 访问与浏览器兼容
+
+限制取决于浏览器的安全上下文，不取决于 Windows 或是否跨设备。`http://localhost` 通常被视为可信来源，`http://局域网 IP` 或普通 HTTP 域名通常不是；HTTPS 远程访问可以使用受安全上下文保护的 API。参见 [浏览器安全上下文说明](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts)。
+
+当前客户端已检查并处理以下相关调用：
+
+- 聊天请求、附件任务及配置分组使用 WebUI 的 `createClientId()`；`crypto.randomUUID()` 不可用时通过 `getRandomValues()` 生成 UUID v4。
+- 聊天消息、初始登录信息、Markdown 代码块和 Mermaid 源码通过共享 `copyText()` 复制；Clipboard API 缺失或被拒绝时尝试 `execCommand('copy')`，失败后保留内容并显示失败提示。备用接口已被浏览器标记为弃用，因此仍需处理浏览器策略完全禁止复制的情况，不能保证绕过权限限制。
+- 图片粘贴读取用户触发的 `paste` 事件，附件通过普通文件输入选择；未使用需安全上下文的主动剪贴板读取或文件系统选择器。Markdown 标识使用 `getRandomValues()`；HMR 随页面协议选择 `ws` 或 `wss`。
+
+当前项目客户端未直接调用摄像头、麦克风、定位、系统通知、Service Worker、WebAuthn 或 Web Share 等受限 API。新增浏览器能力应按能力检测处理缺失和权限拒绝，并使用非 localhost 的 HTTP 地址回归验证；不能仅在本机 localhost 上测试。
+
 ## 最小本地环境
 
 使用 Node.js 24、pnpm 11.7.0。开发平台为 macOS 和 Windows；目标运行平台为 macOS、Windows、Linux，各平台均覆盖 x64 / arm64。

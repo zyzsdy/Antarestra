@@ -2,6 +2,7 @@
 import { computed, inject, ref, watch } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { MarkdownView } from '@antarestra/plugin-markdown-render/client'
+import { copyText } from '@antarestra/markdown/clipboard'
 import type { ContentBlock, MessageNode, RunRecord } from '@antarestra/contracts'
 import {
   CollapsibleRoot,
@@ -45,10 +46,10 @@ async function copy() {
   if (copying.value) return
   copying.value = true
   try {
-    await navigator.clipboard.writeText(body.value)
-    feedback.toast('已复制消息')
+    const copied = await copyText(body.value)
+    feedback.toast(copied ? '已复制消息' : '复制失败，请选中消息文字后手动复制')
   } catch {
-    feedback.toast('复制失败，请检查浏览器剪贴板权限后重试')
+    feedback.toast('复制失败，请选中消息文字后手动复制')
   } finally {
     copying.value = false
   }
