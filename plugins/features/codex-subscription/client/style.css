@@ -43,6 +43,29 @@
   list-style: none;
   padding: 0;
 }
+.codex-search-form {
+  overflow-wrap: anywhere;
+}
+.codex-search-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.codex-search-check span {
+  min-width: 0;
+}
+.codex-search-check code {
+  display: block;
+}
+.codex-search-form .actions input {
+  flex: 1;
+  min-width: 0;
+}
+.codex-search-form [role='status'] {
+  min-height: 22px;
+}
 .codex-models li {
   display: grid;
   gap: 6px;

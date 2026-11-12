@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from '@antarestra/webui/api'
 import { EditorDialog, PaginationField, SecretInput } from '@antarestra/webui/components'
-import type { CodexAccountView, CodexLoginView } from '../src/codex-types.js'
+import WebSearchForm from './WebSearchForm.vue'
+import type { CodexAccountView, CodexLoginView, CodexWebSearch } from '../src/codex-types.js'
 import '@antarestra/webui/ai-management.css'
 import './style.css'
 
-const { api, run, busy, message } = useApi()
+const { api, run, busy, message, router } = useApi()
 const feedback = inject(feedbackKey)!
 const accounts = ref<CodexAccountView[]>([])
 const loaded = ref(false)
@@ -17,6 +18,48 @@ const login = ref<CodexLoginView>()
 const callback = ref('')
 const callbackError = ref('')
 const selected = ref<CodexAccountView>()
+const searchAccount = ref<CodexAccountView>()
+const dirty = ref(false)
+function editSearch(account: CodexAccountView) {
+  searchAccount.value = account
+  dirty.value = false
+  message.value = ''
+}
+async function discard() {
+  return (
+    !dirty.value ||
+    (await feedback.modal('放弃未保存的修改？', '当前输入将丢失，已保存的网页搜索设置不受影响。'))
+  )
+}
+async function closeSearch() {
+  if (busy.value || !(await discard())) return
+  searchAccount.value = undefined
+  dirty.value = false
+  message.value = ''
+}
+async function saveSearch(value: CodexWebSearch) {
+  const account = searchAccount.value
+  if (!account || busy.value) return
+  let result: CodexAccountView[] | undefined
+  await run(async () => {
+    result = await api<CodexAccountView[]>(`${root}/accounts/${account.id}/web-search`, value)
+  })
+  if (!alive || !result) return
+  accounts.value = result
+  // 先恢复触发按钮的可用状态，再由共享弹窗归还焦点。
+  await nextTick()
+  if (!alive) return
+  searchAccount.value = undefined
+  dirty.value = false
+  feedback.toast('网页搜索设置已保存')
+}
+const stopGuard = router.beforeEach(async () => !busy.value && (await discard()))
+function unload(event: BeforeUnloadEvent) {
+  if (dirty.value) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
 const modelPage = ref(1)
 const modelDialog = ref(false)
 const models = computed(
@@ -138,9 +181,14 @@ function showModels(account: CodexAccountView) {
   modelPage.value = 1
   modelDialog.value = true
 }
-onMounted(refresh)
+onMounted(() => {
+  window.addEventListener('beforeunload', unload)
+  refresh()
+})
 onUnmounted(() => {
   alive = false
+  stopGuard()
+  window.removeEventListener('beforeunload', unload)
   clearTimeout(pollTimer)
   callback.value = ''
 })
@@ -250,7 +298,13 @@ onUnmounted(() => {
         <p v-if="account.connected && !account.models.length" class="hint">
           模型目录尚未获取成功，请点击“同步模型”重试。
         </p>
+        <p class="hint">
+          原生网页搜索：{{ account.webSearch.enabled ? '已启用' : '已关闭' }} · 已选择
+          {{ account.webSearch.modelIds.length }} 个模型
+          <span v-if="account.webSearch.enabled && !account.connected"> · 重新授权后生效</span>
+        </p>
         <div class="actions">
+          <button :disabled="busy" @click="editSearch(account)">网页搜索设置</button>
           <button :disabled="busy || !account.models.length" @click="showModels(account)">
             查看模型
           </button>
@@ -279,6 +333,21 @@ onUnmounted(() => {
       :disabled="busy"
       label="订阅账户分页"
     />
+    <EditorDialog v-if="searchAccount" title="网页搜索设置" :busy="busy" @close="closeSearch">
+      <WebSearchForm
+        :account="searchAccount"
+        :busy="busy"
+        :error="message"
+        @save="saveSearch"
+        @dirty="dirty = $event"
+      />
+      <template #footer>
+        <button type="button" :disabled="busy" @click="closeSearch">取消</button>
+        <button class="primary" type="submit" form="codex-web-search-form" :disabled="busy">
+          保存设置
+        </button>
+      </template>
+    </EditorDialog>
     <EditorDialog v-if="modelDialog" title="订阅模型" @close="modelDialog = false">
       <p class="hint">
         {{ selected?.email }} ·

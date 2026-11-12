@@ -211,6 +211,8 @@ Agents 配置复用 CheckboxField，说明沿用 agents-hint。网页引导输�
 
 授权入口打开官方页面，面板保留等待、验证中、完成、失败与取消状态。自托管手动回调使用共享 SecretInput，默认遮罩并提供显示／隐藏按钮，不写入浏览器存储；请求与错误复用 useApi，通知和断开确认复用 FeedbackHost，模型弹窗复用 EditorDialog。官方用量通过外链访问，不显示估算额度。常规窗口并列布局，760px 以下标题与操作纵向排列，390px 页面不横向溢出。订阅页面与局部样式归属 codex-subscription 插件。两个接入页面的基础配色、标题、按钮和输入样式由 WebUI 的 ai-management.css 统一维护，以 ui-ai-management 限定范围；各插件独立导入，不依赖另一插件的样式加载。不新增全局令牌。业务边界见 docs/codex-subscription.md。
 
+订阅账户的网页搜索设置沿用现有蓝白表单、EditorDialog 固定底栏、CheckboxField 与 PaginationField。每页 20 个模型，支持本地筛选，长模型名称自然换行；错误与保存状态保留高度，390px 下操作可达。局部布局归 codex-subscription/client/style.css，不增加全局令牌。
+
 ## 提供商代理配置
 
 代理服务器输入位于提供商编辑表单的 Base URL 与 API Key 之间，沿用已有标签、输入框及提示样式，不增加视觉令牌。说明按提供商生效、留空恢复默认网络，以及回环地址指服务端；无效地址关联就地错误并聚焦输入框。弹窗、提交状态及未保存保护继续复用现有实现，窄屏字段占满可用宽度。

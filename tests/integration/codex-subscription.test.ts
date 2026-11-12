@@ -7,6 +7,7 @@ import { Context } from '@antarestra/plugin-sdk'
 import DatabaseProvider from '@antarestra/database'
 import * as database from '@antarestra/plugin-database-kysely'
 import ai from '@antarestra/ai'
+import agents, { newAgent } from '@antarestra/plugin-ai-agents'
 import Server from '@antarestra/plugin-server'
 import rbac from '@antarestra/rbac'
 import WebUI from '@antarestra/webui'
@@ -23,6 +24,7 @@ import {
 } from '../../plugins/features/codex-subscription/src/codex-oauth.js'
 import { subscriptionPayload } from '../../plugins/features/codex-subscription/src/codex-models.js'
 import type {
+  CodexAccountView,
   CodexState,
   CodexLoginView,
 } from '../../plugins/features/codex-subscription/src/codex-types.js'
@@ -155,6 +157,258 @@ const modelContext = (actorId = 'owner', workspaceId = 'workspace-a') => ({
   actorId,
   workspaceId,
   signal: new AbortController().signal,
+})
+
+it('网页搜索默认关闭，按账户校验、隔离与持久保存，重连保留显式模型范围', async () => {
+  const app = await fixture()
+  const account = await connect(app.subscriptions)
+  const toolId = `provider:${account.id}:web_search`
+  expect(account.webSearch).toEqual({ enabled: false, modelIds: [], revision: 0 })
+  expect(app.ctx.ai.capabilities().tools.map((tool) => tool.id)).not.toContain(toolId)
+  const settings = { enabled: true, modelIds: ['gpt-6.1-sol'], revision: 0 }
+  await expect(
+    app.subscriptions.configureWebSearch('other', account.id, settings),
+  ).rejects.toMatchObject({ status: 404 })
+  for (const body of [
+    { ...settings, enabled: 'true' },
+    { ...settings, modelIds: [] },
+    { ...settings, modelIds: ['missing'] },
+    { ...settings, modelIds: [4] },
+    { ...settings, modelIds: ['gpt-6.1-sol', 'gpt-6.1-sol'] },
+  ])
+    await expect(
+      app.subscriptions.configureWebSearch('owner', account.id, body),
+    ).rejects.toMatchObject({ status: 400 })
+  await app.subscriptions.configureWebSearch('owner', account.id, settings)
+  await expect(
+    app.subscriptions.configureWebSearch('owner', account.id, settings),
+  ).rejects.toMatchObject({ status: 409 })
+  expect(app.ctx.ai.capabilities().tools.map((tool) => tool.id)).toContain(toolId)
+  clientId = 'oaiapp_second'
+  await connect(app.subscriptions)
+  const another = app.subscriptions.list('owner').find((entry) => entry.id !== account.id)!
+  expect(another.webSearch.enabled).toBe(false)
+  await app.fiber.dispose()
+  expect(app.ctx.ai.capabilities().tools.map((tool) => tool.id)).not.toContain(toolId)
+  const restored = await fixture(app.root)
+  expect(restored.subscriptions.list('owner')[0]!.webSearch).toEqual({ ...settings, revision: 1 })
+  await restored.subscriptions.disconnect('owner', account.id)
+  expect(restored.ctx.ai.capabilities().tools.map((tool) => tool.id)).not.toContain(toolId)
+  clientId = 'oaiapp_test'
+  const login = await restored.subscriptions.begin('owner', account.id)
+  await restored.subscriptions.complete('owner', login.id, callback(login))
+  expect(
+    restored.subscriptions.list('owner').find((entry) => entry.id === account.id)!.webSearch,
+  ).toEqual({ ...settings, revision: 1 })
+  const originalFetch = globalThis.fetch
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) =>
+      String(input) === codexResource + '/models'
+        ? Response.json({ models: [{ slug: 'new-model', visibility: 'list' }] })
+        : originalFetch(input, init),
+    ),
+  )
+  await restored.subscriptions.sync('owner', account.id)
+  const saved = restored.subscriptions.list('owner').find((entry) => entry.id === account.id)!
+  expect(saved.webSearch.modelIds).toEqual(settings.modelIds)
+  await restored.subscriptions.configureWebSearch('owner', account.id, {
+    ...saved.webSearch,
+    enabled: false,
+  })
+  expect(restored.ctx.ai.capabilities().tools.map((tool) => tool.id)).not.toContain(toolId)
+})
+
+it('助理授权与模型范围共同控制原生搜索，SSE 结果进入历史且不执行同名本地函数', async () => {
+  const app = await fixture()
+  const originalFetch = globalThis.fetch
+  const requests: Record<string, unknown>[] = []
+  let responseMode: 'complete' | 'reject' | 'pending' = 'complete'
+  let pendingSignal: AbortSignal | undefined
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === codexResource + '/models')
+        return Response.json({
+          models: [
+            { slug: 'allowed-model', visibility: 'list' },
+            { slug: 'other-model', visibility: 'list' },
+          ],
+        })
+      if (String(input) !== codexResource + '/responses') return originalFetch(input, init)
+      const payload = JSON.parse(String(init?.body)) as Record<string, unknown>
+      requests.push(payload)
+      if (responseMode === 'reject')
+        return Response.json(
+          { error: { message: '此账户不支持网页搜索', type: 'invalid_request_error' } },
+          { status: 400 },
+        )
+      if (responseMode === 'pending')
+        return new Promise<Response>((_resolve, reject) => {
+          pendingSignal = init?.signal ?? undefined
+          pendingSignal?.addEventListener('abort', () => reject(pendingSignal?.reason), {
+            once: true,
+          })
+        })
+      const search = ((payload.tools ?? []) as { type: string }[]).some(
+        (tool) => tool.type === 'web_search',
+      )
+      const item = {
+        id: 'search-1',
+        type: 'web_search_call',
+        status: 'completed',
+        action: { type: 'search', query: '测试搜索' },
+      }
+      const message = {
+        id: 'message-1',
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: '搜索回答', annotations: [] }],
+      }
+      const events = [
+        { type: 'response.created', response: { id: 'response-1', status: 'in_progress' } },
+        ...(search
+          ? [
+              {
+                type: 'response.output_item.added',
+                output_index: 0,
+                item: { ...item, status: 'in_progress' },
+              },
+              { type: 'response.output_item.done', output_index: 0, item },
+            ]
+          : []),
+        { type: 'response.output_item.added', output_index: 1, item: message },
+        { type: 'response.output_text.delta', output_index: 1, delta: '搜索回答' },
+        { type: 'response.output_item.done', output_index: 1, item: message },
+        {
+          type: 'response.completed',
+          response: {
+            id: 'response-1',
+            status: 'completed',
+            output: [...(search ? [item] : []), message],
+            usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 },
+          },
+        },
+      ]
+      return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }),
+  )
+  const account = await connect(app.subscriptions)
+  const toolId = `provider:${account.id}:web_search`
+  await app.subscriptions.configureWebSearch('owner', account.id, {
+    enabled: true,
+    modelIds: ['allowed-model'],
+    revision: 0,
+  })
+  const { ctx } = app
+  await ctx.plugin(agents)
+  ctx.rbac.registerRequestSource(ctx, 'search-test', {
+    id: 'search-test',
+    resolve: async (value) => ({
+      actorId: value === 'other' ? 'other' : 'owner',
+      workspaceId: String(value),
+      roles: ['user'],
+    }),
+  })
+  const access = await ctx.ai.authorize('search-test', 'space')
+  const otherSpace = await ctx.ai.authorize('search-test', 'other-space')
+  const otherActor = await ctx.ai.authorize('search-test', 'other')
+  ctx.ai.registerBackend(ctx, {
+    id: 'ai-agent-core',
+    async run(runtime) {
+      await runtime.request()
+    },
+  })
+  const execute = vi.fn(async () => '本地搜索')
+  ctx.ai.registerTool(ctx, {
+    id: 'web_search',
+    description: '本地搜索',
+    parameters: { type: 'object', properties: {} },
+    execute,
+  })
+  async function run(
+    id: string,
+    modelId: string,
+    toolIds: string[] | null,
+    expected = 'completed',
+    afterStart?: () => Promise<void>,
+  ) {
+    const model = { providerId: account.id, modelId }
+    await ctx.aiAgents.save({
+      ...newAgent(),
+      id,
+      title: '搜索助理',
+      models: [model],
+      defaultModel: model,
+      toolIds,
+    })
+    const conversation = await ctx.ai.createConversation(access, id)
+    const started = await ctx.ai.start(access, conversation.id, {
+      operation: 'send',
+      input: { text: '搜索测试' },
+      idempotencyKey: id,
+      expectedRevision: conversation.revision,
+      expectedNodeId: null,
+    })
+    await afterStart?.()
+    await expect
+      .poll(async () => (await ctx.ai.getRun(access, started.id)).status)
+      .not.toBe('running')
+    const result = await ctx.ai.getRun(access, started.id)
+    expect(result.status).toBe(expected)
+    return result
+  }
+  const allowed = await run('search-allowed', 'allowed-model', [toolId, 'web_search'])
+  expect(requests[0]?.tools).toContainEqual({ type: 'web_search' })
+  expect(requests[0]?.tools).toContainEqual(
+    expect.objectContaining({ type: 'namespace', name: 'antarestra' }),
+  )
+  expect(requests[0]).toMatchObject({ store: false, stream: true })
+  expect(JSON.stringify(allowed)).toContain('web_search_call')
+  await expect(ctx.ai.getRun(otherSpace, allowed.id)).rejects.toThrow()
+  await expect(
+    app.subscriptions.credential(account.id, {
+      actorId: otherActor.actorId,
+      workspaceId: otherActor.workspaceId,
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toMatchObject({ code: 'subscription_access_denied' })
+  await run('search-no-permission', 'allowed-model', [])
+  await run('search-wrong-model', 'other-model', [toolId])
+  for (const request of requests.slice(1))
+    expect(request.tools ?? []).not.toContainEqual({ type: 'web_search' })
+  await run('search-all', 'allowed-model', null)
+  expect(requests.at(-1)?.tools).toContainEqual({ type: 'web_search' })
+  responseMode = 'reject'
+  const rejected = await run('search-rejected', 'allowed-model', [toolId], 'failed')
+  expect(JSON.stringify(rejected)).toContain('此账户不支持网页搜索')
+  responseMode = 'complete'
+  await app.subscriptions.configureWebSearch('owner', account.id, {
+    enabled: false,
+    modelIds: ['allowed-model'],
+    revision: 1,
+  })
+  await run('search-disabled', 'allowed-model', null)
+  expect(requests.at(-1)?.tools ?? []).not.toContainEqual({ type: 'web_search' })
+  expect(execute).not.toHaveBeenCalled()
+  await app.subscriptions.configureWebSearch('owner', account.id, {
+    enabled: true,
+    modelIds: ['allowed-model'],
+    revision: 2,
+  })
+  responseMode = 'pending'
+  await run('search-cancelled', 'allowed-model', [toolId], 'cancelled', async () => {
+    await expect.poll(() => pendingSignal).toBeDefined()
+    await app.subscriptions.configureWebSearch('owner', account.id, {
+      enabled: false,
+      modelIds: ['allowed-model'],
+      revision: 3,
+    })
+    expect(pendingSignal?.aborted).toBe(true)
+  })
 })
 
 it('代理覆盖授权、刷新、身份公钥、目录同步、发现和撤销，实例之间互不影响', async () => {
@@ -397,8 +651,31 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
       .status,
   ).toBe(200)
   expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]).toHaveProperty('dispatcher')
-  const accounts = (await (await request('/codex-subscription')).json()) as { id: string }[]
+  let accounts = (await (await request('/codex-subscription')).json()) as CodexAccountView[]
   const accountId = accounts[0]!.id
+  const searchPath = `/codex-subscription/accounts/${accountId}/web-search`
+  expect(
+    (
+      await realFetch(base + searchPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+    ).status,
+  ).toBe(401)
+  expect((await request(searchPath, { enabled: true, modelIds: [], revision: 0 })).status).toBe(400)
+  const configured = await request(searchPath, {
+    enabled: true,
+    modelIds: ['gpt-6.1-sol'],
+    revision: 0,
+  })
+  expect(configured.status).toBe(200)
+  accounts = (await configured.json()) as CodexAccountView[]
+  expect((await request(searchPath, { enabled: false, modelIds: [], revision: 0 })).status).toBe(
+    409,
+  )
+  const searchId = `provider:${accountId}:web_search`
+  expect(ctx.ai.capabilities().tools.map((tool) => tool.id)).toContain(searchId)
   expect(ctx.ai.capabilities().providers.map((entry) => entry.id)).toEqual([accountId])
 
   let ordinary = await ctx.plugin(provider, {})
@@ -423,6 +700,7 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
   await subscription.dispose()
   expect((await request('/codex-subscription')).status).toBe(404)
   expect(entries()).not.toContain('codex-subscription')
+  expect(ctx.ai.capabilities().tools.map((tool) => tool.id)).not.toContain(searchId)
   expect(entries()).toContain('ai-provider')
   expect((await request('/ai-providers')).status).toBe(200)
   expect(ctx.ai.capabilities().providers.some((entry) => entry.id === accountId)).toBe(false)
@@ -437,6 +715,7 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
   expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
   expect(ctx.ai.capabilities().providers.filter((entry) => entry.id === accountId)).toHaveLength(1)
   expect(entries().filter((id) => id === 'codex-subscription')).toHaveLength(1)
+  expect(ctx.ai.capabilities().tools.filter((tool) => tool.id === searchId)).toHaveLength(1)
   await subscription.dispose()
   await ordinary.dispose()
 })

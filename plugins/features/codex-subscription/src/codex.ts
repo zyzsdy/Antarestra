@@ -101,6 +101,9 @@ export class CodexSubscriptions {
         connected: !!account.tokens,
         expiresAt: account.tokens?.expiresAt ?? null,
         models: structuredClone(account.models),
+        webSearch: structuredClone(
+          account.webSearch ?? { enabled: false, modelIds: [], revision: 0 },
+        ),
       }))
   }
   private register(account: CodexAccount) {
@@ -114,6 +117,20 @@ export class CodexSubscriptions {
         baseUrl: record.baseUrl,
         driverId: `ai-provider:${account.id}`,
         models: account.models,
+        builtinTools: account.webSearch?.enabled
+          ? [
+              {
+                id: `provider:${account.id}:web_search`,
+                name: 'web_search',
+                description: 'ChatGPT 订阅原生网页搜索',
+                type: 'web_search',
+                modelIds: account.webSearch.modelIds.filter((id) =>
+                  account.models.some((model) => model.id === id && model.tools),
+                ),
+                options: {},
+              },
+            ]
+          : [],
         resolveCredential: (context) => this.credential(account.id, context),
       })
       this.registrations.set(account.id, async () => {
@@ -373,6 +390,7 @@ export class CodexSubscriptions {
           ...identity,
           tokens,
           models: previous?.models ?? [],
+          ...(previous?.webSearch ? { webSearch: previous.webSearch } : {}),
         }
         // 目录暂时失败不丢失已完成的授权，面板提供独立重试。
         try {
@@ -416,6 +434,32 @@ export class CodexSubscriptions {
       const token = await this.accessToken(account)
       const models = await codexModels(token, this.controller.signal, this.fetch)
       await this.commit({ ...this.account(ownerId, id), models })
+      return this.list(ownerId)
+    })
+  }
+  configureWebSearch(ownerId: string, id: string, body: Record<string, unknown>) {
+    return this.lock(async () => {
+      const account = this.account(ownerId, id)
+      const revision = account.webSearch?.revision ?? 0
+      if (body.revision !== revision)
+        throw new AuthError(409, '网页搜索设置已更新，请刷新账户后重新编辑')
+      check(typeof body.enabled === 'boolean', '网页搜索开关无效')
+      check(Array.isArray(body.modelIds) && body.modelIds.length <= 10000, '网页搜索模型范围无效')
+      const modelIds = body.modelIds.map((id: unknown) => {
+        check(typeof id === 'string', '网页搜索模型 ID 无效')
+        check(
+          account.models.some((model) => model.id === id && model.tools) ||
+            (!body.enabled && account.webSearch?.modelIds.includes(id)),
+          '请选择当前账户中支持工具调用的模型',
+        )
+        return id
+      })
+      check(new Set(modelIds).size === modelIds.length, '网页搜索模型不能重复')
+      check(!body.enabled || modelIds.length > 0, '启用网页搜索时请至少选择一个模型')
+      await this.commit({
+        ...account,
+        webSearch: { enabled: body.enabled, modelIds, revision: revision + 1 },
+      })
       return this.list(ownerId)
     })
   }

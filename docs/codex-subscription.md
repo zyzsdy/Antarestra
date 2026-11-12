@@ -47,6 +47,16 @@ plugins:
 
 参考：[模型与推理](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)、[预览限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)、[账户与会话](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)。
 
+## 原生网页搜索
+
+在 **AI 设置 → ChatGPT 订阅 → 网页搜索设置** 中，为每个账户独立启用搜索并选择可用模型。新账户及旧凭据文件默认关闭；启用时至少选择一个当前支持工具调用的模型。关闭开关保留模型选择，重新授权、重启及插件重载保留设置。同步模型不会自动扩大范围；已从目录移除的模型保留在配置中供取消选择，但不会向它发送搜索声明。
+
+保存后，助理的工具目录出现该账户的 `provider:账户ID:web_search`。允许全部工具的助理自动包含它；限定工具的助理需显式勾选。仅当账户启用、当前模型在范围内且助理授权时，请求才携带原生 `{ "type": "web_search" }`。本地 `web-tools` 的同名函数与其独立，可以同时使用；原生搜索由 OpenAI 执行，结果按 `provider-tool` 保存，不执行本地函数或发送 `function_call_output`。
+
+配置接口为 `POST /api/codex-subscription/accounts/:id/web-search`，提交 `enabled`、`modelIds` 和当前 `revision`。沿用 `admin.console.view`、`admin.ai.codex.manage` 权限及账户所有者校验；旧修订保存返回 409，前端保留草稿，需刷新账户后重新编辑。保存设置会重新注册该账户并停止其正在进行的模型调用。凭据刷新不改变搜索设置。
+
+模型目录中的工具调用标记不保证原生搜索可用，仍受 OpenAI 模型、账户及工作空间策略限制，上游拒绝时通过既有运行错误反馈。图像生成未接入本订阅通道。依据：[官方预览限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)、[网页搜索](https://developers.openai.com/api/docs/guides/tools-web-search)。核对日期：2026 年 11 月 12 日。
+
 ## 凭据与生命周期
 
 - 凭据目录默认是相对服务工作目录的 `data/codex-subscription`，由 `codex-subscription` 插件配置 `credentialsDirectory` 调整。目录不通过 WebUI 静态服务发布。

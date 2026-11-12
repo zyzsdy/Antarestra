@@ -1,5 +1,11 @@
 import type { ModelDefinition } from '@antarestra/ai'
 
+export interface CodexWebSearch {
+  enabled: boolean
+  modelIds: string[]
+  revision: number
+}
+
 export interface CodexAccountView {
   id: string
   email: string
@@ -7,6 +13,7 @@ export interface CodexAccountView {
   connected: boolean
   expiresAt: number | null
   models: ModelDefinition[]
+  webSearch: CodexWebSearch
 }
 export interface CodexLoginView {
   id: string
@@ -23,10 +30,15 @@ export interface CodexTokens {
   expiresAt: number
   scopes: string[]
 }
-export interface CodexAccount extends Omit<CodexAccountView, 'connected' | 'expiresAt'> {
+export interface CodexAccount extends Omit<
+  CodexAccountView,
+  'connected' | 'expiresAt' | 'webSearch'
+> {
   ownerId: string
   subject: string
   tokens?: CodexTokens
+  /** 旧凭据文件缺省时保持关闭，不自动扩大模型范围。 */
+  webSearch?: CodexWebSearch
 }
 export interface CodexState {
   version: 1

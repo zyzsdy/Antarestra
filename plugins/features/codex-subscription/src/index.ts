@@ -69,6 +69,13 @@ export async function apply(ctx: Context, config: Config = {}) {
       await readJson(http)
       return codex.sync(owner(http), identifier(http.params.id))
     })
+    codexRoute('POST', '/accounts/:id/web-search', async (http) =>
+      codex.configureWebSearch(
+        owner(http),
+        identifier(http.params.id),
+        await readJson(http, 262144),
+      ),
+    )
     codexRoute('POST', '/accounts/:id/disconnect', async (http) => {
       await readJson(http)
       return codex.disconnect(owner(http), identifier(http.params.id))
