@@ -230,6 +230,7 @@ export function createModelDriver(
         },
         headers,
         context.signal,
+        options.fetch,
       )
       let lease: ToolLease | undefined
       let completed = false
@@ -286,6 +287,7 @@ export function createModelDriver(
             // 重试统一由 AI 核心控制，避免驱动与入口叠加重试次数。
             maxRetries: 0,
             env: {},
+            ...(options.fetch ? { fetch: options.fetch } : {}),
             onPayload: (value: unknown) => {
               const payload = files.transform(value) as Record<string, unknown>
               if (builtinTools.length)

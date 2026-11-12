@@ -8,7 +8,10 @@
 plugins:
   codex-subscription:
     credentialsDirectory: data/codex-subscription
+    proxy: socks5://127.0.0.1:7890
 ```
+
+`proxy` 可在插件配置面板中设置，支持 HTTP、HTTPS 和 SOCKS5 代理，例如 `http://127.0.0.1:7890` 或 `socks5://127.0.0.1:7890`；省略或留空保持原有网络行为。配置后，插件全部服务端出站请求（授权码交换、令牌刷新、身份公钥、模型目录、模型流式响应、撤销授权及其发现请求）均通过代理，代理不可用时请求失败，不回退直连。代理连接随插件卸载关闭，不影响其他插件。浏览器打开的登录页面使用浏览器自己的网络配置，本地 OAuth 回调监听不经过代理。代理地址中的 `127.0.0.1` 指运行 Antarestra 的服务器；包含代理凭据时请使用环境引用，勿提交真实凭据。
 
 默认主配置已启用本插件。凭据目录默认保持原路径；从旧版升级时，将 `ai-provider.codexCredentialsDirectory` 移至本插件的 `credentialsDirectory`。保留原目录即可沿用账户、客户端 ID、主机 ID 和令牌，无需重新登录。
 

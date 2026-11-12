@@ -36,7 +36,12 @@ export function authorizationUrl(input: {
 }
 
 /** 不将上游响应正文、授权码或令牌拼接到错误中。 */
-export async function oauthJson(url: string, signal: AbortSignal, init: RequestInit = {}) {
+export async function oauthJson(
+  url: string,
+  signal: AbortSignal,
+  init: RequestInit = {},
+  fetch = globalThis.fetch,
+) {
   const response = await fetch(url, {
     ...init,
     signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
@@ -63,12 +68,21 @@ export async function oauthJson(url: string, signal: AbortSignal, init: RequestI
     await reader.cancel()
   }
 }
-export function exchangeTokens(parameters: Record<string, string>, signal: AbortSignal) {
-  return oauthJson(codexIssuer + '/api/accounts/oauth/token', signal, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ ...parameters, resource: codexResource }),
-  })
+export function exchangeTokens(
+  parameters: Record<string, string>,
+  signal: AbortSignal,
+  fetch = globalThis.fetch,
+) {
+  return oauthJson(
+    codexIssuer + '/api/accounts/oauth/token',
+    signal,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ ...parameters, resource: codexResource }),
+    },
+    fetch,
+  )
 }
 export function parseTokens(body: Record<string, unknown>, previous?: CodexTokens): CodexTokens {
   const accessToken = body.access_token
@@ -100,8 +114,9 @@ export async function verifyIdentity(
   clientId: string,
   nonce: string | undefined,
   signal: AbortSignal,
+  fetch = globalThis.fetch,
 ) {
-  const jwks = await oauthJson(codexIssuer + '/.well-known/jwks.json', signal)
+  const jwks = await oauthJson(codexIssuer + '/.well-known/jwks.json', signal, {}, fetch)
   const { payload } = await jwtVerify(token, createLocalJWKSet(jwks as unknown as JSONWebKeySet), {
     issuer: codexIssuer,
     audience: clientId,

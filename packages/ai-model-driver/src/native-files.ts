@@ -9,6 +9,7 @@ export async function nativeFiles(
   connection: { baseUrl: string; credential: string | undefined },
   headers: Record<string, string | null>,
   signal: AbortSignal,
+  fetch?: typeof globalThis.fetch,
 ) {
   const ids = new Map<string, string>()
   let client: OpenAI | undefined
@@ -30,6 +31,7 @@ export async function nativeFiles(
           apiKey: connection.credential || 'unused',
           defaultHeaders: headers,
           maxRetries: 0,
+          ...(fetch ? { fetch } : {}),
         })
         const file = await client.files.create(
           {

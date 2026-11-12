@@ -22,6 +22,7 @@ export interface ToolLease {
 /** 策略由调用插件提供；共享包不依赖账户、数据库或订阅协议。 */
 export interface DriverOptions {
   id: string
+  fetch?: typeof globalThis.fetch
   reserveTools?(workspaceId: string, names: string[]): Promise<ToolLease>
   validateFiles?(files: ReadonlyMap<string, ResolvedResource>): void
   transformPayload?(payload: Record<string, unknown>): Record<string, unknown>

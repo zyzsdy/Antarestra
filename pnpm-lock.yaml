@@ -170,6 +170,9 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+      undici:
+        specifier: ^8.11.2
+        version: 8.11.2
       vite:
         specifier: ^8.2.2
         version: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0)
@@ -786,6 +789,9 @@ importers:
       jose:
         specifier: ^6.2.17
         version: 6.2.17
+      undici:
+        specifier: ^8.11.2
+        version: 8.11.2
     devDependencies:
       typescript:
         specifier: 6.0.3

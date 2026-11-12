@@ -11,12 +11,14 @@ export const name = '@antarestra/plugin-codex-subscription'
 export const inject = ['ai', 'rbac']
 export interface Config {
   credentialsDirectory?: string
+  proxy?: string
 }
 export async function apply(ctx: Context, config: Config = {}) {
   ctx.rbac.registerPermission(ctx, 'admin.ai.codex.manage', '管理本人的 ChatGPT 订阅', ['admin'])
   const codex = new CodexSubscriptions(
     ctx,
     config.credentialsDirectory ?? 'data/codex-subscription',
+    config.proxy,
   )
   await codex.initialize()
   ctx.inject(['webui'], (ctx) => {

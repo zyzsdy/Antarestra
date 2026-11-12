@@ -27,7 +27,8 @@
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
     "@antarestra/webui": "workspace:*",
-    "jose": "^6.2.17"
+    "jose": "^6.2.17",
+    "undici": "^8.11.2"
   },
   "devDependencies": {
     "typescript": "6.0.3",

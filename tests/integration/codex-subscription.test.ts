@@ -15,6 +15,7 @@ import provider from '@antarestra/plugin-ai-provider'
 import * as codexPlugin from '@antarestra/plugin-codex-subscription'
 import { CodexSubscriptions } from '../../plugins/features/codex-subscription/src/codex.js'
 import { CodexStorage } from '../../plugins/features/codex-subscription/src/codex-storage.js'
+import { codexFetch } from '../../plugins/features/codex-subscription/src/network.js'
 import {
   codexScope,
   codexIssuer,
@@ -25,6 +26,11 @@ import type {
   CodexState,
   CodexLoginView,
 } from '../../plugins/features/codex-subscription/src/codex-types.js'
+
+vi.mock('undici', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('undici')>()),
+  fetch: (input: string | URL | Request, init?: RequestInit) => globalThis.fetch(input, init),
+}))
 
 const contexts: Context[] = []
 const directories: string[] = []
@@ -106,7 +112,7 @@ afterEach(async () => {
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true })
 })
-async function fixture(directory?: string) {
+async function fixture(directory?: string, proxy?: string) {
   const root = directory ?? (await mkdtemp(join(tmpdir(), 'antarestra-codex-test-')))
   if (!directory) directories.push(root)
   const ctx = new Context()
@@ -120,7 +126,7 @@ async function fixture(directory?: string) {
   const fiber = await ctx.plugin({
     inject: ['ai'],
     async apply(ctx: Context) {
-      subscriptions = new CodexSubscriptions(ctx, root)
+      subscriptions = new CodexSubscriptions(ctx, root, proxy)
       await subscriptions.initialize()
     },
   })
@@ -149,6 +155,45 @@ const modelContext = (actorId = 'owner', workspaceId = 'workspace-a') => ({
   actorId,
   workspaceId,
   signal: new AbortController().signal,
+})
+
+it('代理覆盖授权、刷新、身份公钥、目录同步、发现和撤销，实例之间互不影响', async () => {
+  const app = await fixture(undefined, 'socks5://127.0.0.1:7890')
+  const account = await connect(app.subscriptions)
+  const requests = vi.mocked(globalThis.fetch)
+  const dispatcherOf = (init?: RequestInit) =>
+    (init as (RequestInit & { dispatcher?: { destroyed: boolean } }) | undefined)?.dispatcher
+  const firstDispatcher = dispatcherOf(requests.mock.calls[0]?.[1])
+  expect(firstDispatcher).toBeDefined()
+  expect(requests.mock.calls.every(([, init]) => dispatcherOf(init) === firstDispatcher)).toBe(true)
+  const filename = join(app.root, 'accounts.json')
+  const saved = JSON.parse(await readFile(filename, 'utf8')) as CodexState
+  saved.accounts[0]!.tokens!.expiresAt = 1
+  await app.fiber.dispose()
+  expect(firstDispatcher?.destroyed).toBe(true)
+  await writeFile(filename, JSON.stringify(saved))
+  requests.mockClear()
+  const restored = await fixture(app.root, 'http://127.0.0.1:7890')
+  await restored.subscriptions.sync('owner', account.id)
+  expect(refreshes).toBe(1)
+  expect((await restored.subscriptions.disconnect('owner', account.id)).revoked).toBe(true)
+  expect(requests.mock.calls.map(([url]) => String(url))).toEqual([
+    codexIssuer + '/api/accounts/oauth/token',
+    codexIssuer + '/.well-known/jwks.json',
+    codexResource + '/models',
+    codexIssuer + '/.well-known/openid-configuration',
+    codexIssuer + '/revoke',
+  ])
+  const restoredDispatcher = dispatcherOf(requests.mock.calls[0]?.[1])
+  expect(restoredDispatcher).toBeDefined()
+  expect(restoredDispatcher).not.toBe(firstDispatcher)
+  expect(requests.mock.calls.every(([, init]) => dispatcherOf(init) === restoredDispatcher)).toBe(
+    true,
+  )
+  requests.mockClear()
+  const direct = await fixture()
+  await connect(direct.subscriptions)
+  expect(requests.mock.calls.every(([, init]) => !dispatcherOf(init))).toBe(true)
 })
 
 it('通过真实回环回调完成 PKCE 登录，持久化并注册账户目录，不泄露令牌', async () => {
@@ -316,7 +361,10 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'test-codex-password-42',
   })
-  let subscription = await ctx.plugin(codexPlugin, { credentialsDirectory: root })
+  let subscription = await ctx.plugin(codexPlugin, {
+    credentialsDirectory: root,
+    proxy: 'http://127.0.0.1:7890',
+  })
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   expect((await realFetch(base + '/codex-subscription')).status).toBe(401)
   const response = await realFetch(base + '/auth/local/local/login', {
@@ -348,6 +396,7 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
     (await request(`/codex-subscription/login/${login.id}/complete`, { callback: callback(login) }))
       .status,
   ).toBe(200)
+  expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]).toHaveProperty('dispatcher')
   const accounts = (await (await request('/codex-subscription')).json()) as { id: string }[]
   const accountId = accounts[0]!.id
   expect(ctx.ai.capabilities().providers.map((entry) => entry.id)).toEqual([accountId])
@@ -449,6 +498,7 @@ it.each(['completed', 'failed', 'interrupted'])(
       'fetch',
       vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         expect(String(input)).toBe(codexResource + '/responses')
+        expect(init).toHaveProperty('dispatcher')
         expect(new Headers(init?.headers).get('authorization')).toBe('Bearer access-secret')
         sent = JSON.parse(String(init?.body)) as Record<string, unknown>
         return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
@@ -474,7 +524,9 @@ it.each(['completed', 'failed', 'interrupted'])(
       email: 'test@example.com',
       models: [model],
     })
-    const generate = driver(record).generate(
+    const networkContext = new Context()
+    contexts.push(networkContext)
+    const generate = driver(record, codexFetch(networkContext, 'socks5://127.0.0.1:7890')).generate(
       {
         model: { providerId: record.id, modelId: model.id },
         thinking: null,

@@ -9,6 +9,7 @@ import { AuthError } from '@antarestra/rbac'
 import { check } from './validation.js'
 import { codexDriver } from './driver.js'
 import { CodexStorage } from './codex-storage.js'
+import { codexFetch } from './network.js'
 import { codexModels, codexProvider } from './codex-models.js'
 import {
   authorizationUrl,
@@ -41,10 +42,13 @@ export class CodexSubscriptions {
   private attempts = new Map<string, Attempt>()
   private registrations = new Map<string, () => Promise<void>>()
   private ready = false
+  private fetch: typeof globalThis.fetch
   constructor(
     private ctx: Context,
     directory: string,
+    proxy?: string,
   ) {
+    this.fetch = codexFetch(ctx, proxy)
     this.storage = new CodexStorage(directory)
     ctx.effect(() => async () => {
       this.controller.abort()
@@ -102,7 +106,7 @@ export class CodexSubscriptions {
   private register(account: CodexAccount) {
     if (!account.tokens) return
     const record = codexProvider(account)
-    const removeDriver = this.ctx.ai.registerDriver(this.ctx, codexDriver(record))
+    const removeDriver = this.ctx.ai.registerDriver(this.ctx, codexDriver(record, this.fetch))
     try {
       const removeProvider = this.ctx.ai.registerProvider(this.ctx, {
         id: account.id,
@@ -142,6 +146,7 @@ export class CodexSubscriptions {
         refresh_token: previous.refreshToken,
       },
       this.controller.signal,
+      this.fetch,
     )
     const tokens = parseTokens(body, previous)
     if (body.id_token !== undefined) {
@@ -150,6 +155,7 @@ export class CodexSubscriptions {
         account.clientId,
         undefined,
         this.controller.signal,
+        this.fetch,
       )
       check(identity.subject === account.subject, '刷新后的账户身份不一致，请重新授权')
     }
@@ -343,6 +349,7 @@ export class CodexSubscriptions {
             redirect_uri: attempt.redirectUri,
           },
           this.controller.signal,
+          this.fetch,
         )
         const tokens = parseTokens(body)
         const identity = await verifyIdentity(
@@ -350,6 +357,7 @@ export class CodexSubscriptions {
           clientId,
           attempt.nonce,
           this.controller.signal,
+          this.fetch,
         )
         check(!previous || identity.subject === previous.subject, '登录账户与原账户不匹配')
         check(
@@ -368,7 +376,7 @@ export class CodexSubscriptions {
         }
         // 目录暂时失败不丢失已完成的授权，面板提供独立重试。
         try {
-          account.models = await codexModels(tokens.accessToken, this.controller.signal)
+          account.models = await codexModels(tokens.accessToken, this.controller.signal, this.fetch)
         } catch {
           this.controller.signal.throwIfAborted()
         }
@@ -406,7 +414,7 @@ export class CodexSubscriptions {
     return this.lock(async () => {
       const account = this.account(ownerId, id)
       const token = await this.accessToken(account)
-      const models = await codexModels(token, this.controller.signal)
+      const models = await codexModels(token, this.controller.signal, this.fetch)
       await this.commit({ ...this.account(ownerId, id), models })
       return this.list(ownerId)
     })
@@ -423,6 +431,8 @@ export class CodexSubscriptions {
           const discovery = await oauthJson(
             codexIssuer + '/.well-known/openid-configuration',
             this.controller.signal,
+            {},
+            this.fetch,
           )
           const endpoint = new URL(String(discovery.revocation_endpoint))
           check(
@@ -432,7 +442,7 @@ export class CodexSubscriptions {
           for (let attempt = 0; attempt < 2; attempt++) {
             if (attempt) await delay(250, undefined, { signal: this.controller.signal })
             try {
-              const response = await fetch(endpoint, {
+              const response = await this.fetch(endpoint, {
                 method: 'POST',
                 redirect: 'error',
                 signal: AbortSignal.any([this.controller.signal, AbortSignal.timeout(10_000)]),

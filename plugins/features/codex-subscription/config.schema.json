@@ -4,6 +4,12 @@
   "description": "通过官方 OAuth 管理本人订阅，凭据保存在服务端私有目录。",
   "type": "object",
   "properties": {
+    "proxy": {
+      "type": "string",
+      "title": "代理服务器",
+      "description": "插件全部服务端出站请求使用此代理，包括授权、令牌刷新、模型目录、模型流式请求和撤销授权。支持 http://127.0.0.1:7890 或 socks5://127.0.0.1:7890，留空保持默认网络行为；浏览器登录页面需自行配置浏览器代理。",
+      "default": ""
+    },
     "credentialsDirectory": {
       "type": "string",
       "title": "ChatGPT 订阅凭据目录",

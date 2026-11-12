@@ -16,10 +16,19 @@ export function codexProvider(account: CodexAccount): ModelProviderConfig & { na
     models: account.models,
   }
 }
-export async function codexModels(token: string, signal: AbortSignal): Promise<ModelDefinition[]> {
-  const body = await oauthJson(codexResource + '/models', signal, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+export async function codexModels(
+  token: string,
+  signal: AbortSignal,
+  fetch = globalThis.fetch,
+): Promise<ModelDefinition[]> {
+  const body = await oauthJson(
+    codexResource + '/models',
+    signal,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    fetch,
+  )
   if (!Array.isArray(body.models)) throw new AuthError(502, 'OpenAI 模型目录格式无效')
   const known = new Map(
     candidates({ builtin: 'openai', api: 'openai-responses' }).map((m) => [m.id, m]),
