@@ -1,0 +1,147 @@
+.ui-ai-management {
+  color: #263047;
+  --provider-primary: #315ed1;
+  --provider-border: #e0e5ee;
+  --provider-success: #28734b;
+  --provider-danger: #b42338;
+}
+
+.ui-ai-management h1 {
+  margin: 0;
+  font-size: 27px;
+}
+
+.ui-ai-management h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+
+.ui-ai-management .page-heading,
+.ui-ai-management .model-heading,
+.ui-ai-management .provider-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.ui-ai-management .page-heading {
+  margin-bottom: 28px;
+}
+
+.ui-ai-management .muted,
+.ui-ai-management .hint {
+  color: #647087;
+}
+
+.ui-ai-management .hint {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.ui-ai-management .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ui-ai-management button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--provider-border);
+  border-radius: 7px;
+  padding: 9px 13px;
+  min-height: 38px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ui-ai-management button:hover:not(:disabled) {
+  background: #eef3ff;
+  border-color: #b4c6ee;
+}
+
+.ui-ai-management button:active:not(:disabled) {
+  background: #dfe9fc;
+}
+
+.ui-ai-management button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ui-ai-management button.primary {
+  background: var(--provider-primary);
+  border-color: var(--provider-primary);
+  color: #fff;
+}
+
+.ui-ai-management button.primary:hover:not(:disabled) {
+  background: #244daf;
+}
+
+.ui-ai-management button.danger {
+  color: var(--provider-danger);
+}
+
+.ui-ai-management input:not([type='checkbox']):not(.ui-select input),
+.ui-ai-management textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd3e0;
+  border-radius: 7px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  min-height: 40px;
+}
+
+.ui-ai-management input:disabled {
+  background: #f4f6fa;
+}
+
+.ui-ai-management input[aria-invalid='true'],
+.ui-ai-management textarea[aria-invalid='true'] {
+  border-color: #b42338;
+}
+
+.ui-ai-management textarea {
+  resize: none;
+  field-sizing: content;
+}
+
+.ui-ai-management code {
+  display: block;
+  font-size: 12px;
+  color: #647087;
+  overflow-wrap: anywhere;
+}
+
+.ui-ai-management .state {
+  padding: 36px 20px;
+  text-align: center;
+  color: #647087;
+}
+
+.ui-ai-management .error {
+  color: #b42338;
+  min-height: 22px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .ui-ai-management h1 {
+    font-size: 23px;
+  }
+  .ui-ai-management .page-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+}

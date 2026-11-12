@@ -34,7 +34,8 @@
       "development": "./src/vite.ts",
       "default": "./dist/vite.js"
     },
-    "./api": "./client/api.ts"
+    "./api": "./client/api.ts",
+    "./ai-management.css": "./client/ai-management.css"
   },
   "dependencies": {
     "@antarestra/contracts": "workspace:*",

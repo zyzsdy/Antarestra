@@ -1,0 +1,43 @@
+{
+  "name": "@antarestra/plugin-codex-subscription",
+  "description": "通过官方 OAuth 接入 ChatGPT 订阅，管理账户、订阅模型与控制台面板。",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "antarestra-plugin"
+  ],
+  "scripts": {
+    "build": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit && vite build",
+    "typecheck": "tsc -b && vue-tsc -p tsconfig.client.json --noEmit",
+    "dev": "vite build --watch"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@antarestra/ai": "workspace:*",
+    "@antarestra/ai-model-driver": "workspace:*",
+    "@antarestra/plugin-admin-console": "workspace:*",
+    "@antarestra/plugin-sdk": "workspace:*",
+    "@antarestra/plugin-server": "workspace:*",
+    "@antarestra/rbac": "workspace:*",
+    "@antarestra/webui": "workspace:*",
+    "jose": "^6.2.17"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "^8.2.2",
+    "vue": "^3.5.42",
+    "vue-tsc": "^3.3.11"
+  },
+  "antarestra": {
+    "title": "ChatGPT 订阅接入",
+    "configSchema": "./config.schema.json",
+    "multipleInstances": false
+  }
+}

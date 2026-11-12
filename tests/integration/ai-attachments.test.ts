@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { filePayload } from '../../plugins/features/ai-provider/src/attachments.js'
-import { nativeFiles } from '../../plugins/features/ai-provider/src/native-files.js'
+import { filePayload } from '../../packages/ai-model-driver/src/attachments.js'
+import { nativeFiles } from '../../packages/ai-model-driver/src/native-files.js'
 import { createServer } from 'node:http'
 const pdf = { filename: '说明.pdf', mimeType: 'application/pdf', data: 'aGVsbG8=' }
 it.each([false, true])('附件转换保留 SDK 取消信号和非普通对象（包含附件：%s）', (attached) => {

@@ -4,6 +4,7 @@ import { feedbackKey } from '@antarestra/webui/client'
 import { useApi } from '@antarestra/webui/api'
 import { EditorDialog, PaginationField, SecretInput } from '@antarestra/webui/components'
 import type { CodexAccountView, CodexLoginView } from '../src/codex-types.js'
+import '@antarestra/webui/ai-management.css'
 import './style.css'
 
 const { api, run, busy, message } = useApi()
@@ -146,7 +147,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="ai-providers codex-subscription" :aria-busy="busy">
+  <section class="ui-ai-management codex-subscription" :aria-busy="busy">
     <header class="page-heading">
       <div>
         <h2>账户与授权</h2>

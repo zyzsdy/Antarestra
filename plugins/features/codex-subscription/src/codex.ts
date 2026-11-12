@@ -7,7 +7,7 @@ import { AiError } from '@antarestra/ai'
 import type { ModelContext } from '@antarestra/ai'
 import { AuthError } from '@antarestra/rbac'
 import { check } from './validation.js'
-import { driver } from './driver.js'
+import { codexDriver } from './driver.js'
 import { CodexStorage } from './codex-storage.js'
 import { codexModels, codexProvider } from './codex-models.js'
 import {
@@ -102,7 +102,7 @@ export class CodexSubscriptions {
   private register(account: CodexAccount) {
     if (!account.tokens) return
     const record = codexProvider(account)
-    const removeDriver = this.ctx.ai.registerDriver(this.ctx, driver(record))
+    const removeDriver = this.ctx.ai.registerDriver(this.ctx, codexDriver(record))
     try {
       const removeProvider = this.ctx.ai.registerProvider(this.ctx, {
         id: account.id,

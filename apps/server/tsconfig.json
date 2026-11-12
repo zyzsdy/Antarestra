@@ -120,6 +120,9 @@
     },
     {
       "path": "../../plugins/features/mcp"
+    },
+    {
+      "path": "../../plugins/features/codex-subscription"
     }
   ]
 }

@@ -56,6 +56,6 @@ Agent 工具列表用 `provider:提供商ID:工具名` 区分不同提供商的�
 
 ## ChatGPT / Codex 订阅
 
-控制台的 **AI 设置 → ChatGPT 订阅**（`/admin/codex-subscription/`）通过官方 OAuth 使用自己的 ChatGPT 订阅，无需 OpenAI API Key、client secret 或手动申请客户端 ID。首次授权动态注册 Antarestra，后续保留该账户的客户端 ID。具体步骤、凭据目录和自托管说明见 [订阅接入指南](../../../docs/codex-subscription.md)。
+订阅接入由独立的 `@antarestra/plugin-codex-subscription` 插件提供，包含 OAuth、账户凭据及 **AI 设置 → ChatGPT 订阅** 控制台面板。两者可以分别启停，共同使用 `@antarestra/ai-model-driver` 的模型传输能力，本插件只管理普通提供商及其数据库工具额度。
 
-此入口与普通 API Key 提供商独立。每个授权账户注册为 `codex-…` 提供商，复用现有 AI 请求、工具调用及聊天链路；只有授权时的 Antarestra 主体能够解析其凭据，空间权限仍由 AI 核心校验。面板权限为 `admin.ai.codex.manage`，同时要求 `admin.console.view`，默认授予管理员。
+授权步骤与旧配置迁移见[订阅接入指南](../../../docs/codex-subscription.md)。

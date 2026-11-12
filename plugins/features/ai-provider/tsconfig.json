@@ -27,6 +27,9 @@
     },
     {
       "path": "../admin-console"
+    },
+    {
+      "path": "../../../packages/ai-model-driver"
     }
   ]
 }

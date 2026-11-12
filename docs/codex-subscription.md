@@ -2,7 +2,7 @@
 
 ## 开始使用
 
-本功能位于现有 `@antarestra/plugin-ai-provider` 插件中，默认配置已启用，无需另外安装插件。
+本功能由独立的 `@antarestra/plugin-codex-subscription` 插件提供，默认配置已启用，可与普通 API 提供商插件 `ai-provider` 分别启停。管理页面仍在同一个管理控制台内。
 
 1. 构建并启动 Antarestra，使用管理员账户进入 **管理控制台 → AI 设置 → ChatGPT 订阅**。
 2. 点击 **使用 ChatGPT 继续**，再打开官方授权页面。使用自己的 ChatGPT 账户登录，并允许 Antarestra 使用订阅。
@@ -22,6 +22,21 @@
 
 依据：[官方接入概览](https://developers.openai.com/siwc/token-sharing-open-source)、[注册与登录](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)。核对日期：2026 年 11 月 12 日。
 
+## 从内置接入升级
+
+默认凭据目录不变，无需迁移文件或重新授权。如果之前自定义过目录，将 `ai-provider` 下的 `codexCredentialsDirectory` 移到独立插件配置：
+
+```yaml
+plugins:
+  ai-provider: {}
+  codex-subscription:
+    credentialsDirectory: data/codex-subscription
+```
+
+自定义目录请填写原路径，并删除旧字段。账户 ID、主机 ID、OAuth 客户端 ID、凭据文件格式及历史响应签名的驱动标识保持不变。仅使用订阅时可停用 `ai-provider`；停用订阅插件会移除其面板、管理接口及模型，不删除凭据文件或影响普通提供商。
+
+两种接入共用 `packages/ai-model-driver` 中的流式驱动与附件转换；该包不参与插件发现，不负责账户或额度策略。
+
 ## 请求与支持范围
 
 请求直接发送到 `https://api.openai.com/v1/responses`，不经过中转服务。使用官方 OAuth 访问令牌，强制 `store: false`、`stream: true`，历史由 Antarestra 提供；只在收到 `response.completed` 时认定请求完成。
@@ -34,7 +49,7 @@
 
 ## 凭据与生命周期
 
-- 凭据目录默认是相对服务工作目录的 `data/codex-subscription`，由插件配置 `codexCredentialsDirectory` 调整。目录不通过 WebUI 静态服务发布。
+- 凭据目录默认是相对服务工作目录的 `data/codex-subscription`，由 `codex-subscription` 插件配置 `credentialsDirectory` 调整。目录不通过 WebUI 静态服务发布。
 - `accounts.json` 包含主机 ID、已验证的账户身份、客户端 ID、模型及令牌；令牌以明文保存在服务端私有文件，不放入业务提供商数据库或浏览器存储。Unix 新建目录权限为 `0700`，凭据文件为 `0600`，通过临时文件与重命名原子替换。Windows 部署需由操作系统目录 ACL 限制服务账户访问，文件 mode 不替代 Windows ACL。
 - 默认 `data/` 已被 Git 忽略。自定义目录也必须排除版本管理，不能指向公共静态目录。备份时按敏感凭据保护；复制部署时不要把旧主机凭据目录作为新主机初始目录。
 - 一个目录只允许一个进程使用。插件正常卸载会释放 `.lock`。若进程被强制结束，先确认旧进程已停止，再移除残留 `.lock`；不要在运行时删除锁文件。
@@ -51,8 +66,8 @@
 
 ```sh
 pnpm exec vitest run tests/integration/codex-subscription.test.ts tests/integration/ai-provider.test.ts tests/integration/provider-images.test.ts tests/integration/provider-google.test.ts tests/integration/provider-user-agent.test.ts tests/integration/provider-model-sync.test.ts
-pnpm --filter @antarestra/plugin-ai-provider typecheck
-pnpm --filter @antarestra/plugin-ai-provider build
+pnpm --filter @antarestra/plugin-codex-subscription typecheck
+pnpm --filter @antarestra/plugin-codex-subscription build
 ```
 
 测试使用本地 SQLite、真实回环 HTTP 回调、测试签名的 JWT 和模拟官方响应，包含流式文本、工具和图片输入验证，不消耗真实订阅。真实账户登录和推理需要部署后由账户持有人完成；不能将这些测试称为真实模型集成测试。

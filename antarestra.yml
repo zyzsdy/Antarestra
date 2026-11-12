@@ -75,6 +75,7 @@ plugins:
     # bootstrapPassword: $ANTARESTRA_ADMIN_PASSWORD
   admin-console: {}
   ai-provider: {}
+  codex-subscription: {}
   ai-agents: {}
   mcp: {}
   im-ai: {}

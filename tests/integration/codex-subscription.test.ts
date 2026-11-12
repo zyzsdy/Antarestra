@@ -12,18 +12,19 @@ import rbac from '@antarestra/rbac'
 import WebUI from '@antarestra/webui'
 import local from '@antarestra/plugin-auth-local'
 import provider from '@antarestra/plugin-ai-provider'
-import { CodexSubscriptions } from '../../plugins/features/ai-provider/src/codex.js'
-import { CodexStorage } from '../../plugins/features/ai-provider/src/codex-storage.js'
+import * as codexPlugin from '@antarestra/plugin-codex-subscription'
+import { CodexSubscriptions } from '../../plugins/features/codex-subscription/src/codex.js'
+import { CodexStorage } from '../../plugins/features/codex-subscription/src/codex-storage.js'
 import {
   codexScope,
   codexIssuer,
   codexResource,
-} from '../../plugins/features/ai-provider/src/codex-oauth.js'
-import { subscriptionPayload } from '../../plugins/features/ai-provider/src/codex-models.js'
+} from '../../plugins/features/codex-subscription/src/codex-oauth.js'
+import { subscriptionPayload } from '../../plugins/features/codex-subscription/src/codex-models.js'
 import type {
   CodexState,
   CodexLoginView,
-} from '../../plugins/features/ai-provider/src/codex-types.js'
+} from '../../plugins/features/codex-subscription/src/codex-types.js'
 
 const contexts: Context[] = []
 const directories: string[] = []
@@ -297,7 +298,7 @@ it('官方订阅请求约束保留工具历史，移除不支持参数并使用�
   expect(result).not.toHaveProperty('previous_response_id')
 })
 
-it('管理接口需要控制台与订阅权限，账户列表按登录主体隔离', async () => {
+it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖恢复保留账户', async () => {
   const root = await mkdtemp(join(tmpdir(), 'antarestra-codex-http-'))
   directories.push(root)
   const ctx = new Context()
@@ -306,7 +307,7 @@ it('管理接口需要控制台与订阅权限，账户列表按登录主体隔�
   await ctx.plugin(database, { filename: ':memory:' })
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
   await ctx.plugin(rbac)
-  await ctx.plugin(ai, {})
+  const core = await ctx.plugin(ai, {})
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
   await ctx.plugin(WebUI)
   await ctx.plugin(local, {
@@ -315,7 +316,7 @@ it('管理接口需要控制台与订阅权限，账户列表按登录主体隔�
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'test-codex-password-42',
   })
-  await ctx.plugin(provider, { codexCredentialsDirectory: root })
+  let subscription = await ctx.plugin(codexPlugin, { credentialsDirectory: root })
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   expect((await realFetch(base + '/codex-subscription')).status).toBe(401)
   const response = await realFetch(base + '/auth/local/local/login', {
@@ -328,13 +329,76 @@ it('管理接口需要控制台与订阅权限，账户列表按登录主体隔�
   expect(list.status).toBe(200)
   expect(list.headers.get('cache-control')).toBe('no-store')
   expect(await list.json()).toEqual([])
+  const request = (path: string, body?: unknown) =>
+    realFetch(base + path, {
+      headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
+    })
+  const entries = () =>
+    ctx.webui
+      .getEntries()
+      .map((entry) => entry.id)
+      .sort()
+  expect(ctx.aiProvider).toBeUndefined()
+  expect(entries()).toContain('codex-subscription')
+  expect(entries()).not.toContain('ai-provider')
+  expect((await request('/ai-providers')).status).toBe(404)
+  const login = (await (await request('/codex-subscription/login', {})).json()) as CodexLoginView
+  expect(
+    (await request(`/codex-subscription/login/${login.id}/complete`, { callback: callback(login) }))
+      .status,
+  ).toBe(200)
+  const accounts = (await (await request('/codex-subscription')).json()) as { id: string }[]
+  const accountId = accounts[0]!.id
+  expect(ctx.ai.capabilities().providers.map((entry) => entry.id)).toEqual([accountId])
+
+  let ordinary = await ctx.plugin(provider, {})
+  await ctx.aiProvider.save({
+    id: 'ordinary',
+    name: '普通提供商',
+    note: '',
+    builtin: '',
+    api: 'openai-completions',
+    baseUrl: 'https://example.com/v1',
+    apiKey: '',
+    headers: {},
+  })
+  expect(entries()).toEqual(expect.arrayContaining(['ai-provider', 'codex-subscription']))
+  await ordinary.dispose()
+  expect((await request('/ai-providers')).status).toBe(404)
+  expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
+  expect(ctx.ai.capabilities().providers.map((entry) => entry.id)).toEqual([accountId])
+  ordinary = await ctx.plugin(provider, {})
+
+  const pending = (await (await request('/codex-subscription/login', {})).json()) as CodexLoginView
+  await subscription.dispose()
+  expect((await request('/codex-subscription')).status).toBe(404)
+  expect(entries()).not.toContain('codex-subscription')
+  expect(entries()).toContain('ai-provider')
+  expect((await request('/ai-providers')).status).toBe(200)
+  expect(ctx.ai.capabilities().providers.some((entry) => entry.id === accountId)).toBe(false)
+  await expect(realFetch(pending.redirectUri)).rejects.toThrow()
+  subscription = await ctx.plugin(codexPlugin, { credentialsDirectory: root })
+  expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
+  await core.dispose()
+  expect((await request('/codex-subscription')).status).toBe(404)
+  expect(entries()).not.toContain('codex-subscription')
+  await ctx.plugin(ai, {})
+  await expect.poll(async () => (await request('/codex-subscription')).status).toBe(200)
+  expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
+  expect(ctx.ai.capabilities().providers.filter((entry) => entry.id === accountId)).toHaveLength(1)
+  expect(entries().filter((id) => id === 'codex-subscription')).toHaveLength(1)
+  await subscription.dispose()
+  await ordinary.dispose()
 })
 
 it.each(['completed', 'failed', 'interrupted'])(
   '订阅驱动通过真实 SSE 解析 %s 响应，只接受完成事件',
   async (terminal) => {
-    const { driver } = await import('../../plugins/features/ai-provider/src/driver.js')
-    const { codexProvider } = await import('../../plugins/features/ai-provider/src/codex-models.js')
+    const { codexDriver: driver } =
+      await import('../../plugins/features/codex-subscription/src/driver.js')
+    const { codexProvider } =
+      await import('../../plugins/features/codex-subscription/src/codex-models.js')
     let sent: Record<string, unknown> | undefined
     const message = {
       id: 'message',

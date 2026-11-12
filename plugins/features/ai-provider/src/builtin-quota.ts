@@ -63,6 +63,7 @@ export class BuiltinQuota {
         }
         return {
           blocked,
+          message: builtinLimitMessage,
           // 只有完整响应能证明未使用的预占可释放；断线、取消和崩溃保守保留。
           finish: (counts: Map<string, number>, completed: boolean) =>
             this.lock(async () => {

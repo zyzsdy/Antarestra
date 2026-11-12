@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChatGPT 订阅接入",
+  "description": "通过官方 OAuth 管理本人订阅，凭据保存在服务端私有目录。",
+  "type": "object",
+  "properties": {
+    "credentialsDirectory": {
+      "type": "string",
+      "title": "ChatGPT 订阅凭据目录",
+      "description": "服务端私有目录，默认 data/codex-subscription。不要放在静态网站目录或提交到 Git；同一目录只能由一个服务进程使用。",
+      "default": "data/codex-subscription"
+    }
+  },
+  "additionalProperties": false
+}

@@ -10,6 +10,7 @@ import BuiltinToolForm from './BuiltinToolForm.vue'
 import ProviderForm from './ProviderForm.vue'
 import ModelForm from './ModelForm.vue'
 import { modelSyncRows, planModelSync, syncModels } from './models.js'
+import '@antarestra/webui/ai-management.css'
 import './style.css'
 
 const { api, run, busy, message, router } = useApi()
@@ -346,7 +347,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="ai-providers" :aria-busy="busy">
+  <section class="ui-ai-management ai-providers" :aria-busy="busy">
     <header class="page-heading">
       <div>
         <p class="muted">连接模型服务，管理可供 AI 使用的模型。</p>

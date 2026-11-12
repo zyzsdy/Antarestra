@@ -24,6 +24,10 @@ try {
   await writeFile(
     filename,
     config
+      .replace(
+        /\n  codex-subscription: \{\}/,
+        `\n  codex-subscription: ${JSON.stringify({ credentialsDirectory: join(temporary, 'codex') })}`,
+      )
       .replace(/\r?\n  memory:\r?\n(?:    [^\r\n]*\r?\n)*/g, '\n')
       .replace(/(\s{2}(?:plugin-)?server): \{\}/, `$1: { host: 127.0.0.1, port: ${port} }`)
       .replace(
@@ -75,13 +79,15 @@ try {
           const admin = entries.find((item) => item.id === 'admin-console')
           const panel = entries.find((item) => item.id === 'config-panel')
           const providers = entries.find((item) => item.id === 'ai-provider')
+          const subscriptions = entries.find((item) => item.id === 'codex-subscription')
           healthy =
             entry?.config.path === '/auth/user/' &&
             !!chat &&
             !!markdown &&
             !!admin &&
             !!panel &&
-            !!providers
+            !!providers &&
+            !!subscriptions
           if (healthy) {
             const resource = await fetch('http://127.0.0.1:' + port + entry.url)
             healthy =
@@ -98,6 +104,10 @@ try {
             const adminResource = await fetch(`http://127.0.0.1:${port}${admin.url}`)
             const adminPage = await fetch(`http://127.0.0.1:${port}/admin`)
             const panelResource = await fetch(`http://127.0.0.1:${port}${panel.url}`)
+            const subscriptionResource = await fetch(`http://127.0.0.1:${port}${subscriptions.url}`)
+            const subscriptionAccess = await fetch(
+              `http://127.0.0.1:${port}/api/codex-subscription`,
+            )
             const panelAccess = await fetch(`http://127.0.0.1:${port}/api/plugin-config-panel`)
             healthy =
               healthy &&
@@ -114,6 +124,8 @@ try {
               adminResource.status === 200 &&
               panelResource.status === 200 &&
               panelAccess.status === 401 &&
+              subscriptionResource.status === 200 &&
+              subscriptionAccess.status === 401 &&
               adminPage.status === 200
           }
         }

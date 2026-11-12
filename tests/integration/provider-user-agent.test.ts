@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { applicationUserAgent } from '@antarestra/plugin-sdk'
 import type { RequestSnapshot, RunContext } from '@antarestra/ai'
 import { driver, resolveModel } from '../../plugins/features/ai-provider/src/driver.js'
-import { providerRequestHeaders } from '../../plugins/features/ai-provider/src/user-agent.js'
+import { providerRequestHeaders } from '../../packages/ai-model-driver/src/user-agent.js'
 import { validateProvider } from '../../plugins/features/ai-provider/src/validation.js'
 
 const { version } = JSON.parse(

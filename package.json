@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@antarestra/ai": "workspace:*",
+    "@antarestra/ai-model-driver": "workspace:*",
     "@antarestra/config-loader": "workspace:*",
     "@antarestra/contracts": "workspace:*",
     "@antarestra/database": "workspace:*",
@@ -39,6 +40,7 @@
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-basic-tools": "workspace:*",
     "@antarestra/plugin-chat-webui": "workspace:*",
+    "@antarestra/plugin-codex-subscription": "workspace:*",
     "@antarestra/plugin-config-panel": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
     "@antarestra/plugin-hmr": "workspace:*",

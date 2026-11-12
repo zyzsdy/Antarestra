@@ -23,6 +23,7 @@
     "@antarestra/plugin-auth-local": "workspace:*",
     "@antarestra/plugin-basic-tools": "workspace:*",
     "@antarestra/plugin-chat-webui": "workspace:*",
+    "@antarestra/plugin-codex-subscription": "workspace:*",
     "@antarestra/plugin-config-panel": "workspace:*",
     "@antarestra/plugin-database-kysely": "workspace:*",
     "@antarestra/plugin-hmr": "workspace:*",

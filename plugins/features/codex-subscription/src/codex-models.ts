@@ -1,24 +1,19 @@
 import type { ModelDefinition } from '@antarestra/ai'
 import { AuthError } from '@antarestra/rbac'
-import { candidates } from './catalog.js'
-import { defaultModelLimits } from './types.js'
-import type { ProviderRecord } from './types.js'
+import { candidates, defaultModelLimits } from '@antarestra/ai-model-driver'
+import type { ModelProviderConfig } from '@antarestra/ai-model-driver'
 import type { CodexAccount } from './codex-types.js'
 import { codexResource, oauthJson } from './codex-oauth.js'
 
-export function codexProvider(account: CodexAccount): ProviderRecord {
+export function codexProvider(account: CodexAccount): ModelProviderConfig & { name: string } {
   return {
     id: account.id,
     name: `ChatGPT 订阅 · ${account.id.slice(-8)}`,
-    note: '通过 ChatGPT OAuth 使用订阅',
     builtin: '',
     api: 'openai-responses',
     baseUrl: codexResource,
-    apiKey: '',
     headers: {},
     models: account.models,
-    revision: 1,
-    subscription: true,
   }
 }
 export async function codexModels(token: string, signal: AbortSignal): Promise<ModelDefinition[]> {

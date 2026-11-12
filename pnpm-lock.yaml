@@ -11,6 +11,9 @@ importers:
       '@antarestra/ai':
         specifier: workspace:*
         version: link:plugins/definitions/ai
+      '@antarestra/ai-model-driver':
+        specifier: workspace:*
+        version: link:packages/ai-model-driver
       '@antarestra/config-loader':
         specifier: workspace:*
         version: link:packages/config-loader
@@ -53,6 +56,9 @@ importers:
       '@antarestra/plugin-chat-webui':
         specifier: workspace:*
         version: link:plugins/features/chat-webui
+      '@antarestra/plugin-codex-subscription':
+        specifier: workspace:*
+        version: link:plugins/features/codex-subscription
       '@antarestra/plugin-config-panel':
         specifier: workspace:*
         version: link:plugins/features/config-panel
@@ -221,6 +227,9 @@ importers:
       '@antarestra/plugin-chat-webui':
         specifier: workspace:*
         version: link:../../plugins/features/chat-webui
+      '@antarestra/plugin-codex-subscription':
+        specifier: workspace:*
+        version: link:../../plugins/features/codex-subscription
       '@antarestra/plugin-config-panel':
         specifier: workspace:*
         version: link:../../plugins/features/config-panel
@@ -296,6 +305,21 @@ importers:
       '@antarestra/webui':
         specifier: workspace:*
         version: link:../../plugins/definitions/webui
+
+  packages/ai-model-driver:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../plugins/definitions/ai
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+      '@earendil-works/pi-ai':
+        specifier: ^1.3.0
+        version: 1.3.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.11.2)(ws@8.21.3)(zod@4.6.7)
+      openai:
+        specifier: ^7.23.0
+        version: 7.23.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.11.2)(ws@8.21.3)(zod@4.6.7)
 
   packages/config-loader:
     dependencies:
@@ -652,6 +676,9 @@ importers:
       '@antarestra/ai':
         specifier: workspace:*
         version: link:../../definitions/ai
+      '@antarestra/ai-model-driver':
+        specifier: workspace:*
+        version: link:../../../packages/ai-model-driver
       '@antarestra/database':
         specifier: workspace:*
         version: link:../../definitions/database
@@ -670,15 +697,6 @@ importers:
       '@antarestra/webui':
         specifier: workspace:*
         version: link:../../definitions/webui
-      '@earendil-works/pi-ai':
-        specifier: ^1.3.0
-        version: 1.3.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.11.2)(ws@8.21.3)(zod@4.6.7)
-      jose:
-        specifier: ^6.2.17
-        version: 6.2.17
-      openai:
-        specifier: ^7.23.0
-        version: 7.23.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.3)(undici@8.11.2)(ws@8.21.3)(zod@4.6.7)
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -728,6 +746,46 @@ importers:
       '@antarestra/webui':
         specifier: workspace:*
         version: link:../../definitions/webui
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.2.2
+        version: 8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.0)
+      vue:
+        specifier: ^3.5.42
+        version: 3.5.42(typescript@6.0.3)
+      vue-tsc:
+        specifier: ^3.3.11
+        version: 3.3.11(typescript@6.0.3)
+
+  plugins/features/codex-subscription:
+    dependencies:
+      '@antarestra/ai':
+        specifier: workspace:*
+        version: link:../../definitions/ai
+      '@antarestra/ai-model-driver':
+        specifier: workspace:*
+        version: link:../../../packages/ai-model-driver
+      '@antarestra/plugin-admin-console':
+        specifier: workspace:*
+        version: link:../admin-console
+      '@antarestra/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      '@antarestra/plugin-server':
+        specifier: workspace:*
+        version: link:../../adapters/server
+      '@antarestra/rbac':
+        specifier: workspace:*
+        version: link:../../definitions/rbac
+      '@antarestra/webui':
+        specifier: workspace:*
+        version: link:../../definitions/webui
+      jose:
+        specifier: ^6.2.17
+        version: 6.2.17
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -2075,7 +2133,9 @@ packages:
   '@smithy/core@3.35.0':
     resolution: {integrity: sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A==}
     engines: {node: '>=18.0.0'}
-    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -3190,9 +3250,6 @@ packages:
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
-
-  jose@6.2.15:
-    resolution: {integrity: sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA==}
 
   jose@6.2.17:
     resolution: {integrity: sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg==}
@@ -4891,7 +4948,7 @@ snapshots:
       cross-spawn: 7.0.6
       eventsource: 3.0.7
       eventsource-parser: 3.1.1
-      jose: 6.2.15
+      jose: 6.2.17
       pkce-challenge: 5.0.1
       zod: 4.6.7
 
@@ -6407,8 +6464,6 @@ snapshots:
   is-property@1.0.2: {}
 
   isexe@2.0.0: {}
-
-  jose@6.2.15: {}
 
   jose@6.2.17: {}
 

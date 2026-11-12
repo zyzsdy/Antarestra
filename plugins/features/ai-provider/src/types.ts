@@ -1,4 +1,7 @@
-import type { ModelDefinition, JsonObject } from '@antarestra/ai'
+import type { ModelProviderConfig, Candidate } from '@antarestra/ai-model-driver/types'
+export type { Candidate } from '@antarestra/ai-model-driver/types'
+export { defaultModelLimits } from '@antarestra/ai-model-driver/types'
+import type { JsonObject } from '@antarestra/ai'
 
 export interface BuiltinTool {
   name: string
@@ -9,29 +12,18 @@ export interface BuiltinTool {
   callsPer5Hours?: number
 }
 
-export interface ProviderRecord {
-  subscription?: boolean
-  id: string
+export interface ProviderRecord extends ModelProviderConfig {
   name: string
   note: string
-  builtin: string
-  api: string
-  baseUrl: string
   apiKey: string
-  headers: Record<string, string>
-  models: ModelDefinition[]
   builtinTools?: BuiltinTool[]
   revision: number
 }
 export type ProviderView = Omit<ProviderRecord, 'apiKey'> & { apiKeyPlaceholder: string }
-export interface Candidate extends ModelDefinition {
-  source: 'builtin' | 'remote' | 'both'
-}
 export interface Discovery {
   models: Candidate[]
   warning: string
 }
-export const defaultModelLimits = { contextWindow: 128000, maxOutputTokens: 65535 }
 export const apiFormats = [
   { id: 'openai-completions', name: 'OpenAI Chat Completions' },
   { id: 'openai-responses', name: 'OpenAI Responses' },

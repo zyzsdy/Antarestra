@@ -209,4 +209,4 @@ Agents 配置复用 CheckboxField，说明沿用 agents-hint。网页引导输�
 
 管理控制台的 AI 设置增加 ChatGPT 订阅页，复用提供商的蓝白配色、系统字体、按钮、自然纵向滚动和分页。账户以卡片展示，公开的客户端 ID 与提供商 ID 自然换行；每页 20 个账户，模型弹窗每页 20 项。订阅仅供发起授权的 Antarestra 用户调用，界面明确显示该范围。
 
-授权入口打开官方页面，面板保留等待、验证中、完成、失败与取消状态。自托管手动回调使用共享 SecretInput，默认遮罩并提供显示／隐藏按钮，不写入浏览器存储；请求与错误复用 useApi，通知和断开确认复用 FeedbackHost，模型弹窗复用 EditorDialog。官方用量通过外链访问，不显示估算额度。常规窗口并列布局，760px 以下标题与操作纵向排列，390px 页面不横向溢出。局部样式由 ai-provider/client/style.css 维护，不新增全局令牌。业务边界见 docs/codex-subscription.md。
+授权入口打开官方页面，面板保留等待、验证中、完成、失败与取消状态。自托管手动回调使用共享 SecretInput，默认遮罩并提供显示／隐藏按钮，不写入浏览器存储；请求与错误复用 useApi，通知和断开确认复用 FeedbackHost，模型弹窗复用 EditorDialog。官方用量通过外链访问，不显示估算额度。常规窗口并列布局，760px 以下标题与操作纵向排列，390px 页面不横向溢出。订阅页面与局部样式归属 codex-subscription 插件。两个接入页面的基础配色、标题、按钮和输入样式由 WebUI 的 ai-management.css 统一维护，以 ui-ai-management 限定范围；各插件独立导入，不依赖另一插件的样式加载。不新增全局令牌。业务边界见 docs/codex-subscription.md。
