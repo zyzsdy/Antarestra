@@ -3,6 +3,7 @@ import type { ModelDefinition } from '@antarestra/ai'
 import { apiFormats, thinkingLevels } from './types.js'
 import type { ProviderRecord, ProviderView } from './types.js'
 import type { BuiltinTool } from './types.js'
+import { normalizeProxy, proxyError } from './proxy.js'
 
 export function validateBuiltinTools(value: unknown, models: ModelDefinition[]): BuiltinTool[] {
   check(Array.isArray(value) && value.length <= 100, '内置工具列表无效')
@@ -130,6 +131,14 @@ export function validateProvider(value: unknown, previous?: ProviderRecord): Pro
     'Base URL 必须是无凭据、查询参数及片段的 HTTP(S) 地址',
   )
   const headers = object(v.headers)
+  let proxy: string
+  try {
+    proxy = normalizeProxy(
+      v.proxy === undefined ? (previous?.proxy ?? '') : text(v.proxy, '代理服务器', 2000, true),
+    )
+  } catch {
+    throw new AuthError(400, proxyError)
+  }
   check(Object.keys(headers).length <= 50, '额外 Header 不能超过 50 项')
   const normalized: Record<string, string> = Object.create(null) as Record<string, string>
   for (const [key, value] of Object.entries(headers)) {
@@ -153,6 +162,7 @@ export function validateProvider(value: unknown, previous?: ProviderRecord): Pro
     builtin: text(v.builtin, '内置提供商', 200, true),
     api,
     baseUrl,
+    proxy,
     apiKey: replacement || previous?.apiKey || '',
     headers: normalized,
     models: previous?.models ?? [],

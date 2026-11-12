@@ -13,6 +13,7 @@ export interface BuiltinTool {
 }
 
 export interface ProviderRecord extends ModelProviderConfig {
+  proxy?: string
   name: string
   note: string
   apiKey: string

@@ -23,6 +23,8 @@ export interface ToolLease {
 export interface DriverOptions {
   id: string
   fetch?: typeof globalThis.fetch
+  /** 为不支持自定义 Fetch 的 SDK 提供实例独立的传输地址。 */
+  requestBaseUrl?(api: string, baseUrl: string): Promise<string>
   reserveTools?(workspaceId: string, names: string[]): Promise<ToolLease>
   validateFiles?(files: ReadonlyMap<string, ResolvedResource>): void
   transformPayload?(payload: Record<string, unknown>): Record<string, unknown>

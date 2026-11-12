@@ -3,6 +3,7 @@ import { Toggle, SelectField } from '@antarestra/webui/components'
 import { computed, reactive, ref, watch } from 'vue'
 import { EyeIcon, EyeSlashIcon } from '@antarestra/webui/icons'
 import type { ProviderView } from '../src/types.js'
+import { normalizeProxy, proxyError } from '../src/proxy.js'
 const props = defineProps<{
   value?: ProviderView
   catalog: { id: string; name: string; api: string; baseUrl: string }[]
@@ -18,6 +19,7 @@ const draft = reactive({
   builtin: props.value?.builtin ?? '',
   api: props.value?.api ?? 'openai-completions',
   baseUrl: props.value?.baseUrl ?? '',
+  proxy: props.value?.proxy ?? '',
   apiKey: '',
   headers: JSON.stringify(props.value?.headers ?? {}, null, 2),
 })
@@ -52,6 +54,13 @@ function save(event: Event) {
     }
   }
   let headers: unknown
+  try {
+    normalizeProxy(draft.proxy)
+  } catch {
+    invalid.value = 'proxy'
+    ;(event.target as HTMLFormElement).querySelector<HTMLInputElement>('[name="proxy"]')?.focus()
+    return
+  }
   try {
     headers = JSON.parse(draft.headers)
     if (
@@ -134,6 +143,22 @@ function save(event: Event) {
         :aria-invalid="invalid === 'baseUrl'"
         aria-describedby="provider-validation"
       />
+      <label for="provider-proxy">代理服务器（可选）</label>
+      <input
+        id="provider-proxy"
+        v-model="draft.proxy"
+        name="proxy"
+        type="url"
+        maxlength="2000"
+        spellcheck="false"
+        placeholder="socks5://127.0.0.1:7890 或 http://127.0.0.1:7890"
+        :aria-invalid="invalid === 'proxy'"
+        aria-describedby="provider-proxy-help provider-validation"
+      />
+      <p id="provider-proxy-help" class="hint">
+        仅用于此提供商的模型请求、附件传输和模型同步，留空使用默认网络。127.0.0.1 指运行 Antarestra
+        的服务器。代理不可用时请求失败，不回退直连。
+      </p>
       <label for="provider-key">API Key</label>
       <div class="secret-field">
         <input
@@ -173,11 +198,13 @@ function save(event: Event) {
     </fieldset>
     <p id="provider-validation" class="error" role="alert">
       {{
-        invalid === 'headers'
-          ? '请输入 JSON 对象，Header 的名称和值均为字符串。'
-          : invalid
-            ? '请填写提供商 ID、名称和 Base URL。'
-            : error
+        invalid === 'proxy'
+          ? proxyError
+          : invalid === 'headers'
+            ? '请输入 JSON 对象，Header 的名称和值均为字符串。'
+            : invalid
+              ? '请填写提供商 ID、名称和 Base URL。'
+              : error
       }}
     </p>
     <button class="primary" type="submit" :disabled="busy" :aria-busy="busy">保存提供商</button>

@@ -196,6 +196,9 @@ export function createModelDriver(
       if (!definition) throw new Error('模型已不可用')
       const model = resolveModel(provider, definition, connection.baseUrl)
       const builtin = adapter && useBuiltinAdapter(provider, definition.id, connection.baseUrl)
+      const requestBaseUrl = await options.requestBaseUrl?.(model.api, model.baseUrl)
+      const relayed = requestBaseUrl !== undefined && requestBaseUrl !== model.baseUrl
+      if (relayed) model.baseUrl = requestBaseUrl
       const api = builtin ? adapter : apis[model.api]!()
       // OpenAI 兼容的本地服务可以不鉴权；仅满足 SDK 构造要求，不发送占位凭据。
       const keyless =
@@ -286,8 +289,11 @@ export function createModelDriver(
             signal: context.signal,
             // 重试统一由 AI 核心控制，避免驱动与入口叠加重试次数。
             maxRetries: 0,
-            env: {},
-            ...(options.fetch ? { fetch: options.fetch } : {}),
+            env:
+              relayed && model.api === 'bedrock-converse-stream'
+                ? { AWS_BEDROCK_FORCE_HTTP1: '1' }
+                : {},
+            ...(!relayed && options.fetch ? { fetch: options.fetch } : {}),
             onPayload: (value: unknown) => {
               const payload = files.transform(value) as Record<string, unknown>
               if (builtinTools.length)

@@ -7,6 +7,7 @@ import { catalog, candidates, discover } from './catalog.js'
 import { driver } from './driver.js'
 import { BuiltinQuota } from './builtin-quota.js'
 import { name } from './store.js'
+import { providerNetwork } from './network.js'
 import type { Tables } from './store.js'
 import type { ProviderRecord } from './types.js'
 import {
@@ -24,7 +25,10 @@ declare module '@antarestra/plugin-sdk' {
 }
 export class AiProviderService extends Service {
   private quota = new BuiltinQuota(() => this.db())
-  private entries = new Map<string, { record: ProviderRecord; dispose: () => Promise<void> }>()
+  private entries = new Map<
+    string,
+    { record: ProviderRecord; fetch: typeof globalThis.fetch; dispose: () => Promise<void> }
+  >()
   private queue: Promise<unknown> = Promise.resolve()
   private closing = false
   private controller = new AbortController()
@@ -58,9 +62,14 @@ export class AiProviderService extends Service {
       throw new AuthError(409, '配置已变化，请刷新后重试')
     return entry.record
   }
-  private register(record: ProviderRecord) {
-    const removeDriver = this.ctx.ai.registerDriver(this.ctx, driver(record, this.quota))
+  private async register(record: ProviderRecord) {
+    const network = providerNetwork(record.proxy)
+    let removeDriver: (() => void | Promise<void>) | undefined
     try {
+      removeDriver = this.ctx.ai.registerDriver(
+        this.ctx,
+        driver(record, this.quota, record.proxy ? network : {}),
+      )
       const removeProvider = this.ctx.ai.registerProvider(this.ctx, {
         id: record.id,
         title: record.name,
@@ -92,19 +101,22 @@ export class AiProviderService extends Service {
       })
       this.entries.set(record.id, {
         record,
+        fetch: network.fetch,
         dispose: async () => {
+          await network.dispose()
           await removeProvider()
-          await removeDriver()
+          await removeDriver?.()
         },
       })
     } catch (error) {
-      void removeDriver()
+      await network.dispose()
+      await removeDriver?.()
       throw error
     }
   }
   async initialize() {
     for (const row of await this.db().selectFrom('providers').selectAll().orderBy('id').execute())
-      this.register(JSON.parse(row.payload) as ProviderRecord)
+      await this.register(JSON.parse(row.payload) as ProviderRecord)
   }
   list() {
     return [...this.entries.values()].map((entry) => publicProvider(entry.record))
@@ -116,7 +128,7 @@ export class AiProviderService extends Service {
     await this.entries.get(next.id)?.dispose()
     this.entries.delete(next.id)
     try {
-      this.register(next)
+      await this.register(next)
       await this.db().transaction(async (db) => {
         if (previous)
           await db
@@ -133,7 +145,7 @@ export class AiProviderService extends Service {
     } catch (error) {
       await this.entries.get(next.id)?.dispose()
       this.entries.delete(next.id)
-      if (previous && !this.closing) this.register(previous)
+      if (previous && !this.closing) await this.register(previous)
       throw error
     }
     return publicProvider(next)
@@ -158,7 +170,7 @@ export class AiProviderService extends Service {
       try {
         await this.db().deleteFrom('providers').where('id', '=', id).execute()
       } catch (error) {
-        if (!this.closing) this.register(previous)
+        if (!this.closing) await this.register(previous)
         throw error
       }
       return { success: true }
@@ -177,7 +189,7 @@ export class AiProviderService extends Service {
   async discover(id: string, remote: boolean) {
     const record = this.current(id)
     if (!remote) return { models: candidates(record), warning: '' }
-    const request = discover(record, this.controller.signal)
+    const request = discover(record, this.controller.signal, this.entries.get(id)!.fetch)
     this.requests.add(request)
     try {
       return await request

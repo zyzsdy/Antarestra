@@ -10,7 +10,11 @@ const record = (value: unknown): Record<string, unknown> =>
 const positive = (value: unknown, fallback: number) =>
   Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : fallback
 
-export async function discover(provider: ProviderRecord, signal: AbortSignal): Promise<Discovery> {
+export async function discover(
+  provider: ProviderRecord,
+  signal: AbortSignal,
+  fetch: typeof globalThis.fetch = globalThis.fetch,
+): Promise<Discovery> {
   const merged = new Map(candidates(provider).map((model) => [model.id, model]))
   const supported = [
     'openai-completions',
@@ -114,7 +118,8 @@ export async function discover(provider: ProviderRecord, signal: AbortSignal): P
   } catch {
     return {
       models: [...merged.values()],
-      warning: '获取远端模型失败，请检查接口格式、Base URL、API Key 和网络；当前仅展示内置目录。',
+      warning:
+        '获取远端模型失败，请检查接口格式、Base URL、API Key、代理服务器和网络；当前仅展示内置目录。',
     }
   }
 }

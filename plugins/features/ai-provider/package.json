@@ -27,7 +27,8 @@
     "@antarestra/plugin-sdk": "workspace:*",
     "@antarestra/plugin-server": "workspace:*",
     "@antarestra/rbac": "workspace:*",
-    "@antarestra/webui": "workspace:*"
+    "@antarestra/webui": "workspace:*",
+    "undici": "^8.11.2"
   },
   "antarestra": {
     "title": "模型提供商管理",

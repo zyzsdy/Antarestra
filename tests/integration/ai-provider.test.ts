@@ -1269,3 +1269,77 @@ it('内置工具不发送上游限额，达到本地额度后移除声明，并�
   await fiber.dispose()
   expect(ctx.ai.capabilities().tools.map((t) => t.id)).not.toContain('provider:example:web_search')
 })
+
+it('各提供商代理独立保存，重载恢复，省略保留、留空清除且不公开到 AI 目录', async () => {
+  const { ctx, fiber, access } = await setup()
+  const first = await ctx.aiProvider.save({ ...input, proxy: ' socks5://127.0.0.1:7890 ' })
+  const second = await ctx.aiProvider.save({
+    ...input,
+    id: 'second-proxy',
+    proxy: 'http://127.0.0.1:7891',
+  })
+  expect(first.proxy).toBe('socks5://127.0.0.1:7890')
+  expect(second.proxy).toBe('http://127.0.0.1:7891/')
+  await fiber.dispose()
+  await ctx.plugin(provider, {})
+  expect(ctx.aiProvider.detail(input.id).proxy).toBe(first.proxy)
+  expect(ctx.aiProvider.detail(second.id).proxy).toBe(second.proxy)
+  const unchanged = await ctx.aiProvider.save({ ...input, revision: first.revision }, input.id)
+  expect(unchanged.proxy).toBe(first.proxy)
+  const cleared = await ctx.aiProvider.save(
+    { ...input, proxy: '', revision: unchanged.revision },
+    input.id,
+  )
+  expect(cleared.proxy).toBe('')
+  expect(ctx.aiProvider.detail(second.id).proxy).toBe(second.proxy)
+  expect(JSON.stringify(await ctx.ai.catalog(access))).not.toContain('7891')
+  for (const proxy of [
+    'ftp://localhost',
+    'http://user:secret@localhost',
+    'http://localhost/path',
+    'http://localhost?q=x',
+    'socks5://localhost:99999',
+    42,
+    null,
+  ]) {
+    await expect(
+      ctx.aiProvider.save({ ...input, proxy, revision: cleared.revision }, input.id),
+    ).rejects.toMatchObject({ status: 400 })
+  }
+  expect(ctx.aiProvider.detail(input.id).proxy).toBe('')
+})
+
+it('更新提供商代理会取消旧连接的目录请求，恢复直连后使用新配置', async () => {
+  const { ctx } = await setup()
+  const baseUrl = await remote((_req, res) =>
+    res.end(JSON.stringify({ data: [{ id: 'direct-model' }] })),
+  )
+  const proxy = createServer()
+  let connected = 0
+  const sockets = new Set<import('node:stream').Duplex>()
+  proxy.on('connect', (_req, socket) => {
+    connected++
+    sockets.add(socket)
+    socket.resume()
+    socket.on('end', () => socket.end())
+    socket.on('close', () => sockets.delete(socket))
+  })
+  await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve))
+  cleanups.push(async () => {
+    for (const socket of sockets) socket.destroy()
+    await new Promise<void>((resolve) => proxy.close(() => resolve()))
+  })
+  const address = proxy.address()
+  if (!address || typeof address === 'string') throw new Error('代理监听失败')
+  const saved = await ctx.aiProvider.save({
+    ...input,
+    baseUrl,
+    proxy: `http://127.0.0.1:${address.port}`,
+  })
+  const pending = ctx.aiProvider.discover(input.id, true)
+  await expect.poll(() => connected).toBe(1)
+  await ctx.aiProvider.save({ ...input, baseUrl, proxy: '', revision: saved.revision }, input.id)
+  expect((await pending).warning).toContain('失败')
+  expect((await ctx.aiProvider.discover(input.id, true)).models[0]?.id).toBe('direct-model')
+  await expect.poll(() => sockets.size).toBe(0)
+})
