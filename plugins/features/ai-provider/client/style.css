@@ -330,3 +330,66 @@
     flex-basis: 100%;
   }
 }
+
+.codex-subscription .codex-feedback {
+  min-height: 22px;
+  color: var(--provider-danger);
+  overflow-wrap: anywhere;
+}
+.codex-subscription .codex-login,
+.codex-subscription .codex-account {
+  padding: 20px;
+  border: 1px solid var(--provider-border);
+  border-radius: 10px;
+  background: #fff;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.codex-subscription .codex-login {
+  margin-bottom: 24px;
+}
+.codex-subscription .codex-login form {
+  max-width: 760px;
+}
+.codex-subscription .codex-login label {
+  display: block;
+  margin: 20px 0 8px;
+}
+.codex-subscription .codex-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 16px;
+}
+.codex-subscription a {
+  color: var(--provider-primary);
+  text-underline-offset: 3px;
+}
+.codex-subscription a:hover {
+  color: #244daf;
+}
+.codex-subscription .codex-login-link {
+  display: inline-block;
+  padding: 10px 0;
+  font-weight: 600;
+}
+.codex-models {
+  list-style: none;
+  padding: 0;
+}
+.codex-models li {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e0e5ee;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .codex-subscription .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .codex-subscription .codex-login,
+  .codex-subscription .codex-account {
+    padding: 16px;
+  }
+}

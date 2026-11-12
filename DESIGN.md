@@ -204,3 +204,9 @@ Agents 配置复用 CheckboxField，说明沿用 agents-hint。网页引导输�
 ## MCP 服务器管理
 
 位于 AI 设置，沿用 Agents 蓝白表格、系统字体与自然滚动。列表和工具目录各 20 项分页，表格局部横向滚动。连接状态始终有中文文字；错误与加载提示保留独立区域。编辑复用 EditorDialog、SelectField、CheckboxField，敏感值显隐复用 Reka UI Toggle，确认与通知复用 FeedbackHost，网络请求归 useApi。保存后返回列表，连接失败仍显示已保存配置及重连入口；草稿关闭须确认。请求头和环境变量的新值默认遮罩，旧值仅显示已保存占位提示。390px 窄屏编辑器保留固定底部保存按钮，键值行变为两行。局部样式由 mcp/client/style.css 维护，不新增全局令牌。
+
+## ChatGPT 订阅接入
+
+管理控制台的 AI 设置增加 ChatGPT 订阅页，复用提供商的蓝白配色、系统字体、按钮、自然纵向滚动和分页。账户以卡片展示，公开的客户端 ID 与提供商 ID 自然换行；每页 20 个账户，模型弹窗每页 20 项。订阅仅供发起授权的 Antarestra 用户调用，界面明确显示该范围。
+
+授权入口打开官方页面，面板保留等待、验证中、完成、失败与取消状态。自托管手动回调使用共享 SecretInput，默认遮罩并提供显示／隐藏按钮，不写入浏览器存储；请求与错误复用 useApi，通知和断开确认复用 FeedbackHost，模型弹窗复用 EditorDialog。官方用量通过外链访问，不显示估算额度。常规窗口并列布局，760px 以下标题与操作纵向排列，390px 页面不横向溢出。局部样式由 ai-provider/client/style.css 维护，不新增全局令牌。业务边界见 docs/codex-subscription.md。

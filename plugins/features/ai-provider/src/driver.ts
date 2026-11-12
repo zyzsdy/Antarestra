@@ -17,6 +17,7 @@ import type {
   ResolvedResource,
   ContentBlock,
 } from '@antarestra/ai'
+import { subscriptionPayload } from './codex-models.js'
 import { orderOutput } from './output-order.js'
 import { filePayload } from './attachments.js'
 import { nativeFiles } from './native-files.js'
@@ -218,6 +219,16 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
           }),
         ),
       )
+      if (
+        provider.subscription &&
+        [...fileResources.values()].some((resource) =>
+          /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|pages|numbers|key)$/i.test(resource.filename),
+        )
+      )
+        throw new AiError(
+          'unsupported_subscription_file',
+          'ChatGPT 订阅不支持 Files 上传，请转换为 PDF 或文本后重试',
+        )
       const uploaded = await nativeFiles(
         model.api,
         fileResources,
@@ -230,6 +241,7 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
       )
       let lease: Awaited<ReturnType<BuiltinQuota['reserve']>> | undefined
       let completed = false
+      let subscriptionCompleted = false
       const used = new Map<string, string>()
       try {
         const files = filePayload(model.api, uploaded.ids)
@@ -286,12 +298,13 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
                     type: tool.providerTool!.type,
                   })),
                 ]
-              return payload
+              return provider.subscription ? subscriptionPayload(payload) : payload
             },
             onProviderStreamEvent: async (value: unknown) => {
               await update({ type: 'activity' })
               if (!value || typeof value !== 'object') return
               const event = value as Record<string, unknown>
+              if (event.type === 'response.completed') subscriptionCompleted = true
               // 内置工具与文字必须走同一个原始流，避免 pi 队列消费速度改变顺序。
               if (builtinTools.length && typeof event.delta === 'string') {
                 const kind =
@@ -355,6 +368,7 @@ export function driver(provider: ProviderRecord, quota?: BuiltinQuota): ModelDri
         const result = await stream.result()
         if (result.stopReason === 'error' || result.stopReason === 'aborted')
           throw failure(result.errorMessage ?? '模型请求失败或已取消')
+        if (provider.subscription && !subscriptionCompleted) throw failure('订阅响应未完成，请重试')
         completed = true
         return {
           content: orderOutput(

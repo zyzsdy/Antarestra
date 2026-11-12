@@ -10,6 +10,7 @@ export interface BuiltinTool {
 }
 
 export interface ProviderRecord {
+  subscription?: boolean
   id: string
   name: string
   note: string

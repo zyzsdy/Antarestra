@@ -53,3 +53,9 @@ pi-ai 1.3.0 将 opencode-go 的内置地址更新为 `https://opencode.ai/infere
 Agent 工具列表用 `provider:提供商ID:工具名` 区分不同提供商的配置。允许全部工具的 Agent 自动包含新配置；指定工具列表的 Agent 需要显式勾选。调用仅在工具启用、当前模型匹配且 Agent 授权时生效，声明以 `{ type, ...options }` 追加到提供商请求中；工具名用于配置和展示，不写入不支持 name 字段的原生工具声明。
 
 当前适配 OpenAI Responses、Azure OpenAI Responses 和 OpenAI Codex Responses 接口。工具由提供商内部执行，返回的 `类型_call` 输出项保存为独立的 `provider-tool` 内容，不进入客户端函数工具循环，也不发送 `function_call_output`。调用状态和原始结果经事件流及历史保存，取消时保留已收到的状态，图片生成结果可在工具详情中预览。网关、模型及工具类型是否可用由真实提供商决定；工具选项须符合该提供商接口。
+
+## ChatGPT / Codex 订阅
+
+控制台的 **AI 设置 → ChatGPT 订阅**（`/admin/codex-subscription/`）通过官方 OAuth 使用自己的 ChatGPT 订阅，无需 OpenAI API Key、client secret 或手动申请客户端 ID。首次授权动态注册 Antarestra，后续保留该账户的客户端 ID。具体步骤、凭据目录和自托管说明见 [订阅接入指南](../../../docs/codex-subscription.md)。
+
+此入口与普通 API Key 提供商独立。每个授权账户注册为 `codex-…` 提供商，复用现有 AI 请求、工具调用及聊天链路；只有授权时的 Antarestra 主体能够解析其凭据，空间权限仍由 AI 核心校验。面板权限为 `admin.ai.codex.manage`，同时要求 `admin.console.view`，默认授予管理员。

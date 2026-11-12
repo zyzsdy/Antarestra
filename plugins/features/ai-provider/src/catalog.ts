@@ -14,7 +14,7 @@ export function catalog() {
     return { id, name: id, api: model?.api ?? 'openai-completions', baseUrl: model?.baseUrl ?? '' }
   })
 }
-export function candidates(provider: ProviderRecord): Candidate[] {
+export function candidates(provider: Pick<ProviderRecord, 'builtin' | 'api'>): Candidate[] {
   const models = new Map<string, Candidate>()
   const builtin = builtinModels(provider.builtin)
   for (const model of [...builtin.filter((model) => model.api === provider.api), ...builtin]) {
