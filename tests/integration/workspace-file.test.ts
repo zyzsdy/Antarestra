@@ -401,6 +401,37 @@ it('准备图片按 ID 或路径返回简短引用，校验格式、大小、空
     app.ctx.workspaceFile.prepareImage(app.a, { resourceId: photo.token }),
   ).rejects.toMatchObject({ status: 401 })
 })
+it('IM 可准备 50 MiB 图片，默认准备和 AI 读取上限及空间隔离保持不变', async () => {
+  const app = await setup(110 * 1024 ** 2)
+  const png = Buffer.alloc(50 * 1024 ** 2)
+  Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=',
+    'base64',
+  ).copy(png)
+  const photo = await app.upload(app.a, '/large.png', png)
+  const input = { resourceId: photo.token }
+  expect(await app.ctx.workspaceFile.prepareImage(app.a, input, 50 * 1024 ** 2)).toMatchObject({
+    resourceId: photo.token,
+    size: png.byteLength,
+  })
+  await expect(app.ctx.workspaceFile.prepareImage(app.a, input)).rejects.toMatchObject({
+    status: 413,
+  })
+  await expect(app.ctx.workspaceFile.readResource(app.a, photo.token)).rejects.toMatchObject({
+    status: 413,
+  })
+  await expect(
+    app.ctx.workspaceFile.prepareImage(app.b, input, 50 * 1024 ** 2),
+  ).rejects.toMatchObject({ status: 410 })
+  await expect(
+    app.ctx.workspaceFile.prepareImage(app.a, input, 50 * 1024 ** 2 + 1),
+  ).rejects.toMatchObject({ status: 400 })
+  const oversized = await app.upload(app.a, '/oversized.png', Buffer.alloc(50 * 1024 ** 2 + 1))
+  await expect(
+    app.ctx.workspaceFile.prepareImage(app.a, { resourceId: oversized.token }, 50 * 1024 ** 2),
+  ).rejects.toMatchObject({ status: 413 })
+})
+
 it('拒绝路径穿越，并且随机对象键不包含用户名称或目录', async () => {
   for (const path of ['../secret', '/a/../secret', '/a/./b', '/a\\b', '/a\0b'])
     expect(() => filePath(path)).toThrow()

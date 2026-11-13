@@ -170,6 +170,26 @@ async function storage(app: Awaited<ReturnType<typeof setup>>) {
   return { backend, blobs, temporaryUrl, fiber, photo, access, target, segments }
 }
 
+it('可信业务插件可经 IM 资源链路发送超过 16 MiB 的图片', async () => {
+  const app = await setup()
+  const state = await storage(app)
+  const data = Buffer.alloc(20 * 1024 ** 2)
+  png.copy(data)
+  const file = await app.ctx.workspaceFile.writeAttachment(
+    state.access,
+    { filename: 'large.png', mimeType: 'image/png', data },
+    new AbortController().signal,
+  )
+  const segments: MessageSegment[] = [{ type: 'image', url: `resource://${file.id}` }]
+  await app.ctx.im.validateSend(state.target, segments)
+  await app.ctx.im.send(state.target, segments)
+  const segment = app.sent.at(-1)!.segments[0]!
+  if (segment.type !== 'image') throw new Error('没有投递图片')
+  const response = await fetch(segment.url)
+  expect(response.status).toBe(200)
+  expect((await response.arrayBuffer()).byteLength).toBe(data.byteLength)
+})
+
 it('图片和表情包解析简短资源引用并保留 ID 大小写，拒绝路径及参数', () => {
   for (const capabilities of [[], ['image.key']]) {
     expect(

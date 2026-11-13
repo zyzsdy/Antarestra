@@ -12,7 +12,11 @@ export const imFiles = {
       async inspect(workspaceId, resourceId, signal) {
         signal.throwIfAborted()
         const access = await service.groupArchiveAccess(ctx, workspaceId, workspaceId)
-        const { src: _src, ...resource } = await service.prepareImage(access, { resourceId })
+        const { src: _src, ...resource } = await service.prepareImage(
+          access,
+          { resourceId },
+          50 * 1024 ** 2,
+        )
         return resource
       },
       async inspectFile(workspaceId, resourceId, signal) {

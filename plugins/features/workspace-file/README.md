@@ -82,7 +82,7 @@ AI 工具 `im_prepare_image` 接受 `{ resourceId }` 或 `{ path }`，二选一�
 
 服务端 `ctx.workspaceFile.temporaryUrl(access, resourceId)` 和 `POST /api/workspace-files/resources/:id/temporary-url` 返回 `{ url, expiresAt }`。申请接口需要现有 `workspace.file.use` 权限与可信空间，返回的完整 HTTP(S) URL 则无需 Cookie、Authorization 或额外请求头即可读取；持有链接者在有效期内可访问该单个对象。签发完全委托文件记录所属存储 provider 的 `temporaryUrl` 能力，不假设 S3，也不回退到网页鉴权地址。provider 未实现、URL 不合法或已过期时明确失败。实际免鉴权与过期控制由 provider 保证，文件服务不代理下载。
 
-可选 IM 扩展注册图片资源解析器，在整份回复预检时检查资源，在实际发送前才签发链接。空间来自 IM 核心验证过的发送目标；归档复用原资源 ID，原文件的删除与保留规则继续生效。文件或 provider 卸载后停止签发，解析器卸载取消并等待在途操作。
+可选 IM 扩展注册图片资源解析器，在整份回复预检时检查资源，在实际发送前才签发链接。IM 资源链路允许单张图片最多 50 MiB，供可信业务插件发送较大的截图；服务端 `prepareImage` 的第三个参数可显式设置此上限，默认仍为 8 MiB。AI 工具准备图片的 8 MiB 限制和 AI 附件读取上限独立保留。空间来自 IM 核心验证过的发送目标；归档复用原资源 ID，原文件的删除与保留规则继续生效。文件或 provider 卸载后停止签发，解析器卸载取消并等待在途操作。
 
 ## 验证
 

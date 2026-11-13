@@ -450,7 +450,12 @@ export class WorkspaceFileService extends Service<Config> {
     return this.descriptor(await this.resourceFile(access, id))
   }
   /** 图片发送准备只返回稳定资源引用，不提前生成会过期的下载凭证。 */
-  async prepareImage(access: FileAccess, input: { resourceId?: string; path?: string }) {
+  async prepareImage(
+    access: FileAccess,
+    input: { resourceId?: string; path?: string },
+    maxBytes = 8 * 1024 ** 2,
+  ) {
+    sizeValue(maxBytes, 50 * 1024 ** 2)
     if ((input.resourceId === undefined) === (input.path === undefined))
       throw new AuthError(400, 'resourceId 与 path 必须且只能填写一个')
     const file =
@@ -460,10 +465,13 @@ export class WorkspaceFileService extends Service<Config> {
     const resource = this.descriptor(file)
     if (!/^image\/(png|jpeg|gif|webp)$/.test(resource.mimeType))
       throw new AuthError(400, '发送图片只支持 PNG、JPEG、GIF 或 WebP')
-    if (resource.size > 8 * 1024 ** 2) throw new AuthError(413, '图片超过 8 MiB 发送上限')
-    if (!this.ctx.storage.backend(file.backend).temporaryUrl)
-      throw new AuthError(503, '存储后端不支持免鉴权临时地址')
-    const { bytes } = await this.readResource(access, resource.id, 8 * 1024 ** 2)
+    if (resource.size > maxBytes)
+      throw new AuthError(413, `图片超过 ${maxBytes / 1024 ** 2} MiB 发送上限`)
+    const backend = this.ctx.storage.backend(file.backend)
+    if (!backend.temporaryUrl) throw new AuthError(503, '存储后端不支持免鉴权临时地址')
+    // 发送图片不经过 AI 附件读取接口，保留后者独立的 16 MiB 上限。
+    const bytes = await backend.read(file.key)
+    if (!bytes || bytes.length !== file.size) throw new AuthError(410, '文件已过期')
     imageDimensions(bytes, resource.mimeType)
     return {
       resourceId: resource.id,
