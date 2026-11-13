@@ -37,14 +37,6 @@ plugins:
   identity-im: {}
   im-commands: {}
   im-stickers-lib: {}
-  im-onebot:
-    provider: snowluma
-    id: qq-qianqian
-    label: 浅浅
-    selfId: '152408856'
-    token: $ANTARESTRA_ONEBOT_TOKEN
-    path: /im/onebot/qq-qianqian
-    filterCitationLinks: true
   storage: {}
   # 运行 pnpm startdevstorage 和 pnpm initdevstorage 后启用；凭据从环境读取。
   storage-s3:
