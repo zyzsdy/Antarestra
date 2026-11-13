@@ -92,7 +92,7 @@ it('动态配置可单独启用并持久化，第 N 条入队后重新计数，�
   const app = await setup({ ai: true })
   const policy = {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { activation: { dynamic: { maxSilentMessages: 3 } } } },
+    chats: { 'group:33367357': { activation: { dynamic: { maxSilentMessages: 3 } } } },
   }
   await app.ctx.im.setPolicy('qq-a', policy)
   expect(app.ctx.im.getPolicy('qq-a')).toEqual(policy)
@@ -116,7 +116,7 @@ it('普通 all 组合保持语义，动态条件独立或匹配；普通激活�
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
     chats: {
-      'group:40894918': {
+      'group:33367357': {
         activation: {
           mode: 'all',
           mention: true,
@@ -318,7 +318,7 @@ it('主动发送不被激活条件拦截、不清零沉默、不开启热点，�
   await app.ctx.im.send(
     {
       connectionId: 'qq-a',
-      chat: { type: 'group', id: '40894918' },
+      chat: { type: 'group', id: '33367357' },
       workspaceId: app.messages[0]!.workspaceId,
     },
     [{ type: 'text', text: '主动通知' }],

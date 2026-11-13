@@ -15,15 +15,15 @@ it.each(['数组', 'CQ 字符串'] as const)(
   'OneBot %s 的纯 @ 和引用加多个 @ 均按被 at 激活，无需附带正文',
   async (format) => {
     const app = await setup({ ai: true })
-    const connection = await app.connect('qq-mention', '152408856')
+    const connection = await app.connect('qq-mention', '999468764')
     for (const quoted of [false, true]) {
       const message = normalizeMessage(
         {
           post_type: 'message',
           message_type: 'group',
-          self_id: 152408856,
-          user_id: quoted ? 974863709 : 79338528,
-          group_id: 40894918,
+          self_id: 999468764,
+          user_id: quoted ? 999223991 : 999439978,
+          group_id: 33367357,
           message_id: quoted ? -144870531 : -505868758,
           message:
             format === '数组'
@@ -31,25 +31,25 @@ it.each(['数组', 'CQ 字符串'] as const)(
                   ...(quoted
                     ? [
                         { type: 'reply', data: { id: '-1678607898' } },
-                        { type: 'at', data: { qq: '427793137' } },
+                        { type: 'at', data: { qq: '999260461' } },
                       ]
                     : []),
-                  { type: 'at', data: { qq: '152408856' } },
+                  { type: 'at', data: { qq: '999468764' } },
                   { type: 'text', data: { text: ' ' } },
                 ]
-              : `${quoted ? '[CQ:reply,id=-1678607898][CQ:at,qq=427793137]' : ''}[CQ:at,qq=152408856] `,
+              : `${quoted ? '[CQ:reply,id=-1678607898][CQ:at,qq=999260461]' : ''}[CQ:at,qq=999468764] `,
         },
-        '152408856',
+        '999468764',
       )!
-      expect(message.segments).toContainEqual({ type: 'mention', userId: '152408856' })
+      expect(message.segments).toContainEqual({ type: 'mention', userId: '999468764' })
       await connection.handle.receive(message)
       expect(await app.jobs()).toHaveLength(quoted ? 2 : 1)
       await poll(() => app.sent.length).toBe(quoted ? 2 : 1)
       const job = (await app.jobs()).at(-1)!
       expect(job.status).toBe('completed')
       expect(job.input).toContain('激活原因：被 at')
-      expect(job.input).toContain('[@,152408856]')
-      if (quoted) expect(job.input).toContain('[引用,-1678607898][@,427793137]')
+      expect(job.input).toContain('[@,999468764]')
+      if (quoted) expect(job.input).toContain('[引用,-1678607898][@,999260461]')
     }
     expect(app.aiState.calls).toBe(2)
   },
@@ -67,7 +67,7 @@ it('无正文的 @ 仍遵循目标账号、启用条件和 all 组合，空白�
   ]) {
     await app.ctx.im.setPolicy('qq-a', {
       ...app.defaultPolicy,
-      chats: { 'group:40894918': { activation } },
+      chats: { 'group:33367357': { activation } },
     })
     await app.connection.receive('', { segments: [{ type: 'mention', userId: '05' }] })
   }
@@ -179,7 +179,7 @@ it('闲聊、命令、不相关 @、禁用聊天不调用模型，只发送最�
       { type: 'text', text: '问别人' },
     ],
   })
-  await app.connection.receive('/ai 私聊', { chat: { type: 'private', id: '79338528' } })
+  await app.connection.receive('/ai 私聊', { chat: { type: 'private', id: '999439978' } })
   expect(app.aiState.calls).toBe(0)
   expect(await app.jobs()).toEqual([])
   await app.connection.receive('问题', {
@@ -289,7 +289,7 @@ it('排队消息执行前重新检查最新 AI 启用状态', async () => {
   await app.connection.receive('/ai 排队')
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { ai: false } },
+    chats: { 'group:33367357': { ai: false } },
   })
   release!()
   await poll(async () => (await app.jobs()).every((job) => job.delivery !== 'pending')).toBe(true)
@@ -303,7 +303,7 @@ it('切换 Agent 与 reset 在原空间开启新会话，历史保留', async ()
   await poll(() => app.sent.length).toBe(1)
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { agentId: 'second' } },
+    chats: { 'group:33367357': { agentId: 'second' } },
   })
   await app.connection.receive('/ai 第二条')
   await poll(() => app.sent.length).toBe(2)
@@ -403,7 +403,7 @@ it('Agent 配置不可用时回复通用错误，不泄露内部错误详情', a
   const app = await setup({ ai: true })
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { agentId: 'unknown-secret-agent' } },
+    chats: { 'group:33367357': { agentId: 'unknown-secret-agent' } },
   })
   await app.connection.receive('/ai 问题')
   await poll(() => app.sent.length).toBe(1)
@@ -436,7 +436,7 @@ it('组合激活条件、冷却与近期缓冲按群策略执行', async () => {
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
     chats: {
-      'group:40894918': {
+      'group:33367357': {
         userInputTemplate: '{{history_message}}',
         historyLimit: 2,
         activation: { mode: 'all', mention: true, keywords: ['问题'], cooldownMs: 60000 },
@@ -468,7 +468,7 @@ it('超过一分钟的冷却不会随每分钟计数清理提前结束', async (
   const app = await setup({ ai: true })
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { activation: { prefixes: ['/ai'], cooldownMs: 120000 } } },
+    chats: { 'group:33367357': { activation: { prefixes: ['/ai'], cooldownMs: 120000 } } },
   })
   let now = Date.now()
   const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)

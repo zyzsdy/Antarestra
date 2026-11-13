@@ -19,7 +19,7 @@ async function setup(privateIds: string[] = [], config: Partial<OneBot.Config> =
   let descriptor!: ConnectionDescriptor
   const received: IncomingMessage[] = []
   const statuses: string[] = []
-  const allowedChats = new Set(['group:40894918', ...privateIds.map((id) => `private:${id}`)])
+  const allowedChats = new Set(['group:33367357', ...privateIds.map((id) => `private:${id}`)])
   class ImProbe extends Service {
     constructor(owner: Context) {
       super(owner, 'im')
@@ -42,7 +42,7 @@ async function setup(privateIds: string[] = [], config: Partial<OneBot.Config> =
   await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
   const adapter = await ctx.plugin(OneBot, {
     id: 'test',
-    selfId: '152408856',
+    selfId: '999468764',
     token: 'test-secret',
     rpcTimeoutMs: 100,
     ...config,
@@ -52,7 +52,7 @@ async function setup(privateIds: string[] = [], config: Partial<OneBot.Config> =
     const socket = new WebSocket(url, {
       headers: {
         Authorization: 'Bearer test-secret',
-        'X-Self-ID': '152408856',
+        'X-Self-ID': '999468764',
         'X-Client-Role': 'Universal',
         ...headers,
       },
@@ -70,9 +70,9 @@ async function setup(privateIds: string[] = [], config: Partial<OneBot.Config> =
 const event = (changes: Record<string, unknown> = {}) => ({
   post_type: 'message',
   message_type: 'group',
-  self_id: 152408856,
-  user_id: 79338528,
-  group_id: 40894918,
+  self_id: 999468764,
+  user_id: 999439978,
+  group_id: 33367357,
   message_id: 1,
   sender: { nickname: '测试成员', role: 'member' },
   message: [{ type: 'text', data: { text: '/ping' } }],
@@ -82,7 +82,7 @@ const event = (changes: Record<string, unknown> = {}) => ({
 describe('OneBot 11 反向 WebSocket', () => {
   it('提供方默认为 snowluma，拒绝未知提供方', () => {
     const schema = new URL('../../plugins/adapters/im-onebot/config.schema.json', import.meta.url)
-    const input = { id: 'test', selfId: '152408856', token: 'test-secret' }
+    const input = { id: 'test', selfId: '999468764', token: 'test-secret' }
     expect(schemaConfig<OneBot.Config>(schema, input).provider).toBe('snowluma')
     expect(() => schemaConfig(schema, { ...input, provider: 'unknown' })).toThrow('配置校验失败')
   })
@@ -105,7 +105,7 @@ describe('OneBot 11 反向 WebSocket', () => {
       )
     })
     const send = () =>
-      app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '测试' }])
+      app.descriptor.send({ type: 'group', id: '33367357' }, [{ type: 'text', text: '测试' }])
     await expect(send()).rejects.toThrow('接口=send_group_msg，文件未找到（file not found）')
     await expect(send()).resolves.toBeDefined()
     expect(app.statuses.at(-1)).toBe('online')
@@ -126,7 +126,7 @@ describe('OneBot 11 反向 WebSocket', () => {
       )
     })
     await expect(
-      app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '测试' }]),
+      app.descriptor.send({ type: 'group', id: '33367357' }, [{ type: 'text', text: '测试' }]),
     ).rejects.toThrow('连接已断开')
     expect(app.statuses.at(-1)).toBe('offline')
   })
@@ -153,7 +153,7 @@ describe('OneBot 11 反向 WebSocket', () => {
       event({
         message: [{ type: 'image', data: { file: 'cached-image' } }],
       }),
-      '152408856',
+      '999468764',
     )!
     const segment = message.segments[0]!
     if (!('url' in segment)) throw new Error('媒体段缺失')
@@ -173,7 +173,7 @@ describe('OneBot 11 反向 WebSocket', () => {
   it.each(['group', 'private'] as const)(
     '%s 图片和表情包通过 RPC 发送不同 sub_type',
     async (type) => {
-      const app = await setup(['79338528'])
+      const app = await setup(['999439978'])
       const socket = await app.connect()
       const requests: { action: string; params: Record<string, unknown> }[] = []
       socket.on('message', (raw) => {
@@ -188,7 +188,7 @@ describe('OneBot 11 反向 WebSocket', () => {
           }),
         )
       })
-      const target = { type, id: type === 'group' ? '40894918' : '79338528' }
+      const target = { type, id: type === 'group' ? '33367357' : '999439978' }
       const messages = parseReply(
         '<im_reply><image>https://example.com/a.gif</image><sticker>https://example.com/a.gif</sticker></im_reply>',
       )
@@ -246,7 +246,7 @@ describe('OneBot 11 反向 WebSocket', () => {
   it('合并转发保留数组与 CQ 资源 ID，并禁止作为普通出站消息发送', async () => {
     const app = await setup()
     for (const message of [[{ type: 'forward', data: { id: 'res-1' } }], '[CQ:forward,id=res-1]']) {
-      expect(normalizeMessage(event({ message }), '152408856')?.segments).toEqual([
+      expect(normalizeMessage(event({ message }), '999468764')?.segments).toEqual([
         { type: 'forward', id: 'res-1' },
       ])
     }
@@ -256,7 +256,7 @@ describe('OneBot 11 反向 WebSocket', () => {
   })
 
   it('私聊转发读取、非法表情拒绝、调用取消和卸载清理', async () => {
-    const app = await setup(['79338528'])
+    const app = await setup(['999439978'])
     const socket = await app.connect()
     const actions: string[] = []
     let respond = true
@@ -273,14 +273,14 @@ describe('OneBot 11 反向 WebSocket', () => {
           ? {
               message_id: 1,
               message_type: 'private',
-              user_id: '79338528',
+              user_id: '999439978',
               message: '[CQ:forward,id=res-1]',
             }
           : { messages: [{ content: '私聊合并转发' }] }
       if (request.action === 'get_forward_msg') expect(request.params).toEqual({ id: 'res-1' })
       socket.send(JSON.stringify({ echo: request.echo, status: 'ok', retcode: 0, data }))
     })
-    const target = { type: 'private', id: '79338528' } as const
+    const target = { type: 'private', id: '999439978' } as const
     expect(await app.descriptor.invoke!('message.forward', target, { message_id: '1' })).toEqual({
       messages: [{ content: '私聊合并转发' }],
     })
@@ -320,13 +320,13 @@ describe('OneBot 11 反向 WebSocket', () => {
     for (const message of [
       event({ group_id: 123 }),
       event({ message_type: 'private' }),
-      event({ user_id: 152408856 }),
+      event({ user_id: 999468764 }),
       event({ self_id: 999 }),
       event(),
     ])
       socket.send(JSON.stringify(message))
     await expect.poll(() => app.received.length).toBe(2)
-    expect(app.received[0]?.chat).toEqual({ type: 'group', id: '40894918' })
+    expect(app.received[0]?.chat).toEqual({ type: 'group', id: '33367357' })
     expect(app.statuses.at(-1)).toBe('online')
   })
 
@@ -342,7 +342,7 @@ describe('OneBot 11 反向 WebSocket', () => {
           params: Record<string, unknown>
         }
         expect(request.action).toBe('send_group_msg')
-        expect(request.params.group_id).toBe('40894918')
+        expect(request.params.group_id).toBe('33367357')
         socket.send(
           JSON.stringify({
             echo: request.echo,
@@ -353,7 +353,7 @@ describe('OneBot 11 反向 WebSocket', () => {
         )
       })
       expect(
-        await app.descriptor.send({ type: 'group', id: '40894918' }, [
+        await app.descriptor.send({ type: 'group', id: '33367357' }, [
           { type: 'text', text: '测试回复' },
         ]),
       ).toEqual({ messageId: '42' })
@@ -373,9 +373,9 @@ describe('OneBot 11 反向 WebSocket', () => {
         app.descriptor.send({ type: 'group', id: '123' }, [{ type: 'text', text: '禁止' }]),
       ).rejects.toThrow('未获准')
       await expect(
-        app.descriptor.send({ type: 'group', id: '40894918' }, [{ type: 'text', text: '超时' }]),
+        app.descriptor.send({ type: 'group', id: '33367357' }, [{ type: 'text', text: '超时' }]),
       ).rejects.toThrow('超时')
-      const pending = app.descriptor.send({ type: 'group', id: '40894918' }, [
+      const pending = app.descriptor.send({ type: 'group', id: '33367357' }, [
         { type: 'text', text: '卸载' },
       ])
       const rejected = expect(pending).rejects.toThrow('卸载')
@@ -388,7 +388,7 @@ describe('OneBot 11 反向 WebSocket', () => {
   it('重连替换旧连接，旧连接未完成的请求不会由新连接回应完成', async () => {
     const app = await setup()
     const first = await app.connect()
-    const pending = app.descriptor.send({ type: 'group', id: '40894918' }, [
+    const pending = app.descriptor.send({ type: 'group', id: '33367357' }, [
       { type: 'text', text: '旧连接' },
     ])
     const rejected = expect(pending).rejects.toThrow('重新建立')
@@ -402,29 +402,29 @@ describe('OneBot 11 反向 WebSocket', () => {
     const message = normalizeMessage(
       event({
         message: [
-          { type: 'at', data: { qq: '152408856' } },
+          { type: 'at', data: { qq: '999468764' } },
           { type: 'image', data: { url: 'https://example.test/image.png' } },
           { type: 'file', data: { url: 'https://example.test/file.txt', name: '文件.txt' } },
         ],
       }),
-      '152408856',
+      '999468764',
     )
     expect(message?.segments).toEqual([
-      { type: 'mention', userId: '152408856' },
+      { type: 'mention', userId: '999468764' },
       { type: 'image', url: 'https://example.test/image.png' },
       { type: 'file', url: 'https://example.test/file.txt', name: '文件.txt' },
     ])
-    expect(normalizeMessage(event({ sender: { is_bot: true } }), '152408856')?.sender.bot).toBe(
+    expect(normalizeMessage(event({ sender: { is_bot: true } }), '999468764')?.sender.bot).toBe(
       true,
     )
     expect(
-      normalizeMessage(event({ message: '[CQ:at,qq=152408856]' }), '152408856')?.segments,
-    ).toEqual([{ type: 'mention', userId: '152408856' }])
+      normalizeMessage(event({ message: '[CQ:at,qq=999468764]' }), '999468764')?.segments,
+    ).toEqual([{ type: 'mention', userId: '999468764' }])
   })
 })
 
 it.each(['group', 'private'] as const)('%s 文件通过专用上传接口发送', async (type) => {
-  const app = await setup(['79338528'])
+  const app = await setup(['999439978'])
   const socket = await app.connect()
   const requests: { action: string; params: Record<string, unknown> }[] = []
   socket.on('message', (raw) => {
@@ -432,7 +432,7 @@ it.each(['group', 'private'] as const)('%s 文件通过专用上传接口发送'
     requests.push(request)
     socket.send(JSON.stringify({ echo: request.echo, status: 'ok', retcode: 0, data: {} }))
   })
-  const target = { type, id: type === 'group' ? '40894918' : '79338528' }
+  const target = { type, id: type === 'group' ? '33367357' : '999439978' }
   const segments = parseReply(
     '<file>https://example.com/report.txt?token=test</file>',
     app.descriptor.capabilities,

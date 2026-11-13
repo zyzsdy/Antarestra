@@ -103,7 +103,7 @@ it('状态按 workspace 保存，同群成员共享，不同群、私聊用户�
   const connection = await app.connect('status-chats', '07', {
     group: {
       mode: 'whitelist',
-      ids: ['40894918', 'other'],
+      ids: ['33367357', 'other'],
       defaults: { ai: true, agentId: 'assistant' },
     },
     private: {

@@ -153,7 +153,7 @@ it.each(['group', 'private'] as const)(
       }),
     )
     await connection.receive('', {
-      chat: { type: chatType, id: chatType === 'group' ? '40894918' : 'user' },
+      chat: { type: chatType, id: chatType === 'group' ? '33367357' : 'user' },
       segments: [
         { type: 'text', text: '/ai 查看图片' },
         { type: 'image', url: 'https://example.invalid/normal', name: 'normal.png' },
@@ -192,7 +192,7 @@ it('不依赖 AI 激活归档群文本、命令和机器人；去重并保持原
   expect(history[0]?.message.raw).toEqual({ original: true })
   expect(
     await app.ctx.im.history(workspaceId, {
-      senderId: '79338528',
+      senderId: '999439978',
       startTime: 0,
       endTime: 1001,
       keyword: '100%',
@@ -200,7 +200,7 @@ it('不依赖 AI 激活归档群文本、命令和机器人；去重并保持原
   ).toHaveLength(1)
   expect(await app.ctx.im.history('foreign')).toEqual([])
   await app.ctx.im.send(
-    { workspaceId, connectionId: 'qq-a', chat: { type: 'group', id: '40894918' } },
+    { workspaceId, connectionId: 'qq-a', chat: { type: 'group', id: '33367357' } },
     [
       { type: 'reply', messageId: 'original' },
       { type: 'text', text: '引用成功' },
@@ -230,7 +230,7 @@ it('原始消息 ID 精确查询保留前导零，组合筛选并隔离空间', 
   expect(
     await app.ctx.im.history(workspaceId, {
       messageId: '00123',
-      senderId: '79338528',
+      senderId: '999439978',
       keyword: '目标',
       startTime: 1000,
       endTime: 1000,
@@ -550,7 +550,7 @@ it('真实工具执行按可信空间查询，拒绝模型指定外部空间并�
                 arguments: {
                   messageId: 'budget',
                   keyword: '预算',
-                  senderId: '79338528',
+                  senderId: '999439978',
                   startTime: '2026-10-01T00:00:00Z',
                   endTime: '2026-10-02T00:00:00Z',
                   limit: 2,
@@ -927,7 +927,7 @@ it.each(['group', 'private'] as const)(
     )
     await connection.receive('', {
       id: 'download-me',
-      chat: { type: chatType, id: chatType === 'group' ? '40894918' : '79338528' },
+      chat: { type: chatType, id: chatType === 'group' ? '33367357' : '999439978' },
       segments: [
         { type: 'text', text: '/ai 下载这个文件' },
         { type: 'file', url: 'https://example.invalid/file', size: 100 * 1024 ** 2 + 1 },

@@ -47,7 +47,7 @@ async function connect(filterCitationLinks?: boolean) {
       echo: string
       params: Record<string, unknown>
     }
-    let data: Record<string, unknown> = { user_id: '79338528', role: 'member' }
+    let data: Record<string, unknown> = { user_id: '999439978', role: 'member' }
     if (request.action === 'send_group_msg' || request.action === 'send_private_msg') {
       sent.push(request.params.message)
       data = { message_id: String(100 + sent.length) }
@@ -60,8 +60,8 @@ async function connect(filterCitationLinks?: boolean) {
         post_type: 'message',
         message_type: 'group',
         self_id: '06',
-        user_id: '79338528',
-        group_id: '40894918',
+        user_id: '999439978',
+        group_id: '33367357',
         message_id: '1',
         sender: { nickname: '测试用户', role: 'member' },
         message: [{ type: 'text', data: { text } }],

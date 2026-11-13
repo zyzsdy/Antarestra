@@ -79,7 +79,7 @@ it('群历史管理独立鉴权，消息游标不遗漏，隔离其他群与私�
         workspaceId: group,
         connectionId: 'qq-a',
         platform: 'qq',
-        chatId: '40894918',
+        chatId: '33367357',
         name: '测试群',
         archived: false,
         connected: true,

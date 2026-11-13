@@ -36,7 +36,7 @@ export type DefaultRole = 'guest' | 'user' | 'admin'
 export interface RequestIdentity {
   readonly actorId: string | null
   readonly workspaceId: string | null
-  /** 由可信入口提供的空间展示名称，例如“本地用户·Admin”或“QQ群·293103019”。 */
+  /** 由可信入口提供的空间展示名称，例如“本地用户·Admin”或“QQ群·33221100”。 */
   readonly workspaceLabel?: string
   readonly roles: readonly DefaultRole[]
   readonly auth?: AuthContext

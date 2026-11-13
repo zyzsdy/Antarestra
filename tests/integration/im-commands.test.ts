@@ -54,7 +54,7 @@ it('没有 AI 插件仍可 ping/help，且只在白名单群响应', async () =>
   expect(JSON.stringify(app.sent[1]?.segments)).toContain('/ping')
   expect(app.messages).toHaveLength(0)
   await app.connection.receive('/ping', { chat: { type: 'group', id: 'other' } })
-  await app.connection.receive('/ping', { chat: { type: 'private', id: '79338528' } })
+  await app.connection.receive('/ping', { chat: { type: 'private', id: '999439978' } })
   expect(app.sent).toHaveLength(2)
 })
 it('固定命令解析参数并检查权限，所有命中包括错误都消费消息', async () => {

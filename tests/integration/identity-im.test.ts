@@ -16,9 +16,9 @@ afterEach(async () => {
 })
 const policy = {
   private: { mode: 'whitelist' as const, ids: ['fish'] },
-  group: { mode: 'whitelist' as const, ids: ['40894918', 'other'] },
+  group: { mode: 'whitelist' as const, ids: ['33367357', 'other'] },
 }
-const message = (id = '1', sender = 'fish', chat = '40894918'): IncomingMessage => ({
+const message = (id = '1', sender = 'fish', chat = '33367357'): IncomingMessage => ({
   id,
   chat: { type: 'group', id: chat },
   sender: { id: sender },
@@ -161,7 +161,7 @@ it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与�
     received.map((row) => row.workspaceId).sort(),
   )
   expect(initial.entries.map((row) => row.label)).toEqual(
-    expect.arrayContaining(['qq·群聊·40894918', 'qq·私聊·fish']),
+    expect.arrayContaining(['qq·群聊·33367357', 'qq·私聊·fish']),
   )
   const group = initial.entries.find((row) => row.id === received[0]!.workspaceId)!
   await ctx.workspaceFile.quota(group.id, 50, group.revision)

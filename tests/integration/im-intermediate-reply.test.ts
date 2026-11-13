@@ -88,14 +88,14 @@ it.each(['完整封装', '省略外层'])(
   async (format) => {
     const body =
       '<status>中间状态不应发送或保存</status>' +
-      '<message quote="original"><at id="79338528"></at> 查到了 &amp; 继续</message>' +
+      '<message quote="original"><at id="999439978"></at> 查到了 &amp; 继续</message>' +
       '<message>补充说明</message><sticker>https://example.com/happy.gif</sticker>'
     const app = await slowTool(2, format === '完整封装' ? `<im_reply>${body}</im_reply>` : body)
     await app.connection.receive('/ai 查询', { id: 'original' })
     const expected = [
       [
         { type: 'reply', messageId: 'original' },
-        { type: 'mention', userId: '79338528' },
+        { type: 'mention', userId: '999439978' },
         { type: 'text', text: ' 查到了 & 继续' },
       ],
       [{ type: 'text', text: '补充说明' }],
@@ -268,7 +268,7 @@ it.each(['stop', 'unload', 'disable'] as const)(
     else {
       await app.ctx.im.setPolicy('qq-a', {
         ...app.defaultPolicy,
-        chats: { 'group:40894918': { ai: false } },
+        chats: { 'group:33367357': { ai: false } },
       })
       await poll(() => app.ctx.ai.running.size).toBe(0)
     }

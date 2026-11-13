@@ -78,14 +78,14 @@ it('IM 唤醒复用输入变量及原助理，在独立会话执行并投递到�
   await app.connect('qq-b', '06')
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { agentId: 'second' } },
+    chats: { 'group:33367357': { agentId: 'second' } },
   })
   await app.due()
   await poll(async () => (await app.row()).status).toBe('completed')
   expect(app.sent).toHaveLength(2)
   expect(app.sent[1]).toMatchObject({
     connection: 'qq-a',
-    target: { type: 'group', id: '40894918' },
+    target: { type: 'group', id: '33367357' },
     segments: [{ type: 'text', text: '快递提醒' }],
   })
   const jobs = await app.jobs()
@@ -276,7 +276,7 @@ it('跨空间伪造来源会话被拒绝，原群禁用后不创建唤醒运行'
   ).rejects.toMatchObject({ code: 'forbidden' })
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { ai: false } },
+    chats: { 'group:33367357': { ai: false } },
   })
   await app.due()
   await poll(async () => (await app.row()).status).toBe('failed')

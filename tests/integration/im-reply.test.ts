@@ -387,10 +387,10 @@ it('回复格式开关按接入、聊天类型和单独聊天逐级覆盖，拒�
     defaults: { appendReplyFormat: true },
     group: { mode: 'blacklist', ids: [], defaults: { appendReplyFormat: false } },
     private: { mode: 'blacklist', ids: [] },
-    chats: { 'group:40894918': { appendReplyFormat: true } },
+    chats: { 'group:33367357': { appendReplyFormat: true } },
   })
   expect(
-    app.ctx.im.getChatPolicy('qq-a', { type: 'group', id: '40894918' }).appendReplyFormat,
+    app.ctx.im.getChatPolicy('qq-a', { type: 'group', id: '33367357' }).appendReplyFormat,
   ).toBe(true)
   expect(app.ctx.im.getChatPolicy('qq-a', { type: 'group', id: 'other' }).appendReplyFormat).toBe(
     false,

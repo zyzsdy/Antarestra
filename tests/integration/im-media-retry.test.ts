@@ -155,7 +155,7 @@ it('默认最多重试十次，插件重载继续累计，耗尽后退出队列�
     connectionId: 'retry-limit',
     platform: 'qq',
     workspaceId: workspace,
-    chatId: '40894918',
+    chatId: '33367357',
     messageId: 'failed-image',
     mediaId: message.media[0]!.id,
     mediaIndex: 1,
@@ -259,8 +259,8 @@ it('卸载连接取消下载，不消耗取消资源的次数，也不丢失同�
   const pending = connection!
     .receive({
       id: 'cancel-message',
-      sender: { id: '79338528' },
-      chat: { type: 'group', id: '40894918' },
+      sender: { id: '999439978' },
+      chat: { type: 'group', id: '33367357' },
       segments: [
         { type: 'image', url: 'https://example.invalid/image' },
         { type: 'file', url: 'https://example.invalid/file' },

@@ -37,7 +37,7 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
     send: async () => ({}),
   })
   expect(ctx.im.getPolicy('test')).toEqual({})
-  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '40894918' }).enabled).toBe(false)
+  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '33367357' }).enabled).toBe(false)
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   const request = (path: string, cookie = '', body?: object, method = 'POST', origin?: string) =>
     fetch(base + path, {
@@ -70,7 +70,7 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
   expect(listing.status).toBe(200)
   expect(await listing.json()).toMatchObject({ connections: [{ id: 'test', accountId: '05' }] })
   const policy = {
-    group: { mode: 'whitelist', ids: ['40894918'] },
+    group: { mode: 'whitelist', ids: ['33367357'] },
     defaults: {
       ai: true,
       appendReplyFormat: true,
@@ -121,7 +121,7 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
       )
     ).status,
   ).toBe(400)
-  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '40894918' }).ai).toBe(true)
+  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '33367357' }).ai).toBe(true)
   expect(ctx.im.getChatPolicy('test', { type: 'group', id: 'other' }).enabled).toBe(false)
   const expanded = { ...policy, group: { mode: 'blacklist', ids: [] } }
   expect(
@@ -139,7 +139,7 @@ it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销�
       )
     ).status,
   ).toBe(200)
-  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '40894918' }).enabled).toBe(false)
+  expect(ctx.im.getChatPolicy('test', { type: 'group', id: '33367357' }).enabled).toBe(false)
   await fiber.dispose()
   expect((await request('/im/connections', cookie)).status).toBe(404)
 })

@@ -17,13 +17,13 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
 })
 const policy: ConnectionPolicy = {
-  group: { mode: 'whitelist', ids: ['40894918'] },
+  group: { mode: 'whitelist', ids: ['33367357'] },
   private: { mode: 'whitelist', ids: ['fish'] },
   defaults: { ai: true },
 }
 const message = (id = 'm1', sender = 'fish'): IncomingMessage => ({
   id,
-  chat: { type: 'group', id: '40894918' },
+  chat: { type: 'group', id: '33367357' },
   sender: { id: sender },
   segments: [{ type: 'text', text: '/ping' }],
 })

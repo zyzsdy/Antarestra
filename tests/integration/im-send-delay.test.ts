@@ -121,8 +121,8 @@ it('出站文本转换后的字数决定延迟，不计入被移除的引用链�
   await app.ctx.im.setPolicy('filtered', app.defaultPolicy)
   await connection.receive({
     id: 'incoming',
-    chat: { type: 'group', id: '40894918' },
-    sender: { id: '79338528' },
+    chat: { type: 'group', id: '33367357' },
+    sender: { id: '999439978' },
     segments: text('建立空间'),
   })
   const target = await app.ctx.im.resolveTarget(app.messages[0]!.workspaceId)
@@ -158,7 +158,7 @@ it.each([
 it('不同群、接入独立计时，私聊无需等待', async () => {
   const app = await prepare()
   const other = await app.connect('qq-b', '06', {
-    group: { mode: 'whitelist', ids: ['40894918', 'other'] },
+    group: { mode: 'whitelist', ids: ['33367357', 'other'] },
     private: { mode: 'whitelist', ids: ['friend'] },
   })
   await other.receive('建立空间')
@@ -422,7 +422,7 @@ it('首条发送后关闭 AI，不再发送等待中的后续回复', async () =
   const app = await prepareAi()
   await app.ctx.im.setPolicy('qq-a', {
     ...app.defaultPolicy,
-    chats: { 'group:40894918': { ai: false } },
+    chats: { 'group:33367357': { ai: false } },
   })
   await vi.advanceTimersByTimeAsync(700)
   await poll(async () => (await app.jobs())[0]?.delivery).not.toBe('pending')

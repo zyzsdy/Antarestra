@@ -110,7 +110,7 @@ async function createApp(
       socket.once('error', reject)
     })
     const actions: { action: string; params: JsonObject }[] = []
-    let messageGroup = '40894918'
+    let messageGroup = '33367357'
     let messageSender = selfId
     let messageType = 'group'
     let stalled: string | undefined
@@ -165,9 +165,9 @@ async function createApp(
           post_type: 'message',
           self_id: selfId,
           message_type: privateChat ? 'private' : 'group',
-          group_id: '40894918',
+          group_id: '33367357',
           message_id: messageId,
-          user_id: '79338528',
+          user_id: '999439978',
           sender: { nickname: '测试用户' },
           message: [
             { type: 'text', data: { text: '/ai 请处理' } },
@@ -503,7 +503,7 @@ it('平台返回消息归属不符时禁止表态，平台失败反馈到模型'
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect(bot.actions.some((entry) => entry.action === 'set_msg_emoji_like')).toBe(false)
   expect(JSON.stringify(app.requests.at(-1))).toContain('消息不属于当前聊天')
-  bot.setGroup('40894918')
+  bot.setGroup('33367357')
   bot.fail('set_msg_emoji_like')
   bot.receive(2)
   await poll(async () => (await app.jobs()).filter((job) => job.delivery === 'sent').length).toBe(2)
@@ -597,7 +597,11 @@ it('私聊撤回使用持久化空间归属，禁用聊天后拒绝操作', asyn
   const app = await createApp(calls)
   const bot = await app.connectOneBot('onebot-a', '05')
   await app.ctx.im.setPolicy('onebot-a', {
-    private: { mode: 'whitelist', ids: ['79338528'], defaults: { ai: true, agentId: 'assistant' } },
+    private: {
+      mode: 'whitelist',
+      ids: ['999439978'],
+      defaults: { ai: true, agentId: 'assistant' },
+    },
   })
   bot.setType('private')
   bot.receive(1, true)

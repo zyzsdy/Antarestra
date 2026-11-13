@@ -31,12 +31,12 @@ policy:
     ids: []
   group:
     mode: whitelist
-    ids: ['40894918']
+    ids: ['33221100']
     defaults:
       ai: true
       agentId: assistant
   chats:
-    'group:40894918':
+    'group:33221100':
       queueLimit: 5
       activation:
         mode: any
@@ -116,7 +116,7 @@ activation:
 <message>我先说一下想法。</message>
 <image>resource://图片资源ID</image>
 <message quote="123456">你刚才提到的这点，我也赞同。</message>
-<message><at id="79338528"></at> 想听听你的看法。</message>
+<message><at id="123456789"></at> 想听听你的看法。</message>
 <sticker>resource://表情包资源ID</sticker>
 </im_reply>
 ```

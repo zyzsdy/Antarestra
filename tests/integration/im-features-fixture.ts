@@ -85,7 +85,7 @@ export async function setup(
   const sent: { connection: string; target: ChatTarget; segments: readonly MessageSegment[] }[] = []
   let sendError: Error | undefined
   const defaultPolicy: ConnectionPolicy = {
-    group: { mode: 'whitelist', ids: ['40894918'], defaults: { ai: true, agentId: 'assistant' } },
+    group: { mode: 'whitelist', ids: ['33367357'], defaults: { ai: true, agentId: 'assistant' } },
     private: { mode: 'whitelist', ids: [] },
   }
   async function connect(
@@ -114,8 +114,8 @@ export async function setup(
       receive(text: string, changes: Partial<IncomingMessage> = {}) {
         return handle.receive({
           id: randomUUID(),
-          chat: { type: 'group', id: '40894918' },
-          sender: { id: '79338528', name: '测试用户' },
+          chat: { type: 'group', id: '33367357' },
+          sender: { id: '999439978', name: '测试用户' },
           segments: [{ type: 'text', text }],
           ...changes,
         })

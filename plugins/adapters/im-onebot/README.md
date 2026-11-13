@@ -11,7 +11,7 @@ im-onebot:
   provider: snowluma
   id: qq-qianqian
   label: 浅浅
-  selfId: '152408856'
+  selfId: '123456789'
   token: $ANTARESTRA_ONEBOT_TOKEN
   path: /im/onebot/qq-qianqian
 ```
