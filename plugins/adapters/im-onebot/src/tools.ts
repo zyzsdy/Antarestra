@@ -11,7 +11,19 @@ import { imageSize } from 'image-size'
 import { prepareForwardImages } from './forward.js'
 import { id } from './message.js'
 
-export const emojiIds = ['424', '10068', '264', '128560', '265', '76', '123', '128557', '49', '66', '29']
+export const emojiIds = [
+  '424',
+  '10068',
+  '264',
+  '128560',
+  '265',
+  '76',
+  '123',
+  '128557',
+  '49',
+  '66',
+  '29',
+]
 const emojiGuide = `可用的 emoji_id 与含义：
 - 续标识（ID：424，外观：快速按一个红色按钮，描述：抽象回复，万能回复，既可以表示“太对了”，“赞同”，也可以表示“太搞笑了”“不正常”“太抽象了”，不知道回复什么的时候就回复这个！）
 - 问号（ID：10068，外观：emoji 问号，描述：“怎么回事”，“什么鬼”）

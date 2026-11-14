@@ -32,7 +32,7 @@ HMR 通过 `registry.replace()` 原地替换组件，Fiber 身份和配置保持
 
 验证范围按共享 SDK 的实际消费关系选择：基础插件生命周期、配置加载与管理、配置面板、HTTP、HMR 和 AI 管理生命周期；HMR 使用真实 Node 子进程、文件监视器和本地 HTTP。服务端项目引用构建同时检查 SDK 的服务端消费者。测试不需要真实模型密钥，也不代表真实模型集成验证。
 
-## 本次验证结果
+## 升级时的定向验证
 
 验证环境为 macOS arm64、Node.js 26.13.1、pnpm 11.7.0，未在 Windows、Linux 或 x64 环境执行验证。
 
@@ -46,3 +46,15 @@ pnpm exec vitest run tests/integration/plugins.test.ts tests/integration/config-
 
 - `node scripts/smoke-server.mjs`：编译产物健康接口、认证、聊天与后台扩展、未登录拒绝检查通过，子进程已回收。S3、网页工具和终端插件因缺少环境配置未加载，不在本次冒烟成功范围内。
 - 对本次修改文件执行 Prettier 格式检查与 `git diff --check`，均通过。
+
+## 后续完整检查
+
+2026-11-14 按用户要求，在 macOS arm64、Node.js 26.13.1、pnpm 11.7.0 环境执行 `pnpm check`。首次检查发现 OneBot 工具文件的 emoji 标识数组未按 Prettier 换行，已修正格式，数组内容与运行逻辑不变。
+
+修复后重新执行完整命令，退出码为 0：
+
+- 全仓库格式检查、TypeScript / Vue 类型检查通过。
+- 全量测试共 91 个文件通过，1334 项通过、56 项按测试条件跳过，没有失败项。跳过条件涉及真实数据库、浏览器和 Open Terminal 远端环境，不能视为这些环境已经验证。
+- 全工作区服务端与前端生产构建通过。构建仍有大于 500 kB 的前端分块提示，测试仍有 Node 实验性功能提示，均未导致检查失败。
+
+在本次实际执行的检查范围内，没有发现 Cordis 升级导致的插件回归；尚未验证其他操作系统或架构。
