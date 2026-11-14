@@ -7,7 +7,7 @@
     "start": "node --expose-internals dist/index.js",
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "dev": "tsx watch --include '../../packages/**/src/**' --include '../*/src/**' --exclude '../../plugins/**' --expose-internals --conditions=development src/index.ts"
+    "dev": "node --expose-internals --import tsx --conditions=development src/index.ts --watch"
   },
   "dependencies": {
     "@antarestra/ai": "workspace:*",

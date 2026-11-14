@@ -84,7 +84,7 @@ Antarestra/
 - 默认严格类型检查，启用 `noUncheckedIndexedAccess` 与 `exactOptionalPropertyTypes`。优先明确契约，不用 `any` 掩盖边界问题。
 - 服务端包通过 TypeScript 项目引用生成 `dist` 与声明文件；`typecheck` 中的 `tsc -b` 会更新这些被 Git 忽略的构建产物。
 - 模块解析使用 Bundler，保持现有工作区与前端构建配置一致。服务端自己编写的相对导入仍使用 `.js` 扩展名，确保编译后可直接由 Node 执行。
-- 内部包的默认运行导出与类型导出指向 `dist`，`development` 条件指向源码。tsx watch 和 Vitest 使用该条件，开发与测试无需先手动构建。
+- 内部包的默认运行导出与类型导出指向 `dist`，`development` 条件指向源码。开发启动入口和 Vitest 使用该条件，开发与测试无需先手动构建。
 - 新建服务端工作区包时同步设置清单、导出、构建脚本和项目引用。依赖写入所属包，避免偶然依赖根目录提升的模块。
 - 仓库不配置 GitHub Actions 自动验证；推送和 Pull Request 不触发仓库检查。验证结果需注明实际执行的操作系统与架构，不将本机结果表述为所有目标平台均已验证。
 

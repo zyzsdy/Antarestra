@@ -45,17 +45,12 @@ plugins:
       process.execPath,
       mode === 'development'
         ? [
-            fileURLToPath(import.meta.resolve('tsx/cli')),
-            'watch',
-            '--include',
-            '../../packages/**/src/**',
-            '--include',
-            '../*/src/**',
-            '--exclude',
-            '../../plugins/**',
+            '--import',
+            'tsx',
             '--expose-internals',
             '--conditions=development',
             'src/index.ts',
+            '--watch',
             `--conf=${config}`,
           ]
         : [
@@ -148,13 +143,7 @@ plugins:
       if (mode === 'local-overlay') expect(await readFile(config, 'utf8')).toBe(original)
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
-        if (mode === 'development' && process.platform === 'win32') {
-          const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
-            windowsHide: true,
-            stdio: 'ignore',
-          })
-          await once(killer, 'exit')
-        } else if (child.connected) child.send({ type: 'shutdown' })
+        if (child.connected) child.send({ type: 'shutdown' })
         else child.kill('SIGTERM')
         await Promise.race([exited, pause(5000).then(() => child.kill('SIGKILL'))])
       }

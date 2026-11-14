@@ -133,7 +133,7 @@ database-kysely:
 
 ## 开发与构建监听
 
-根级 `pnpm dev` 通过 `fnm exec --using=.node-version` 使用项目固定的 Node 26，即使外层终端仍使用其他 Node 版本也会切换子进程。须先安装 fnm、执行 `fnm install`，并确保该 Node 环境可以运行 pnpm 11.7.0。它当前只启动服务端 `tsx watch`，**不会先构建，也不会自动启动前端监听**。先执行一次 `pnpm build`，再运行：
+根级 `pnpm dev` 通过 `fnm exec --using=.node-version` 使用项目固定的 Node 26，即使外层终端仍使用其他 Node 版本也会切换子进程。须先安装 fnm、执行 `fnm install`，并确保该 Node 环境可以运行 pnpm 11.7.0。它当前只启动服务端及其源码监听，**不会先构建，也不会自动启动前端监听**。先执行一次 `pnpm build`，再运行：
 
 ```text
 pnpm dev "--conf=$localConfig"
@@ -145,7 +145,9 @@ pnpm dev "--conf=$localConfig"
 pnpm --filter @antarestra/plugin-chat-webui dev
 ```
 
-修改页面壳时运行 `pnpm --filter @antarestra/webui dev`。HMR 插件更新服务端插件及已构建的前端扩展；`packages` / `apps` 的源码变化由 `tsx watch` 重启进程。页面壳更新需要刷新浏览器，受影响扩展不保留组件本地状态。仓库当前没有根级 `dev:web`、`dev:server` 命令。
+修改页面壳时运行 `pnpm --filter @antarestra/webui dev`。HMR 插件更新服务端插件及已构建的前端扩展；`packages` / `apps` 的源码变化由服务端监督进程等待插件清理后重启业务进程。页面壳更新需要刷新浏览器，受影响扩展不保留组件本地状态。仓库当前没有根级 `dev:web`、`dev:server` 命令。
+
+`pnpm dev`、`pnpm start` 以及直接运行服务端入口均支持两阶段退出：第一次按 Ctrl+C 后停止源码监听，等待所有插件的异步清理完成，再正常退出；等待期间再按一次 Ctrl+C 强制终止业务进程树。主动关闭不受 `loader.disposalTimeoutMs` 限制；该配置仍用于插件管理操作、启动失败和配置面板重启。SIGTERM 和父进程的 IPC 关闭请求也会等待清理。内部、外部监督模式均通过轻量入口进程协调关闭；外部模式的面板重启仍以退出码 75 交给外部管理器处理。
 
 ## 检查与提交
 
