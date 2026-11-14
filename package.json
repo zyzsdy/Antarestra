@@ -5,12 +5,12 @@
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "engines": {
-    "node": ">=24.0.0 <25",
+    "node": ">=26.13.1 <27",
     "pnpm": ">=11 <12"
   },
   "scripts": {
     "startdevdb": "docker compose -p antarestra-dev -f compose.dev.yml up -d --wait",
-    "dev": "pnpm --filter @antarestra/server dev",
+    "dev": "fnm exec --using=.node-version pnpm --filter @antarestra/server dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck && vue-tsc -p tsconfig.tests.json --noEmit",
     "test": "vitest run",
@@ -70,7 +70,7 @@
     "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/server": "^2.4.0",
     "@modelcontextprotocol/server-legacy": "^2.4.0",
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.6.6",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.8",
     "jsdom": "^30.1.1",

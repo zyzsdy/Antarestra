@@ -9,14 +9,17 @@
 Apple Silicon 使用 `/opt/homebrew` 下的 Homebrew。安装 Xcode Command Line Tools 和 Chrome 后执行：
 
 ```sh
-brew install node@24 postgresql@18
+brew install fnm postgresql@18
 brew install --cask orbstack
 open -a OrbStack
-export PATH="$HOME/.orbstack/bin:/opt/homebrew/opt/node@24/bin:/opt/homebrew/opt/postgresql@18/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
-npm install --global --prefix "$HOME/.local" pnpm@11.7.0
+export PATH="$HOME/.orbstack/bin:/opt/homebrew/opt/postgresql@18/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+eval "$(fnm env --use-on-cd --shell zsh)"
+fnm install 26.13.1
+fnm use 26.13.1
+npm install --global pnpm@11.7.0
 ```
 
-在 `~/.zprofile` 中持久化 Homebrew 和上述 PATH。SSH 非交互命令不一定读取该文件，应明确设置 PATH；LaunchAgent 也必须显式指定 PATH 和工作目录。
+在 `~/.zprofile` 中持久化 Homebrew 和上述 PATH，在 `~/.zshrc` 中加入 `eval "$(fnm env --use-on-cd --shell zsh)"`，进入仓库时按 `.node-version` 自动切换。bash 用户将初始化命令的 `--shell zsh` 改为 `--shell bash` 并写入相应启动文件。SSH 非交互命令不一定读取这些文件，应显式初始化 fnm 并执行 `fnm use`；LaunchAgent 也必须显式指定 PATH 和工作目录。
 
 下载需要本机代理时，仅为相应安装命令设置环境：
 
@@ -36,6 +39,8 @@ OrbStack 自带 Docker CLI 和 Compose，无需另装 Homebrew 的 `docker`、`d
 
 ```sh
 cd ~/Workspace/Antarestra
+fnm install
+fnm use
 pnpm install --frozen-lockfile
 pnpm build
 ```

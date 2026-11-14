@@ -54,7 +54,7 @@ Antarestra/
 
 ## 开发命令
 
-在仓库根目录运行，使用 Node.js 24 与 pnpm 11.7.0。
+在仓库根目录运行，使用 Node.js 26 与 pnpm 11.7.0。Node 由 fnm 管理，`.node-version` 固定当前验证版本 26.13.1；先执行 `fnm install`、`fnm use`。根级 `pnpm dev` 通过 fnm 显式使用该版本。
 
 | 命令                             | 用途                                      |
 | -------------------------------- | ----------------------------------------- |
@@ -72,7 +72,7 @@ Antarestra/
 
 新增依赖示例：`pnpm --filter @antarestra/webui add 包名`；根级开发工具使用 `pnpm add -Dw 包名`；工作区依赖使用 `pnpm --filter 目标包 add '内部包名@workspace:*'`。
 
-一般选择最新稳定依赖；明确的兼容性限制可锁版本并记录原因。TypeScript 固定为 6.0.3，原因是初始化时 TypeScript 7.0.2 与 vue-tsc 3.3.11 不兼容；根包与网页包需一起升级并验证。`@types/node` 跟随 Node 24。pnpm 的 `allowBuilds` 只显式允许需要的依赖构建脚本，不全局放开。
+一般选择最新稳定依赖；明确的兼容性限制可锁版本并记录原因。TypeScript 固定为 6.0.3，原因是初始化时 TypeScript 7.0.2 与 vue-tsc 3.3.11 不兼容；根包与网页包需一起升级并验证。`@types/node` 跟随 Node 26。pnpm 的 `allowBuilds` 只显式允许需要的依赖构建脚本，不全局放开。
 
 ## 权限命名
 

@@ -16,14 +16,18 @@ macOS 原生开发、数据库迁移及 NapCat Docker 部署见 [macOS 开发与
 
 ## 最小本地环境
 
-使用 Node.js 24、pnpm 11.7.0。开发平台为 macOS 和 Windows；目标运行平台为 macOS、Windows、Linux，各平台均覆盖 x64 / arm64。
+使用 Node.js 26、pnpm 11.7.0。Node 由 fnm 管理，仓库 `.node-version` 固定当前验证版本 26.13.1。开发平台为 macOS 和 Windows；目标运行平台为 macOS、Windows、Linux，各平台均覆盖 x64 / arm64。
 
 命令从仓库根目录执行。仅 Windows 要求在已经初始化 fnm 的 PowerShell 7（`pwsh`）中运行 Node 与 pnpm；macOS 使用 zsh 或 bash，Linux 运行与部署使用本机 shell，不要求 pwsh。通用命令以 `text` 代码块展示；涉及环境变量、路径解析等 shell 语法时分别提供示例。切换操作系统或架构后重新安装依赖并构建，不复用其他平台的 `node_modules` 或原生构建产物。浏览器、原生依赖和外部服务需按目标平台准备。
 
 ```text
+fnm install
+fnm use
 pnpm install --frozen-lockfile
 pnpm build
 ```
+
+从其他 Node 大版本切换后，若 SQLite 原生模块报 ABI 不匹配，执行 `pnpm rebuild better-sqlite3` 后再构建与测试。仅切换 Node 可执行文件不会更新已有原生构建产物。
 
 创建独立配置 `antarestra.dev.local.yml`，写入下面的 YAML，并通过 `--conf` 明确选择它。该文件名匹配仓库的 `*.local.yml` 忽略规则，不覆盖默认主配置。最小配置使用 SQLite，包含网页登录、提供商与助理管理、工具和持久化聊天；不需要 Docker、对象存储或 IM 凭据。
 
@@ -129,7 +133,7 @@ database-kysely:
 
 ## 开发与构建监听
 
-`pnpm dev` 当前只启动服务端 `tsx watch`，**不会先构建，也不会自动启动前端监听**。先执行一次 `pnpm build`，再运行：
+根级 `pnpm dev` 通过 `fnm exec --using=.node-version` 使用项目固定的 Node 26，即使外层终端仍使用其他 Node 版本也会切换子进程。须先安装 fnm、执行 `fnm install`，并确保该 Node 环境可以运行 pnpm 11.7.0。它当前只启动服务端 `tsx watch`，**不会先构建，也不会自动启动前端监听**。先执行一次 `pnpm build`，再运行：
 
 ```text
 pnpm dev "--conf=$localConfig"
