@@ -17,7 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
-    "start": "pnpm --filter @antarestra/server start",
+    "start": "fnm exec --using=.node-version pnpm --filter @antarestra/server start",
     "create:webui": "node scripts/create-webui.mjs",
     "startdevstorage": "node scripts/start-storage.mjs",
     "test:storage": "node --env-file=.env.storage.local --import tsx --conditions=development scripts/smoke-storage.ts",

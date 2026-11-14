@@ -54,7 +54,7 @@ Antarestra/
 
 ## 开发命令
 
-在仓库根目录运行，使用 Node.js 26 与 pnpm 11.7.0。Node 由 fnm 管理，`.node-version` 固定当前验证版本 26.13.1；先执行 `fnm install`、`fnm use`。根级 `pnpm dev` 通过 fnm 显式使用该版本。
+在仓库根目录运行，使用 Node.js 26 与 pnpm 11.7.0。Node 由 fnm 管理，`.node-version` 固定当前验证版本 26.13.1；先执行 `fnm install`、`fnm use`。根级 `pnpm dev` 与 `pnpm start` 均通过 fnm 显式使用该版本。
 
 | 命令                             | 用途                                      |
 | -------------------------------- | ----------------------------------------- |

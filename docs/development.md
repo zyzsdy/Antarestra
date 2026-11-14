@@ -92,7 +92,7 @@ read -r -s -p '设置初始管理员密码（8–128 字符）：' ANTARESTRA_AD
 
 访问 `/auth/user/`，用 `admin` 和刚输入的密码登录；在 `/admin/` 的“AI 设置 → 提供商接入”创建连接和模型，再到首页发送消息。`ai-agents` 已提供默认助理。初始化只创建不存在的账号，不会提升已有同名账号的权限。首次创建完成后，从配置中移除两个 `bootstrap` 字段，并在相应终端移除 `ANTARESTRA_ADMIN_PASSWORD` 环境变量。
 
-`pnpm start` 持续运行，Ctrl+C 关闭。它在 `apps/server` 下执行，因此示例数据库位于 `apps/server/data/antarestra-local.sqlite`。插件中的相对文件路径未统一相对于 YAML 目录解析；需要固定位置时使用绝对路径。
+根级 `pnpm start` 通过 `fnm exec --using=.node-version` 使用项目固定的 Node 26，与 `pnpm dev` 一致；须先安装 fnm、执行 `fnm install`，并确保该 Node 环境可以运行 pnpm 11.7.0。它运行已有编译产物，不会自动构建；启动后持续运行，Ctrl+C 关闭。服务在 `apps/server` 下执行，因此示例数据库位于 `apps/server/data/antarestra-local.sqlite`。插件中的相对文件路径未统一相对于 YAML 目录解析；需要固定位置时使用绝对路径。
 
 健康接口 `/api/health` 仅表示 HTTP 可用。单个插件失败不会让所有服务退出，需在插件设置中检查依赖和实例状态。启动参数、环境变量和实例键规则见[配置加载器](../packages/config-loader/README.md)。
 
