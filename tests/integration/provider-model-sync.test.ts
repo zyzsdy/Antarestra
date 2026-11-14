@@ -44,7 +44,7 @@ it('API 缺失的内置已有模型仅推荐删除，同步全部保留并覆盖
       candidate('both', 'both'),
       candidate('builtin'),
       candidate('remote', 'remote'),
-      candidate('new'),
+      candidate('new', 'remote'),
     ],
     true,
   )
@@ -96,13 +96,54 @@ it('混合勾选时覆盖按钮只增改，删除按钮只删除勾选的待删�
 it('API 返回空目录时内置已有模型仅推荐删除，重复候选按 ID 去重', () => {
   const rows = modelSyncRows(
     [model('builtin'), model('retired')],
-    [candidate('builtin'), candidate('builtin')],
+    [candidate('builtin'), candidate('builtin'), candidate('new')],
     true,
   )
-  expect(rows).toHaveLength(2)
+  expect(rows).toHaveLength(3)
   expect(planModelSync(rows, 'all')).toMatchObject({
     added: 0,
     modified: 1,
     deletions: ['retired'],
+  })
+})
+
+it('本地八个、内置十个时，获取 API 返回相同八个后同步全部由新增两个变为零个', () => {
+  const current = Array.from({ length: 8 }, (_, index) => model(`model-${index}`))
+  const builtins = Array.from({ length: 10 }, (_, index) => candidate(`model-${index}`))
+  expect(planModelSync(modelSyncRows(current, builtins, false), 'all')).toMatchObject({
+    added: 2,
+    modified: 8,
+    deletions: [],
+  })
+
+  const discovered = builtins.map((item, index) =>
+    candidate(item.id, index < 8 ? 'both' : 'builtin'),
+  )
+  const rows = modelSyncRows(current, discovered, true)
+  const plan = planModelSync(rows, 'all', ['model-8', 'model-9'])
+  expect(plan).toMatchObject({ added: 0, modified: 8, deletions: [] })
+  const synced = syncModels(current, plan.updates, plan.deletions)
+  expect(synced.map((item) => item.id)).toEqual(current.map((item) => item.id))
+  expect(synced.every((item) => item.contextWindow === 128000)).toBe(true)
+
+  const manual = planModelSync(rows, 'update', ['model-8', 'model-9'])
+  expect(manual).toMatchObject({ added: 2, modified: 0, deletions: [] })
+  expect(syncModels(current, manual.updates)).toHaveLength(10)
+})
+
+it('获取 API 后同步全部新增 API 独有和双方共有模型，跳过仅内置的新模型', () => {
+  const candidates = [
+    candidate('builtin'),
+    candidate('both', 'both'),
+    candidate('remote', 'remote'),
+  ]
+  const plan = planModelSync(modelSyncRows([], candidates, true), 'all')
+  expect(plan).toMatchObject({ added: 2, modified: 0, deletions: [] })
+  expect(syncModels([], plan.updates).map((item) => item.id)).toEqual(['both', 'remote'])
+  expect(planModelSync(modelSyncRows([], [candidate('builtin')], true), 'all')).toEqual({
+    updates: [],
+    deletions: [],
+    added: 0,
+    modified: 0,
   })
 })

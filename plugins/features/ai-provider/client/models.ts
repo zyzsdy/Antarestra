@@ -4,6 +4,7 @@ import type { Candidate } from '../src/types.js'
 export interface SyncRow {
   model: ModelDefinition
   candidate?: Candidate
+  requiresSelection?: boolean
   status: 'add' | 'update' | 'delete' | 'recommend-delete'
 }
 
@@ -18,6 +19,8 @@ export function modelSyncRows(
     ...[...available.values()].map((candidate): SyncRow => ({
       model: candidate,
       candidate,
+      requiresSelection:
+        remoteFetched && candidate.source === 'builtin' && !existing.has(candidate.id),
       status: !existing.has(candidate.id)
         ? 'add'
         : remoteFetched && candidate.source === 'builtin'
@@ -40,6 +43,7 @@ export function planModelSync(
   const deletions: string[] = []
   let added = 0
   for (const row of rows) {
+    if (mode === 'all' && row.requiresSelection) continue
     if (mode !== 'all' && !selected.has(row.model.id)) continue
     if (
       (mode === 'all' && row.status === 'delete') ||

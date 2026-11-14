@@ -575,8 +575,9 @@ onUnmounted(() => {
           同步全部会新增、覆盖模型并移除“待删除”项，包含筛选外的模型。 未获取 API
           列表时，不在内置目录中的已有模型为“待删除”；获取成功后，内置与 API
           均不存在的已有模型为“待删除”，仅内置存在的已有模型为“推荐删除”。
-          “推荐删除”项在同步全部时仍按内置参数覆盖，仅能勾选后通过“同步并删除所选”移除。
-          缺少参数时默认使用 128000 上下文、65535 最大输出，请同步后核对。
+          “推荐删除”项在同步全部时仍按内置参数覆盖，仅能勾选后通过“同步并删除所选”移除。 获取 API
+          列表成功后，仅内置存在的新模型不参与同步全部，仍可勾选后同步新增。 缺少参数时默认使用
+          128000 上下文、65535 最大输出，请同步后核对。
         </p>
         <div class="actions">
           <button :disabled="busy" @click="fetchModels">获取模型列表</button
@@ -651,7 +652,7 @@ onUnmounted(() => {
                     'sync-add': row.status === 'add',
                   }"
                 >
-                  {{ syncStatus[row.status] }}
+                  {{ row.requiresSelection ? '需勾选新增' : syncStatus[row.status] }}
                 </td>
               </tr>
             </tbody>
@@ -678,7 +679,7 @@ onUnmounted(() => {
       <template #footer>
         <button
           class="sync-action"
-          :disabled="busy || !syncRows.length"
+          :disabled="busy || (!allPlan.updates.length && !allPlan.deletions.length)"
           :aria-label="`同步全部：新增 ${allPlan.added} 个，覆盖 ${allPlan.modified} 个，删除 ${allPlan.deletions.length} 个`"
           @click="sync('all')"
         >
