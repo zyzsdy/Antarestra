@@ -26,7 +26,7 @@
 
 pi-ai 使用当前维护的 `@earendil-works/pi-ai` 包，旧 `@mariozechner/pi-ai` 已标记弃用。内置提供商与目录从 `providers/all` 读取，模型执行使用各 API 的懒加载实现，不维护进程级可变 pi 提供商注册表，也不引入 Agent 后端。
 
-模型请求中，pi-ai 默认的 `pi (<平台> <系统内核版本>; <架构>)` User-Agent 追加 `Anta/<根 package.json 的 version>`，例如 `pi (win32 10.0.26340; x64) Anta/0.1.0`。提供商自定义 `User-Agent`（请求头名称不区分大小写）完整覆盖默认值，不追加后缀；模型自带的 UA、Anthropic OAuth 的 `claude-cli`、AWS Bedrock SDK 和 `pi-messages` 等特殊 UA 保持原样。此规则仅作用于 pi-ai 模型请求，不改变目录同步和附件 Files API 的请求头。
+模型请求中，pi-ai 默认的 `pi/<pi-ai 版本> (<平台>; node/<Node 版本>; <架构>)` User-Agent 追加 `Anta/<根 package.json 的 version>`，例如 `pi/1.5.2 (win32; node/v26.13.1; x64) Anta/0.1.0`。提供商自定义 `User-Agent`（请求头名称不区分大小写）完整覆盖默认值，不追加后缀；模型自带的 UA、Anthropic OAuth 的 `claude-cli`、AWS Bedrock SDK 和 `pi-messages` 等特殊 UA 保持原样。此规则仅作用于 pi-ai 模型请求，不改变目录同步和附件 Files API 的请求头。
 
 候选模型读取所选内置提供商的完整目录，不按提供商默认接口过滤；同 ID 跨接口重复时优先当前接口并去重。“获取模型列表”通过服务端请求对应 `/models` 接口，支持 OpenAI 兼容、OpenAI Responses、Anthropic、Google Generative AI 和 Mistral 的目录格式；其余接口明确提示仅支持内置目录与手动添加。目录请求包含保存的 API Key 和 Header，禁止跟随重定向，具备 30 秒超时、分页与响应大小限制。
 
@@ -36,7 +36,7 @@ pi-ai 使用当前维护的 `@earendil-works/pi-ai` 包，旧 `@mariozechner/pi-
 
 模型驱动支持文本、思考增量及工具调用。使用所选内置提供商的官方 Base URL 时，已保存的目录模型均由 pi-ai 内置提供商适配器发送请求；已知模型按 pi-ai 定义选择协议、端点及兼容参数，新模型若有端点一致的同系列模型则沿用其协议和端点。例如 opencode-go 的 Anthropic、Chat Completions、Responses 和 Google 模型可共存，且会话 ID 由适配器用于请求路由。使用自定义网关地址时仍严格采用管理员配置的接口和地址，通过通用协议驱动发送请求，不将凭据转发到内置端点。
 
-pi-ai 1.3.0 将 opencode-go 的内置地址更新为 `https://opencode.ai/inference/go`（部分协议使用 `/v1` 后缀）。已有配置若仍使用 `https://opencode.ai/zen/go`，需在提供商配置中更新地址并重新同步模型，才能继续使用内置适配器的自动协议选择；升级依赖不会改写已保存的地址。
+pi-ai 1.5.2 的 opencode-go 内置地址按协议区分：Anthropic 使用 `https://opencode.ai/inference/go/anthropic`，OpenAI 使用 `https://opencode.ai/inference/go/openai/v1`，Google 使用 `https://opencode.ai/inference/go/google/v1beta`。已有配置若仍使用 `https://opencode.ai/zen/go`、`https://opencode.ai/inference/go` 或旧 `/v1` 地址，需在提供商配置中更新为对应协议的地址并重新同步模型，才能继续使用内置适配器的自动协议选择；升级依赖不会改写已保存的地址。
 
 图片与文件经 AI 资源解析器校验空间并读取内容。图片转换为模型输入；PDF、UTF-8 文本和其他文档按目标协议转换，OpenAI Responses 的部分二进制办公文档通过 Files API 上传。协议、模型能力或资源大小不支持时明确报错，不只检查附件引用。具体支持范围、远端清理及大小限制见[聊天附件](../chat-webui/README.md#图片与文件附件)。OAuth 登录、云账号凭据流程及 Agent 执行后端不属于本插件；选择需要这些认证方式的提供商不会自动创建对应登录流程。
 

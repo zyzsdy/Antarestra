@@ -1,4 +1,4 @@
-import { lazyApi, normalizeContext, Type } from '@earendil-works/pi-ai'
+import { lazyApi, normalizeContext } from '@earendil-works/pi-ai'
 import type {
   Api,
   Model,
@@ -279,7 +279,7 @@ export function createModelDriver(
               .map((tool) => ({
                 name: tool.id,
                 description: tool.description,
-                parameters: Type.Unsafe(tool.parameters),
+                parameters: tool.parameters,
               })),
           }),
           {

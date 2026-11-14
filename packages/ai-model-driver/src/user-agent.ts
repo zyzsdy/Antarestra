@@ -1,6 +1,5 @@
 import { applicationUserAgent } from '@antarestra/plugin-sdk'
-import type { Api, Model } from '@earendil-works/pi-ai'
-import { getPiUserAgent } from '@earendil-works/pi-ai/utils/pi-user-agent'
+import { formatUserAgent, type Api, type Model } from '@earendil-works/pi-ai'
 
 const piUserAgentApis = new Set([
   'openai-completions',
@@ -38,5 +37,5 @@ export function providerRequestHeaders(
     }
   if (claudeOAuth || !piUserAgentApis.has(model.api) || hasUserAgent(model.headers))
     return { ...headers }
-  return { 'User-Agent': `${getPiUserAgent()} ${applicationUserAgent()}`, ...headers }
+  return { 'User-Agent': `${formatUserAgent()} ${applicationUserAgent()}`, ...headers }
 }

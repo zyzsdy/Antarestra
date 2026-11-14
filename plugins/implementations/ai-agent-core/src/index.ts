@@ -3,7 +3,6 @@ import type { ExecutionBackend } from '@antarestra/ai'
 import { runAgentLoop, type AgentTool } from '@earendil-works/pi-agent-core'
 import {
   createAssistantMessageEventStream,
-  Type,
   type Api,
   type AssistantMessage,
   type Model,
@@ -90,7 +89,7 @@ export const backend: ExecutionBackend = {
               label: toolName,
               description: '',
               // 此处不重复校验或转换参数，原始批次由核心按真实 Schema 校验。
-              parameters: Type.Object({}, { additionalProperties: true }),
+              parameters: { type: 'object', properties: {}, additionalProperties: true },
               async execute(id) {
                 try {
                   signal.throwIfAborted()

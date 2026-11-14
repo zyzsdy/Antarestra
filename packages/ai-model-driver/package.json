@@ -23,7 +23,7 @@
   "dependencies": {
     "@antarestra/ai": "workspace:*",
     "@antarestra/plugin-sdk": "workspace:*",
-    "@earendil-works/pi-ai": "^1.3.0",
+    "@earendil-works/pi-ai": "^1.5.2",
     "openai": "^7.23.0"
   }
 }

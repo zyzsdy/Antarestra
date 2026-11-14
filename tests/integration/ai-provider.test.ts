@@ -548,7 +548,7 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
     ...input,
     builtin: 'opencode-go',
     api: 'anthropic-messages',
-    baseUrl: 'https://opencode.ai/inference/go',
+    baseUrl: 'https://opencode.ai/inference/go/anthropic',
   })
   record.models = candidates(record).map(validateModel)
   expect(driver(record).id).toBe(`ai-provider:${record.id}`)
@@ -572,7 +572,7 @@ it('opencode-go 官方端点按模型选择协议，保留内置兼容参数和�
   record.models.push(remote)
   const unknown = resolveModel(record, remote, record.baseUrl)
   expect(unknown.api).toBe('openai-completions')
-  expect(unknown.baseUrl).toBe('https://opencode.ai/inference/go/v1')
+  expect(unknown.baseUrl).toBe('https://opencode.ai/inference/go/openai/v1')
   expect(useBuiltinAdapter(record, unknown.id, record.baseUrl)).toBe(true)
   const future = validateModel({ ...model, id: 'future-go-model' })
   record.models.push(future)
@@ -591,7 +591,10 @@ it('自定义网关不被内置模型的协议和端点覆盖', () => {
   expect(useBuiltinAdapter(record, definition.id, record.baseUrl)).toBe(false)
 })
 it('自定义提供商即使使用内置模型 ID 和官方地址也始终使用默认接口', () => {
-  const record = validateProvider({ ...input, baseUrl: 'https://opencode.ai/inference/go' })
+  const record = validateProvider({
+    ...input,
+    baseUrl: 'https://opencode.ai/inference/go/anthropic',
+  })
   const builtin = builtinModels('opencode-go').find((model) => model.api === 'anthropic-messages')!
   const resolved = resolveModel(record, validateModel({ ...model, id: builtin.id }), record.baseUrl)
   expect(resolved.api).toBe(record.api)
@@ -603,7 +606,7 @@ it('其他内置提供商的同名模型不会改变所选提供商的默认请�
     ...input,
     builtin: 'opencode-go',
     api: 'anthropic-messages',
-    baseUrl: 'https://opencode.ai/inference/go',
+    baseUrl: 'https://opencode.ai/inference/go/anthropic',
   })
   const known = new Set(builtinModels(record.builtin).map((model) => model.id))
   const other = builtinModels('openai').find((model) => !known.has(model.id))!

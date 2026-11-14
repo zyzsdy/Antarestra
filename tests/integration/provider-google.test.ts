@@ -35,11 +35,11 @@ async function fixture(kind: string, handler: RequestListener) {
     note: '',
     builtin: opencode ? kind : '',
     api: opencode ? 'anthropic-messages' : kind,
-    baseUrl: opencode ? 'https://opencode.ai/inference/go' : localUrl,
+    baseUrl: opencode ? 'https://opencode.ai/inference/go/anthropic' : localUrl,
     apiKey: 'test-key',
     headers: {},
   })
-  const modelId = 'gemini-4-argon-contributor'
+  const modelId = 'gemini-4-argon'
   record.models = [
     validateModel(
       opencode
@@ -136,7 +136,7 @@ it.each(
   expect(result.stopReason).toBe('stop')
   expect(result.usage?.totalTokens).toBe(5)
   expect(received).toHaveLength(1)
-  expect(received[0]!.url).toContain('gemini-4-argon-contributor:streamGenerateContent')
+  expect(received[0]!.url).toContain('gemini-4-argon:streamGenerateContent')
   expect(received[0]!.body).toMatchObject({
     contents: [
       {
@@ -149,7 +149,7 @@ it.each(
     ],
   })
   if (kind === 'opencode-go') {
-    expect(app.urls[0]).toMatch(/^https:\/\/opencode\.ai\/inference\/go\/v1\/models\//)
+    expect(app.urls[0]).toMatch(/^https:\/\/opencode\.ai\/inference\/go\/google\/v1beta\/models\//)
     expect(received[0]!.session).toBe('google-test')
   }
 })

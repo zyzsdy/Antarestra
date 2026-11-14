@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { arch, platform, release } from 'node:os'
+import { arch, platform } from 'node:os'
 import { afterEach, expect, it } from 'vitest'
 import { applicationUserAgent } from '@antarestra/plugin-sdk'
 import type { RequestSnapshot, RunContext } from '@antarestra/ai'
@@ -11,7 +11,11 @@ import { validateProvider } from '../../plugins/features/ai-provider/src/validat
 const { version } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
 ) as { version: string }
-const expectedUserAgent = `pi (${platform()} ${release()}; ${arch()}) Anta/${version}`
+const expectedUserAgent = expect.stringMatching(
+  new RegExp(
+    `^pi/\\d+\\.\\d+\\.\\d+ \\(${platform()}; node/${process.version.replaceAll('.', '\\.')}; ${arch()}\\) Anta/${version.replaceAll('.', '\\.')}$`,
+  ),
+)
 const definition = {
   id: 'test-model',
   title: '测试模型',
