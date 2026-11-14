@@ -7,9 +7,9 @@ import { initial, interrupted } from './database.js'
 const ctx = new Context()
 try {
   const config = JSON.parse(process.env.ANTARESTRA_TEST_CONFIG ?? '{}') as Config
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(implementation, config)
-  await ctx.plugin(
+  await ctx.use(DatabaseProvider)
+  await ctx.use(implementation, config)
+  await ctx.use(
     defineDatabasePlugin({
       name: process.env.ANTARESTRA_TEST_PLUGIN!,
       migrations: [process.env.ANTARESTRA_TEST_INTERRUPT ? interrupted : initial],

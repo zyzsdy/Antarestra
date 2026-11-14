@@ -1286,8 +1286,8 @@ export default defineDatabasePlugin<Partial<Config>>({
       new URL('../config.schema.json', import.meta.url),
       input ?? {},
     )
-    await ctx.plugin(AiService, config)
-    await ctx.plugin({
+    await ctx.use(AiService, config)
+    await ctx.use({
       inject: ['ai', 'server', 'rbac'],
       async apply(ctx: Context) {
         await ctx.ai.backfillHistory()

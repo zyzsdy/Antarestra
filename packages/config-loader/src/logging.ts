@@ -17,7 +17,7 @@ export function logPluginLifecycle(ctx: Context) {
     fiber = fiber.ctx.fiber
     if (entries.has(fiber)) return
     entries.set(fiber, entry)
-    // 同步插件可能在 plugin() 返回之前就已经就绪。
+    // 同步插件可能在 use() 返回之前就已经就绪。
     log(fiber)
   }
 }

@@ -82,7 +82,7 @@ try {
       },
     }),
   )
-  await ctx.plugin(configLoader, {
+  await ctx.use(configLoader, {
     filename,
     resolvePlugin: resolver,
     baseUrl: pathToFileURL(directory + sep).href,
@@ -111,8 +111,10 @@ try {
   await delay(500)
   for (let round = 1; round <= 3; round++) {
     const previous = ctx.configManager.instances.get('rbac').fiber
+    const previousService = ctx.rbac
     await writeFile(entry, `${original}\n// 第 ${round} 次真实文件热重载。\n`)
-    await waitFor(() => ctx.configManager.instances.get('rbac')?.fiber !== previous)
+    await waitFor(() => ctx.rbac && ctx.rbac !== previousService)
+    assert.equal(ctx.configManager.instances.get('rbac').fiber, previous)
     await ctx.configManager.instances.get('rbac').fiber.await()
     await ctx.configManager.instances.get('auth-local').fiber.await()
     assert.deepEqual(errors, [])

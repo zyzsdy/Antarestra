@@ -14,7 +14,7 @@ export async function apply(ctx: Context, config: Config) {
   const backend = new S3Backend(config)
   ctx.effect(() => () => backend.close())
   ctx.storage.register(ctx, config.id ?? 's3', backend)
-  await ctx.plugin({
+  await ctx.use({
     inject: ['webui'],
     apply(ctx: Context) {
       const endpoint = new URL(config.publicEndpoint ?? config.endpoint)

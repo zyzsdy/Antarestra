@@ -14,6 +14,6 @@ export default defineDatabasePlugin({
   inject: ['im', 'imCommands', 'ai'],
   async apply(ctx: Context, input: Partial<Config> = {}) {
     const config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
-    await ctx.plugin(ImAiService, config)
+    await ctx.use(ImAiService, config)
   },
 })

@@ -55,21 +55,21 @@ try {
       },
     }),
   )
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: join(directory, 'metadata.sqlite') })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: preview ? 14459 : 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(WebUI)
-  await ctx.plugin(Storage)
-  await ctx.plugin(s3, config)
-  await ctx.plugin(admin)
-  await ctx.plugin(local, {
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: join(directory, 'metadata.sqlite') })
+  await ctx.use(Server, { host: '127.0.0.1', port: preview ? 14459 : 0 })
+  await ctx.use(rbac)
+  await ctx.use(WebUI)
+  await ctx.use(Storage)
+  await ctx.use(s3, config)
+  await ctx.use(admin)
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'storage-test@example.com',
     bootstrapPassword: password,
   })
-  let fiber = await ctx.plugin(files, { backendId: 's3', defaultQuota: 20 * 1024 * 1024 })
+  let fiber = await ctx.use(files, { backendId: 's3', defaultQuota: 20 * 1024 * 1024 })
   const origin = `http://127.0.0.1:${ctx.server.address!.port}`
   const request = (path: string, cookie = '', body?: object, method = 'POST') =>
     fetch(origin + '/api' + path, {
@@ -214,7 +214,7 @@ try {
     assert.deepEqual(head.Metadata, {})
   }
   await fiber.dispose()
-  fiber = await ctx.plugin(files, { backendId: 's3', defaultQuota: 20 * 1024 * 1024 })
+  fiber = await ctx.use(files, { backendId: 's3', defaultQuota: 20 * 1024 * 1024 })
   const restored = await request('/workspace-files?path=/upload/2026-09-29', cookie)
   assert.equal((await restored.json()).entries.length, 2)
   assert.equal((await request('/workspace-file-admin', otherCookie)).status, 403)

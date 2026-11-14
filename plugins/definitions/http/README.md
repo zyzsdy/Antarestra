@@ -4,7 +4,7 @@
 
 ## 复用与边界
 
-项目原先只有模型目录查询直接使用原生 `fetch`，没有统一请求服务。这里复用兼容 Cordis 4 的 `@cordisjs/plugin-http`，保留其方法、响应解码、错误类型与客户端扩展，不另写请求库。代理复用 Undici 的 `ProxyAgent`；其 SOCKS5 支持目前由上游标记为实验性，集成测试覆盖真实本地 SOCKS5 握手和代理端域名解析。
+项目原先只有模型目录查询直接使用原生 `fetch`，没有统一请求服务。这里复用兼容 Cordis 4 的 `@cordisjs/http`，保留其方法、响应解码、错误类型与客户端扩展，不另写请求库。代理复用 Undici 的 `ProxyAgent`；其 SOCKS5 支持目前由上游标记为实验性，集成测试覆盖真实本地 SOCKS5 握手和代理端域名解析。
 
 插件使用独立 Undici 实例接口和连接池，服务端即使带 `--expose-internals` 也不切换到 Node 内置 Undici。不设置全局代理、不读取环境代理；已有原生 `fetch` 调用不会被自动改道。WebUI 中的浏览器 `fetch` 仍由浏览器执行。
 

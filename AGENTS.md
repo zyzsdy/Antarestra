@@ -5,7 +5,7 @@
 1. 本项目使用 TypeScript + Vue，包管理器统一为 pnpm。安装或调整依赖应通过 `pnpm add`、`pnpm remove` 等命令完成，不采用先修改 `package.json` 的依赖字段再运行 `pnpm install` 的方式。此规则同样适用于其他语言的包管理器。首次安装依赖时可以运行 `pnpm install`。
 2. 创建的任何文档内容均使用简体中文，计划、说明与任务输出也使用简体中文。
 3. 每次完成一项任务后，都应主动提交 Git，使用简体中文编写提交概要。提交前检查差异并完成与变更相匹配的验证，不自动推送远程仓库。
-4. Cordis 使用 **`cordis@4.0.0-rc.11` 精确版本**，允许使用新特性。后续遇到破坏性变更再明确升级和重构，不维护 3.x 兼容层，不擅自切换到 `@cordisjs/core` 或 `@deepseek-ai/cordis`。
+4. Cordis 使用 **`cordis@4.0.0-rc.13` 精确版本**，允许使用新特性。后续遇到破坏性变更再明确升级和重构，不维护 3.x 兼容层，不擅自切换到 `@cordisjs/core` 或 `@deepseek-ai/cordis`。
 5. 开发平台为 macOS 和 Windows；目标运行平台为 macOS、Windows、Linux，各平台均覆盖 x64 / arm64。仅在 Windows 环境要求使用 PowerShell 7（`pwsh`），Node 由 fnm 管理，Node 与 pnpm 应在已初始化 fnm 的 pwsh 中运行。macOS 使用本机 shell（如 zsh 或 bash），Linux 运行与部署使用本机 shell，不要求安装或使用 pwsh。路径可能带空格，命令参数必须正确引用；注意最大命令长度，大型编辑拆成多次。
 6. 可以建立 Git 分支，除非用户明确要求，不主动建立工作树。尊重已有文件的缩进与换行，不覆盖任务之外的改动。
 7. 插件统一依赖 `@antarestra/plugin-sdk` 并从中导入 Cordis 运行时和类型，只有 SDK 直接依赖 Cordis。服务类型扩展声明在 `@antarestra/plugin-sdk` 模块上。所有 `plugins/` 下插件包必须在 `package.json` 的 `keywords` 数组中包含 `antarestra-plugin`。
@@ -83,7 +83,7 @@ Antarestra/
 - ESM 模块，2 空格、LF、UTF-8、单引号、无分号，以 Prettier 配置为准。
 - 默认严格类型检查，启用 `noUncheckedIndexedAccess` 与 `exactOptionalPropertyTypes`。优先明确契约，不用 `any` 掩盖边界问题。
 - 服务端包通过 TypeScript 项目引用生成 `dist` 与声明文件；`typecheck` 中的 `tsc -b` 会更新这些被 Git 忽略的构建产物。
-- 模块解析使用 Bundler，以兼容 Cordis 4 当前声明文件中的扩展名省略。服务端自己编写的相对导入仍使用 `.js` 扩展名，确保编译后可直接由 Node 执行。
+- 模块解析使用 Bundler，保持现有工作区与前端构建配置一致。服务端自己编写的相对导入仍使用 `.js` 扩展名，确保编译后可直接由 Node 执行。
 - 内部包的默认运行导出与类型导出指向 `dist`，`development` 条件指向源码。tsx watch 和 Vitest 使用该条件，开发与测试无需先手动构建。
 - 新建服务端工作区包时同步设置清单、导出、构建脚本和项目引用。依赖写入所属包，避免偶然依赖根目录提升的模块。
 - 仓库不配置 GitHub Actions 自动验证；推送和 Pull Request 不触发仓库检查。验证结果需注明实际执行的操作系统与架构，不将本机结果表述为所有目标平台均已验证。
@@ -91,7 +91,7 @@ Antarestra/
 ## 插件边界与生命周期
 
 - 定义层只暴露项目自己的契约；消费插件不得直接导入实现插件。启动装配层可以引用具体实现。
-- `ctx.plugin()` 返回可等待的 Fiber。需要确认就绪的装配与测试必须等待它；卸载使用 `await fiber.dispose()`。不要复制旧版 `ctx.start()`、`ctx.stop()`、`reusable` 或生命周期事件写法。
+- `ctx.use()` 返回可等待的 Fiber。需要确认就绪的装配与测试必须等待它；卸载使用 `await fiber.dispose()`。不要复制旧版 `ctx.start()`、`ctx.stop()`、`reusable` 或生命周期事件写法。
 - 注册表不等于后端就绪。调用时仍需检查 `backendId`、`connectionId` 等注册项是否存在及是否获得授权。
 - 每次能力注册明确传入所属插件上下文，通过 `ctx.effect()` 绑定回收。网络、事件、定时器与子进程也必须回收，异步清理必须可等待。
 - 注册标识重复时明确拒绝；AI 工具例外：同名工具后注册覆盖，卸载后恢复上一有效实现，Run 固定其启动时的实现。`use_skill` 仅由唯一 Skill 服务提供。回收必须幂等，旧实例的回收函数不能删除后来注册的新实例。

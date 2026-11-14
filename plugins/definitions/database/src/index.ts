@@ -105,7 +105,7 @@ export class DatabaseProvider extends Service {
       }
     })
     try {
-      await ctx.plugin(DatabaseService, backend)
+      await ctx.use(DatabaseService, backend)
     } catch (error) {
       await release()
       throw error

@@ -20,7 +20,7 @@ export default defineDatabasePlugin({
   async apply(ctx: Context) {
     ctx.rbac.registerPermission(ctx, 'admin.im.stickers.manage', '管理全局表情包库', ['admin'])
     const access = await ctx.workspaceFile.accessWorkspace(ctx, libraryWorkspace, '全局表情包库')
-    await ctx.plugin(StickersService, access)
+    await ctx.use(StickersService, access)
     ctx.inject(['imStickers', 'ai'], (ctx) => {
       ctx.ai.registerTemplateVariable(ctx, {
         id: 'im_stickers',

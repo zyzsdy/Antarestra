@@ -189,9 +189,9 @@ export class ConfigManager extends Service<ManagerConfig> {
         this.owner.loader.root.data.push(tracked.options)
         item.tracked = tracked
       }
-      item.fiber = owner.plugin(plugin, structuredClone(config)).ctx.fiber
+      item.fiber = owner.use(plugin, structuredClone(config)).ctx.fiber
       this.track(item.fiber, item.entry)
-      if (item.tracked) item.tracked.fiber = item.fiber
+      if (item.tracked) item.tracked.innerFiber = item.fiber
       void item.fiber.await().catch(() => {})
     } catch (error) {
       item.error = (

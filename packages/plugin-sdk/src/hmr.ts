@@ -1,18 +1,31 @@
-export { default as Hmr } from '@cordisjs/plugin-hmr'
-export { TimerService } from '@cordisjs/plugin-timer'
-export type { Loader } from '@cordisjs/plugin-loader'
+import type Hmr from '@cordisjs/hmr'
 
-/** 官方 HMR 1.1.x 的单一刷新入口适配；不得绕过项目的生命周期队列。 */
+export { default as Hmr } from '@cordisjs/hmr'
+export type { Loader } from '@cordisjs/loader'
+
+/** 将公开的 HMR 事务入口纳入配置管理生命周期队列，回收时等待已执行的事务。 */
 export function coordinateHmr(
-  instance: object,
-  exclusive: (action: () => Promise<void>) => Promise<void>,
-): () => void {
-  const target = instance as { partialReload?: () => Promise<void> }
-  const original = target.partialReload
-  if (typeof original !== 'function') throw new Error('当前 HMR 版本不支持生命周期队列适配')
-  const wrapped = () => exclusive(() => original.call(instance))
-  target.partialReload = wrapped
-  return () => {
-    if (target.partialReload === wrapped) target.partialReload = original
+  instance: Pick<Hmr, 'reconcile'>,
+  exclusive: <T>(action: () => Promise<T>) => Promise<T>,
+): () => Promise<void> {
+  const original = instance.reconcile
+  const running = new Set<Promise<Hmr.Result>>()
+  let active = true
+  const wrapped: Hmr['reconcile'] = (callback) =>
+    exclusive(async () => {
+      if (!active) return { settled: [], aborted: [], skipped: [] }
+      const task = original.call(instance, callback)
+      running.add(task)
+      try {
+        return await task
+      } finally {
+        running.delete(task)
+      }
+    })
+  instance.reconcile = wrapped
+  return async () => {
+    active = false
+    if (instance.reconcile === wrapped) instance.reconcile = original
+    await Promise.allSettled(running)
   }
 }

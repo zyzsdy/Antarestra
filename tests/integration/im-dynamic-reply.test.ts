@@ -355,7 +355,7 @@ it('冷却拦截后保留阈值，冷却结束即激活；卸载重载清理动�
   await poll(() => app.sent.length).toBe(2)
   await app.connection.receive('累计一条')
   await app.aiPlugin!.dispose()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await app.connection.receive('重载后第一条')
   expect(await app.jobs()).toHaveLength(2)
 })

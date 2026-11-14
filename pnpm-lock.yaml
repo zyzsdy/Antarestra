@@ -380,21 +380,18 @@ importers:
 
   packages/plugin-sdk:
     dependencies:
-      '@cordisjs/plugin-hmr':
-        specifier: ^1.1.1
-        version: 1.1.1(@cordisjs/plugin-timer@1.1.4(cordis@4.0.0-rc.11))(cordis@4.0.0-rc.11)
-      '@cordisjs/plugin-loader':
-        specifier: 1.0.0-rc.8
-        version: 1.0.0-rc.8(cordis@4.0.0-rc.11)
-      '@cordisjs/plugin-timer':
-        specifier: ^1.1.4
-        version: 1.1.4(cordis@4.0.0-rc.11)
+      '@cordisjs/hmr':
+        specifier: 2.0.0-rc.0
+        version: 2.0.0-rc.0(@cordisjs/fs@2.0.0-rc.0)(cordis@4.0.0-rc.13)
+      '@cordisjs/loader':
+        specifier: 1.0.0-rc.10
+        version: 1.0.0-rc.10(cordis@4.0.0-rc.13)
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
       cordis:
-        specifier: 4.0.0-rc.11
-        version: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
+        specifier: 4.0.0-rc.13
+        version: 4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10)
 
   plugins/adapters/im-feishu:
     dependencies:
@@ -508,9 +505,9 @@ importers:
       '@antarestra/plugin-sdk':
         specifier: workspace:*
         version: link:../../../packages/plugin-sdk
-      '@cordisjs/plugin-http':
-        specifier: ^1.5.2
-        version: 1.5.2(cordis@4.0.0-rc.11)(undici@8.11.2)
+      '@cordisjs/http':
+        specifier: 1.6.0
+        version: 1.6.0(cordis@4.0.0-rc.13)(undici@8.11.2)
       undici:
         specifier: ^8.11.2
         version: 8.11.2
@@ -1466,8 +1463,8 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@borewit/text-codec@0.2.2':
-    resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+  '@borewit/text-codec@0.2.3':
+    resolution: {integrity: sha512-49CycTz1aAZmvFcwkeFyhud1HUmRIB5Tabf7ALV+VA4Iu85MTfz2cUwzPagMFAdVBvrWdkCxG67I30tUwwpKsw==}
 
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
@@ -1494,34 +1491,46 @@ packages:
   '@cordisjs/fetch-file@1.0.3':
     resolution: {integrity: sha512-Uo4OFSvfMlBuPNR/7qzzWs5ltnoeuU7eA2eJt5kke8TJ7SKs/IXnsZVT29nSzecg6xs+gS/fuQAZ5T8G9oYxVQ==}
 
-  '@cordisjs/plugin-hmr@1.1.1':
-    resolution: {integrity: sha512-JGAa52x4A8UFXHVjOuRDnLS5tAIr+gRWMiETbT7Xmp26XwI1K0deMd98ytGAfau3SJpGLdaFH0BvE5aWEnrz8g==}
+  '@cordisjs/fs-node@0.1.0':
+    resolution: {integrity: sha512-+RjwvBl/qe2L+fnY7PlHbETuyxI663bzTINyQ9V6nj1aCuCiGjldwyDTmVd82m628EUT99PjHGCadLHZEVPMeQ==}
     peerDependencies:
-      '@cordisjs/plugin-timer': ^1.1.4
-      cordis: ^4.0.0-rc.11
+      '@cordisjs/fs': ^2.0.0-rc.0
+      cordis: ^4.0.0-rc.13
 
-  '@cordisjs/plugin-http@1.5.2':
-    resolution: {integrity: sha512-t8O3JbZ/Ir+9AYhN1fyFKmIiWzKkR6hJC/Qd2XW7f9aBxkKqrbP/vtxHj4+GV2lSEYDFqb0nDN2jUSDhhWPQjQ==}
+  '@cordisjs/fs@2.0.0-rc.0':
+    resolution: {integrity: sha512-Te+XWBnMbjOId3PZYCnzgV5KylTSa+MB1FP9pMYV8UEwXOd3GAX5QrDCulGcoiyrGfWC/QZK0Hn68FVR7IJ3bw==}
     peerDependencies:
-      cordis: ^4.0.0-rc.8
+      cordis: ^4.0.0-rc.13
+
+  '@cordisjs/hmr@2.0.0-rc.0':
+    resolution: {integrity: sha512-DlRldaFRvAf5AcFbqaBkswXXgyzywJ739VahkbfAtAlFBIMgluxqOdV2PjMHDPcIZ/f9DTsiIe6ev25wr3ee8Q==}
+    peerDependencies:
+      '@cordisjs/fs': ^2.0.0-rc.0
+      cordis: ^4.0.0-rc.13
+      node-addon-require-builtin: ^0.1.0
+    peerDependenciesMeta:
+      '@cordisjs/fs':
+        optional: true
+      node-addon-require-builtin:
+        optional: true
+
+  '@cordisjs/http@1.6.0':
+    resolution: {integrity: sha512-OVFqkt6MdpKGUwtcZCRWdqLBcOowDR71ZgmjYfJv65hv/mTvDh6bwV00MfVWTT4PaypQ+Mm1fqr1Z0PLr/UZZg==}
+    peerDependencies:
+      cordis: ^4.0.0-rc.13
       undici: '*'
     peerDependenciesMeta:
       undici:
         optional: true
 
-  '@cordisjs/plugin-loader@1.0.0-rc.8':
-    resolution: {integrity: sha512-KK/tN3OjkK0VJjL1aEQCVK2e2+pqW1F3KHtU5XPZbzZ99HN/kz3yHNTTxSjOGn33WjnL9wdMPHHXQfuHzVeG/A==}
+  '@cordisjs/loader@1.0.0-rc.10':
+    resolution: {integrity: sha512-SdTENuAe1QoK0iORpk4KWuAX/mWvQEnu57XVdF/RMDmMCyMl4Wu3PlFpXy8/Rttzy7O18g0xg2egWJ1yLGOZGA==}
     peerDependencies:
-      cordis: ^4.0.0-rc.11
+      cordis: ^4.0.0-rc.13
       node-addon-require-builtin: ^0.1.0
     peerDependenciesMeta:
       node-addon-require-builtin:
         optional: true
-
-  '@cordisjs/plugin-timer@1.1.4':
-    resolution: {integrity: sha512-hxm4MmT0hrNzue05EE30We2WYVTTR6g2Nj5kYDu4EWzM9B7JgrUQg8qfUvG03rzB+59uJJywm8u/9OeJXhYIcg==}
-    peerDependencies:
-      cordis: ^4.0.0-rc.11
 
   '@csstools/color-helpers@6.1.2':
     resolution: {integrity: sha512-grhRy3OKmniaAEKXMjua5z/EODX0MSqBGjunw8+j/3HQjOnahs2AGhvEOIYVUWcU6ScApbhLhVrQTX8XqrMrow==}
@@ -2667,16 +2676,22 @@ packages:
     resolution: {integrity: sha512-8BIbcC6tPZMv2/PD4PrB3CtKks7LmAWhA7FRZK/6/b/WJ2RUz00KCga7gq50S4/RhZ22kxefRFGgsuts0v3eoA==}
     engines: {node: '>= 0.8'}
 
-  cordis@4.0.0-rc.11:
-    resolution: {integrity: sha512-03PHbcYJzp84XRKnW7jd17g26bPvG5UvSyhyjxGIu/1VQs3bweNMACo3t1W0ikzoZ7q+wytHyk8jJsaIQOkPkA==}
+  cordis@4.0.0-rc.13:
+    resolution: {integrity: sha512-rYsquBfrd1U8HuaDr/1TYpdnHiuy5X2oEWJbfEveIZwysfjg3vTXJWKvTPlaPtt2VeFsAJIrzHZnymONyOr3PA==}
     hasBin: true
     peerDependencies:
-      '@cordisjs/plugin-include': ^1.1.1
-      '@cordisjs/plugin-loader': ^1.0.0-rc.8
+      '@cordisjs/fs': ^2.0.0-rc.0
+      '@cordisjs/fs-node': ^0.1.0
+      '@cordisjs/include': ^2.0.0-rc.0
+      '@cordisjs/loader': ^1.0.0-rc.10
     peerDependenciesMeta:
-      '@cordisjs/plugin-include':
+      '@cordisjs/fs':
         optional: true
-      '@cordisjs/plugin-loader':
+      '@cordisjs/fs-node':
+        optional: true
+      '@cordisjs/include':
+        optional: true
+      '@cordisjs/loader':
         optional: true
 
   cors@2.8.6:
@@ -3967,8 +3982,8 @@ packages:
     resolution: {integrity: sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w==}
     engines: {node: '>=12'}
 
-  strtok3@10.3.5:
-    resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
+  strtok3@10.7.0:
+    resolution: {integrity: sha512-iAqrCpp7UXD2FZiHWhLXqdJ6CmNeVzRkkHAyyhhKMVtbVm2KtPX3D/bJNonvtcyLTHS4rwqP2pz9fsjK1K4z0Q==}
     engines: {node: '>=18'}
 
   stylis@4.4.0:
@@ -4001,8 +4016,8 @@ packages:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
     engines: {node: '>=0.6'}
 
-  token-types@6.1.2:
-    resolution: {integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==}
+  token-types@6.2.0:
+    resolution: {integrity: sha512-s9euYHM//T3loJtbNUYdbAzsMlvKBeRS+XCLFy+UGosMQH19Hwjap5k19i4PPAEJJBsVIpMpVTxl4fIqCuNfUg==}
     engines: {node: '>=14.16'}
 
   tough-cookie@6.0.2:
@@ -4615,7 +4630,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@borewit/text-codec@0.2.2': {}
+  '@borewit/text-codec@0.2.3': {}
 
   '@braintree/sanitize-url@7.1.2': {}
 
@@ -4648,20 +4663,33 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@cordisjs/plugin-hmr@1.1.1(@cordisjs/plugin-timer@1.1.4(cordis@4.0.0-rc.11))(cordis@4.0.0-rc.11)':
+  '@cordisjs/fs-node@0.1.0(@cordisjs/fs@2.0.0-rc.0)(cordis@4.0.0-rc.13)':
     dependencies:
-      '@babel/code-frame': 7.29.7
-      '@cordisjs/plugin-timer': 1.1.4(cordis@4.0.0-rc.11)
+      '@cordisjs/fs': 2.0.0-rc.0(cordis@4.0.0-rc.13)
       chokidar: 4.0.3
-      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
+      cordis: 4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10)
       cosmokit: 1.8.1
       picomatch: 4.0.7
-      schemastery: 3.18.0
+    optional: true
 
-  '@cordisjs/plugin-http@1.5.2(cordis@4.0.0-rc.11)(undici@8.11.2)':
+  '@cordisjs/fs@2.0.0-rc.0(cordis@4.0.0-rc.13)':
+    dependencies:
+      cordis: 4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10)
+      cosmokit: 1.8.1
+    optional: true
+
+  '@cordisjs/hmr@2.0.0-rc.0(@cordisjs/fs@2.0.0-rc.0)(cordis@4.0.0-rc.13)':
+    dependencies:
+      '@babel/code-frame': 7.29.7
+      cordis: 4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10)
+      schemastery: 3.18.0
+    optionalDependencies:
+      '@cordisjs/fs': 2.0.0-rc.0(cordis@4.0.0-rc.13)
+
+  '@cordisjs/http@1.6.0(cordis@4.0.0-rc.13)(undici@8.11.2)':
     dependencies:
       '@cordisjs/fetch-file': 1.0.3
-      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
+      cordis: 4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10)
       cosmokit: 1.8.1
       schemastery: 3.18.0
     optionalDependencies:
@@ -4669,14 +4697,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@cordisjs/plugin-loader@1.0.0-rc.8(cordis@4.0.0-rc.11)':
+  '@cordisjs/loader@1.0.0-rc.10(cordis@4.0.0-rc.13)':
     dependencies:
-      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
-      cosmokit: 1.8.1
-
-  '@cordisjs/plugin-timer@1.1.4(cordis@4.0.0-rc.11)':
-    dependencies:
-      cordis: 4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8)
+      cordis: 4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10)
       cosmokit: 1.8.1
 
   '@csstools/color-helpers@6.1.2': {}
@@ -5262,7 +5285,7 @@ snapshots:
     dependencies:
       debug: 4.4.3
       fflate: 0.8.3
-      token-types: 6.1.2
+      token-types: 6.2.0
     transitivePeerDependencies:
       - supports-color
 
@@ -5768,6 +5791,7 @@ snapshots:
   chokidar@4.0.3:
     dependencies:
       readdirp: 4.1.2
+    optional: true
 
   chokidar@5.0.0:
     dependencies:
@@ -5818,12 +5842,14 @@ snapshots:
       depd: 2.0.0
       keygrip: 1.1.0
 
-  cordis@4.0.0-rc.11(@cordisjs/plugin-loader@1.0.0-rc.8):
+  cordis@4.0.0-rc.13(@cordisjs/fs-node@0.1.0)(@cordisjs/fs@2.0.0-rc.0)(@cordisjs/loader@1.0.0-rc.10):
     dependencies:
       '@standard-schema/spec': 1.1.0
       cosmokit: 1.8.1
     optionalDependencies:
-      '@cordisjs/plugin-loader': 1.0.0-rc.8(cordis@4.0.0-rc.11)
+      '@cordisjs/fs': 2.0.0-rc.0(cordis@4.0.0-rc.13)
+      '@cordisjs/fs-node': 0.1.0(@cordisjs/fs@2.0.0-rc.0)(cordis@4.0.0-rc.13)
+      '@cordisjs/loader': 1.0.0-rc.10(cordis@4.0.0-rc.13)
 
   cors@2.8.6:
     dependencies:
@@ -6253,8 +6279,8 @@ snapshots:
   file-type@20.5.0:
     dependencies:
       '@tokenizer/inflate': 0.2.7
-      strtok3: 10.3.5
-      token-types: 6.1.2
+      strtok3: 10.7.0
+      token-types: 6.2.0
       uint8array-extras: 1.6.0
     transitivePeerDependencies:
       - supports-color
@@ -7003,7 +7029,8 @@ snapshots:
       iconv-lite: 0.7.3
       unpipe: 1.0.0
 
-  readdirp@4.1.2: {}
+  readdirp@4.1.2:
+    optional: true
 
   readdirp@5.1.1: {}
 
@@ -7195,7 +7222,7 @@ snapshots:
     dependencies:
       ansi-regex: 6.4.0
 
-  strtok3@10.3.5:
+  strtok3@10.7.0:
     dependencies:
       '@tokenizer/token': 0.3.0
 
@@ -7220,9 +7247,9 @@ snapshots:
 
   toidentifier@1.0.1: {}
 
-  token-types@6.1.2:
+  token-types@6.2.0:
     dependencies:
-      '@borewit/text-codec': 0.2.2
+      '@borewit/text-codec': 0.2.3
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
 

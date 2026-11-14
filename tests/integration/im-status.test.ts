@@ -217,7 +217,7 @@ it('文件数据库重开、插件重载和 reset 保留状态，空状态块清
   )
   await first.aiPlugin!.dispose()
   expect(first.ctx.ai.listTemplateVariables().some((item) => item.id === 'im_status')).toBe(false)
-  await first.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await first.ctx.use(imAi, { pollIntervalMs: 20 })
   answer = '不更新'
   await first.connection.receive('/ai 重载后')
   await settled(first, 2)
@@ -287,7 +287,7 @@ it('回复投递失败仍保存状态，旧计划重试不重新运行模型或�
     .set({ delivery: 'pending', attempts: 0 })
     .where('id', '=', oldJob.id)
     .execute()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await settled(app, 2)
   expect(generate).toHaveBeenCalledTimes(2)
   expect((await statuses(app))[0]!.content).toBe('新状态')

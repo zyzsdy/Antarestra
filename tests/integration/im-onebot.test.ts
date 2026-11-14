@@ -38,9 +38,9 @@ async function setup(privateIds: string[] = [], config: Partial<OneBot.Config> =
       }
     }
   }
-  await ctx.plugin(ImProbe)
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  const adapter = await ctx.plugin(OneBot, {
+  await ctx.use(ImProbe)
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  const adapter = await ctx.use(OneBot, {
     id: 'test',
     selfId: '999468764',
     token: 'test-secret',

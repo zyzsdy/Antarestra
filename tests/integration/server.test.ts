@@ -32,7 +32,7 @@ async function directory(): Promise<string> {
 
 async function start(config: Config = {}) {
   const ctx = context()
-  const fiber = await ctx.plugin(HttpServer, { host: '127.0.0.1', port: 0, ...config })
+  const fiber = await ctx.use(HttpServer, { host: '127.0.0.1', port: 0, ...config })
   const address = ctx.server.address!
   const url = `${config.https ? 'https' : 'http'}://127.0.0.1:${address.port}`
   return { ctx, fiber, url }
@@ -71,17 +71,17 @@ describe('HTTP 服务与路由', () => {
   it('认证守卫随所属插件卸载并可重新注册，旧回收不撤销新守卫', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    await ctx.plugin(HttpServer, { host: '127.0.0.1', port: 0 })
+    await ctx.use(HttpServer, { host: '127.0.0.1', port: 0 })
     const url = `http://127.0.0.1:${ctx.server.address!.port}`
     ctx.server.route(ctx, 'GET', '/guard-lifecycle', (http) => {
       http.body = '已授权'
     })
-    const owner = await ctx.plugin({ inject: ['server'], apply() {} })
+    const owner = await ctx.use({ inject: ['server'], apply() {} })
     const release = owner.ctx.server.authentication(owner.ctx, async (_http, next) => next())
     expect((await request(url, '/api/guard-lifecycle')).status).toBe(200)
     await owner.dispose()
     expect((await request(url, '/api/guard-lifecycle')).status).toBe(503)
-    const replacement = await ctx.plugin({ inject: ['server'], apply() {} })
+    const replacement = await ctx.use({ inject: ['server'], apply() {} })
     replacement.ctx.server.authentication(replacement.ctx, async (_http, next) => next())
     await release()
     expect((await request(url, '/api/guard-lifecycle')).status).toBe(200)
@@ -139,7 +139,7 @@ describe('HTTP 服务与路由', () => {
         logs.push(`[${message.type}] [${message.name}] ${Logger.format({ export() {} }, message)}`)
       },
     })
-    await ctx.plugin(HttpServer, { host: '127.0.0.1', port: 0 })
+    await ctx.use(HttpServer, { host: '127.0.0.1', port: 0 })
     const url = `http://127.0.0.1:${ctx.server.address!.port}`
     expect(logs).toEqual([`[info] [server] 服务已监听 ${url}`])
     ctx.server.route(ctx, 'GET', '/failure', () => {
@@ -454,14 +454,14 @@ describe('配置与 HTTPS', () => {
     { https: true },
   ])('拒绝无效配置 %j', async (config) => {
     const ctx = context()
-    await expect(ctx.plugin(HttpServer, config as Config)).rejects.toThrow()
+    await expect(ctx.use(HttpServer, config as Config)).rejects.toThrow()
   })
 
   it('HTTPS 关闭时不读取证书，端口占用时启动失败', async () => {
     const { ctx, url } = await start({ cert: '不存在', key: '不存在', passphraseFile: '不存在' })
     expect((await request(url, '/api/health')).status).toBe(200)
     await expect(
-      context().plugin(HttpServer, { host: '127.0.0.1', port: ctx.server.address!.port }),
+      context().use(HttpServer, { host: '127.0.0.1', port: ctx.server.address!.port }),
     ).rejects.toThrow()
   })
 
@@ -514,7 +514,7 @@ describe('server 插件生命周期', () => {
     const { ctx, url } = await start()
     const root = await directory()
     await writeFile(join(root, 'file.txt'), '文件')
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['server'],
       apply(owner: Context) {
         owner.server.use(owner, async (http, next) => {
@@ -544,7 +544,7 @@ describe('server 插件生命周期', () => {
     const { ctx, fiber, url } = await start()
     const old = ctx.server
     const port = old.address!.port
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['server'],
       apply(owner: Context) {
         owner.server.route(owner, 'GET', '/consumer', (http) => {
@@ -556,7 +556,7 @@ describe('server 插件生命周期', () => {
     expect(old.address).toBeUndefined()
     expect(() => old.use(ctx, () => {})).toThrow('卸载')
     await expect(request(url, '/api/health')).rejects.toThrow()
-    await ctx.plugin(HttpServer, { host: '127.0.0.1', port })
+    await ctx.use(HttpServer, { host: '127.0.0.1', port })
     await consumer.await()
     expect((await request(url, '/api/consumer')).body).toBe('恢复')
   })

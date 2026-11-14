@@ -4,14 +4,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@antarestra/plugin-sdk'
-import type { Plugin } from '@antarestra/plugin-sdk'
+import type { Component } from '@antarestra/plugin-sdk'
 import { TestRegistry, registration } from '../fixtures/registry.js'
 import * as loader from '@antarestra/config-loader'
 import { resolvePlugin } from '../../apps/server/src/plugins.js'
 
-async function resolveFixture(id: string): Promise<Plugin<unknown>> {
+async function resolveFixture(id: string): Promise<Component<unknown>> {
   if (id === 'test-registry') return TestRegistry
-  if (id === 'test-registration') return registration as Plugin<unknown>
+  if (id === 'test-registration') return registration as Component<unknown>
   throw new Error(`未知测试插件：${id}`)
 }
 
@@ -202,7 +202,7 @@ describe('配置驱动的插件生命周期', () => {
         if (message.name === 'config-loader' && message.type === 'info') logs.push(message.args)
       },
     })
-    const instance = await ctx.plugin(loader, {
+    const instance = await ctx.use(loader, {
       filename,
       resolvePlugin: async () => plugin,
     })
@@ -217,7 +217,7 @@ describe('配置驱动的插件生命周期', () => {
 
   it.each(['import', 'apply', 'dependency'])('发生 %s 失败时回收之前的资源', async (failure) => {
     const cleaned = vi.fn()
-    const resolver = async (id: string): Promise<Plugin<unknown>> => {
+    const resolver = async (id: string): Promise<Component<unknown>> => {
       if (id === 'resource')
         return (ctx) => {
           ctx.effect(() => cleaned)
@@ -227,7 +227,7 @@ describe('配置驱动的插件生命周期', () => {
         return () => {
           throw new Error('secret-token')
         }
-      return registration as Plugin<unknown>
+      return registration as Component<unknown>
     }
     await expect(
       loader.loadPlugins(
@@ -262,7 +262,7 @@ describe('配置驱动的插件生命周期', () => {
     expect(registry.list()).toEqual(['demo'])
     await instances.get('test-registry')!.dispose()
     expect(registry.list()).toEqual([])
-    await ctx.plugin(TestRegistry)
+    await ctx.use(TestRegistry)
     await instances.get('test-registration')!.await()
     expect(ctx.testRegistry.entries.list()).toEqual(['demo'])
     expect(logs.filter(([, id]) => id === 'test-registration')).toEqual([

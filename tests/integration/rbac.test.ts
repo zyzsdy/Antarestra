@@ -26,11 +26,11 @@ afterEach(async () => {
 async function setup(config: DatabaseConfig = { filename: ':memory:' }, options: Config = {}) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  const backend = await ctx.plugin(database, config)
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(WebUI)
-  const definition = await ctx.plugin(rbac)
+  await ctx.use(DatabaseProvider)
+  const backend = await ctx.use(database, config)
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(WebUI)
+  const definition = await ctx.use(rbac)
   const providerId = `test-${randomUUID()}`
   const localConfig = {
     providerId,
@@ -39,7 +39,7 @@ async function setup(config: DatabaseConfig = { filename: ':memory:' }, options:
     bootstrapPassword: password,
     ...options,
   }
-  const implementation = await ctx.plugin(local, localConfig)
+  const implementation = await ctx.use(local, localConfig)
   const url = `http://127.0.0.1:${ctx.server.address!.port}`
   const base = `/auth/local/${providerId}`
   const db = ctx.database.scope<Tables>(ctx, '@antarestra/rbac')
@@ -246,7 +246,7 @@ for (const backend of backends)
 describe('认证边界与生命周期', () => {
   it('登录附带系统权限快照，空间授权不混入菜单权限，旧快照不能绕过真实 API', async () => {
     const app = await setup()
-    const consolePlugin = await app.ctx.plugin(adminConsole)
+    const consolePlugin = await app.ctx.use(adminConsole)
     await app.register()
     const member = await app.login('member@example.com')
     const response = await app.request(`${app.base}/login`, {
@@ -325,14 +325,14 @@ describe('认证边界与生命周期', () => {
     await consolePlugin.dispose()
     expect((await me(admin)).session.permissions).not.toContain('admin.console.view')
     expect(app.ctx.webui.getEntries().some((entry) => entry.id === 'admin-console')).toBe(false)
-    await app.ctx.plugin(adminConsole)
+    await app.ctx.use(adminConsole)
     expect((await me(admin)).session.permissions).toContain('admin.console.view')
     expect((await app.request('/auth/logout', {}, admin)).status).toBe(200)
     expect((await app.request(app.base + '/users', undefined, admin)).status).toBe(401)
   })
   it('聊天入口验证 Web 身份、默认角色、稳定个人空间与跨空间隔离', async () => {
     const app = await setup()
-    const chat = await app.ctx.plugin(chatWebui)
+    const chat = await app.ctx.use(chatWebui)
     const guest = await app.request('/chat-webui/session')
     expect(guest.status).toBe(401)
     expect(await guest.json()).toMatchObject({ loginPath: `/auth/user/${app.providerId}/` })
@@ -372,7 +372,7 @@ describe('认证边界与生命周期', () => {
 
   it('自由请求通道、访客默认权限、权限拒绝与注册回收', async () => {
     const app = await setup()
-    const owner = await app.ctx.plugin(() => {})
+    const owner = await app.ctx.use(() => {})
     const release = app.ctx.rbac.registerPermission(owner.ctx, 'readGroup', '读取群组', ['user'])
     app.ctx.rbac.registerPermission(owner.ctx, 'readWelcome', '读取欢迎信息', ['guest'])
     app.ctx.rbac.registerPermission(owner.ctx, 'adminOnly', '管理员功能', ['admin'])
@@ -548,7 +548,7 @@ describe('认证边界与生命周期', () => {
 
   it('多个认证实例独立，卸载撤销旧会话，重载保留主体且旧句柄失效', async () => {
     const app = await setup()
-    const second = await app.ctx.plugin(local, { providerId: 'second', allowRegistration: true })
+    const second = await app.ctx.use(local, { providerId: 'second', allowRegistration: true })
     await app.register()
     expect(
       (
@@ -576,7 +576,7 @@ describe('认证边界与生命周期', () => {
     expect((await app.request('/auth/me', undefined, firstCookie)).status).toBe(401)
     expect((await app.request('/auth/me', undefined, secondCookie)).status).toBe(200)
     expect(await app.ctx.rbac.principal(firstAuth.principalId)).toBeDefined()
-    await app.ctx.plugin(local, app.localConfig)
+    await app.ctx.use(local, app.localConfig)
     expect((await app.request('/auth/me', undefined, firstCookie)).status).toBe(401)
     expect(
       (await app.request('/auth/me', undefined, await app.login('member@example.com'))).status,
@@ -591,7 +591,7 @@ describe('认证边界与生命周期', () => {
     const app = await setup()
     let retained: Queries<Tables> | undefined
     const before = await app.db.selectFrom('principal').selectAll().execute()
-    const owner = await app.ctx.plugin(() => {})
+    const owner = await app.ctx.use(() => {})
     const handle = await app.ctx.rbac.registerProvider(
       owner.ctx,
       'transaction-test',
@@ -636,7 +636,7 @@ describe('认证边界与生命周期', () => {
     expect(await app.db.selectFrom('principal').selectAll().execute()).toHaveLength(
       before.length + 1,
     )
-    const closed = await app.ctx.plugin(local, { providerId: 'closed', allowRegistration: false })
+    const closed = await app.ctx.use(local, { providerId: 'closed', allowRegistration: false })
     expect(
       (
         await app.request('/auth/local/closed/register', {
@@ -647,7 +647,7 @@ describe('认证边界与生命周期', () => {
       ).status,
     ).toBe(403)
     await closed.dispose()
-    const defaultClosed = await app.ctx.plugin(local, { providerId: 'default-closed' })
+    const defaultClosed = await app.ctx.use(local, { providerId: 'default-closed' })
     expect(
       (
         await app.request('/auth/local/default-closed/register', {
@@ -673,7 +673,7 @@ describe('认证边界与生命周期', () => {
       expect((await app.request('/auth/me', undefined, cookie)).status).toBe(503)
       expect((await app.request(`${app.base}/login`, {})).status).toBe(503)
       await expect(service.authenticate(cookie.split('=')[1])).rejects.toThrow()
-      definition = await app.ctx.plugin(rbac)
+      definition = await app.ctx.use(rbac)
       await app.implementation.await()
       expect(app.ctx.server.address!.port).toBe(port)
       expect((await app.request('/auth/me')).status).toBe(401)
@@ -689,7 +689,7 @@ describe('认证边界与生命周期', () => {
     expect((await app.request('/auth/me', undefined, cookie)).status).toBe(503)
     await expect(service.authenticate(cookie.split('=')[1])).rejects.toThrow()
     expect(await (await fetch(`${app.url}/webui/entries.json`)).json()).toEqual([])
-    await app.ctx.plugin(database, { filename: ':memory:' })
+    await app.ctx.use(database, { filename: ':memory:' })
     await app.definition.await()
     await app.implementation.await()
     expect((await app.request('/auth/me')).status).toBe(401)

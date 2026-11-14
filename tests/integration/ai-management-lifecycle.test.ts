@@ -19,13 +19,13 @@ afterEach(async () => {
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  const core = await ctx.plugin(ai, {})
-  const providerFiber = await ctx.plugin(provider, {})
-  const agentsFiber = await ctx.plugin(agents)
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  const core = await ctx.use(ai, {})
+  const providerFiber = await ctx.use(provider, {})
+  const agentsFiber = await ctx.use(agents)
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
   const identityProvider = await ctx.rbac.registerProvider(ctx, 'test-auth', 'test-auth')
   await ctx.database.transaction(ctx, async (transaction) => {
@@ -91,13 +91,13 @@ it('无 WebUI 时初始化并从 SQLite 恢复模型和助理，AI 依赖恢复�
   await saveConfiguration(app.ctx)
   await app.providerFiber.dispose()
   await app.agentsFiber.dispose()
-  await app.ctx.plugin(provider, {})
-  await app.ctx.plugin(agents)
+  await app.ctx.use(provider, {})
+  await app.ctx.use(agents)
   expectConfiguration(app.ctx)
   await app.core.dispose()
   expect(app.ctx.aiProvider).toBeUndefined()
   expect(app.ctx.aiAgents).toBeUndefined()
-  await app.ctx.plugin(ai, {})
+  await app.ctx.use(ai, {})
   await expect.poll(() => app.ctx.ai.defaultAgentId).toBe(defaultAgentId)
   expectConfiguration(app.ctx)
   expect((await app.request('/api/ai-providers')).status).toBe(200)
@@ -153,7 +153,7 @@ it('WebUI 反复加载和卸载只改变页面注册，后台服务与活动运�
   await entered.promise
   try {
     for (let cycle = 0; cycle < 2; cycle++) {
-      const webui = await app.ctx.plugin(WebUI)
+      const webui = await app.ctx.use(WebUI)
       await expect
         .poll(() =>
           app.ctx.webui
@@ -193,7 +193,7 @@ it('WebUI 反复加载和卸载只改变页面注册，后台服务与活动运�
 it('独立卸载后台插件回收对应页面、HTTP 路由与能力，重新加载恢复数据', async () => {
   const app = await setup()
   await saveConfiguration(app.ctx)
-  await app.ctx.plugin(WebUI)
+  await app.ctx.use(WebUI)
   await app.providerFiber.dispose()
   expect(app.ctx.aiProvider).toBeUndefined()
   expect(app.ctx.ai.capabilities().providers).toEqual([])
@@ -205,8 +205,8 @@ it('独立卸载后台插件回收对应页面、HTTP 路由与能力，重新�
   expect(app.ctx.ai.defaultAgentId).toBeNull()
   expect(app.ctx.webui.getEntries()).toEqual([])
   expect((await app.request('/api/ai-agents')).status).toBe(404)
-  await app.ctx.plugin(provider, {})
-  await app.ctx.plugin(agents)
+  await app.ctx.use(provider, {})
+  await app.ctx.use(agents)
   expectConfiguration(app.ctx)
   expect(
     app.ctx.webui

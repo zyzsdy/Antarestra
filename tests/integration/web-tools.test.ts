@@ -87,7 +87,7 @@ it.runIf(process.env.WEB_BROWSER_TEST === '1')(
       }
     }
     new ImageSink()
-    await ctx.plugin(playwright, { context: { viewport: { width: 800, height: 600 } } })
+    await ctx.use(playwright, { context: { viewport: { width: 800, height: 600 } } })
     const observer = await ctx.playwright.createPage(ctx)
     const engine = observer.page.context().browser()!
     const baseline = engine.contexts().length
@@ -177,7 +177,7 @@ it('结构化结果校验与 Base64 图片内容转换保留调用对应内容',
 it('Serper 通过 HTTP 服务传递独立代理，筛选域名并保留部分查询错误', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(http)
+  await ctx.use(http)
   const requests: { url: string; proxy: unknown; body: unknown }[] = []
   ctx.on('http/fetch', async (url, init, config) => {
     requests.push({
@@ -246,8 +246,8 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
       }
     }
     new ImageSink(ctx)
-    await ctx.plugin(http)
-    await ctx.plugin(playwright, { context: { viewport: { width: 800, height: 600 } } })
+    await ctx.use(http)
+    await ctx.use(playwright, { context: { viewport: { width: 800, height: 600 } } })
     const browser = new BrowserTools(ctx, { timeoutMs: 10000 })
     const run = context()
     const execute = (name: string, args: import('@antarestra/ai').JsonObject, who = run) =>
@@ -401,7 +401,7 @@ it.skipIf(process.env.WEB_BROWSER_TEST !== '1')(
 it('双来源并发合并、独立开关、筛选与部分失败保留来源且不泄露密钥', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(http)
+  await ctx.use(http)
   const requests: { url: string; body: unknown; headers: Pick<Headers, 'get'> }[] = []
   let failDeepseek = false
   ctx.on('http/fetch', async (url, init, config) => {
@@ -522,7 +522,7 @@ it('双来源并发合并、独立开关、筛选与部分失败保留来源且�
 it('DeepSeek 抓取正文、分页、代理、地址校验和脱敏错误', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(http)
+  await ctx.use(http)
   let status = 200
   let content = '# 页面正文'
   let calls = 0
@@ -599,19 +599,19 @@ it('web_fetch 默认注册，可独立关闭，卸载与依赖恢复正确回收
     }
   }
   new Tools()
-  const dependency = await ctx.plugin(http)
-  await ctx.plugin(playwright)
-  const fiber = await ctx.plugin(webTools)
+  const dependency = await ctx.use(http)
+  await ctx.use(playwright)
+  const fiber = await ctx.use(webTools)
   expect(registered.has('web_fetch')).toBe(true)
   expect(registered.get('web_open')?.description).toContain('本地浏览器')
   await fiber.dispose()
   expect(registered.size).toBe(0)
-  const disabled = await ctx.plugin(webTools, { webFetchEnabled: false })
+  const disabled = await ctx.use(webTools, { webFetchEnabled: false })
   expect(registered.has('web_fetch')).toBe(false)
   expect(registered.has('web_search')).toBe(true)
   await dependency.dispose()
   expect(registered.size).toBe(0)
-  await ctx.plugin(http)
+  await ctx.use(http)
   await disabled
   expect(registered.has('web_search')).toBe(true)
   expect(registered.has('web_fetch')).toBe(false)
@@ -622,7 +622,7 @@ it('web_fetch 默认注册，可独立关闭，卸载与依赖恢复正确回收
 it('搜索和抓取的进行中请求随运行取消或所属插件卸载终止', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(http)
+  await ctx.use(http)
   const signals: AbortSignal[] = []
   let started = () => {}
   ctx.on('http/fetch', async (_url, init) => {
@@ -657,7 +657,7 @@ it('搜索和抓取的进行中请求随运行取消或所属插件卸载终止'
   const ready = new Promise<void>((resolve) => {
     started = resolve
   })
-  const owner = await ctx.plugin({
+  const owner = await ctx.use({
     inject: ['http'],
     apply(owner: Context) {
       pending = fetchTool(owner, { deepseekApiKey: 'secret' })(

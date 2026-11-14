@@ -24,8 +24,8 @@ it.each([
   { source: '配额不足', streaming: true, withTool: false, quota: true },
 ])('$source 图片保存与续轮遵守空间、去重和配额约束', async ({ streaming, withTool, quota }) => {
   const app = await setup(quota ? 1 : 32 * 1024 ** 2)
-  await app.ctx.plugin(ai, {})
-  await app.ctx.plugin(agentCore)
+  await app.ctx.use(ai, {})
+  await app.ctx.use(agentCore)
   const access = await app.ctx.ai.authorize('test', 'a')
   const png =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII='
@@ -214,27 +214,27 @@ class MemoryStorage implements StorageBackend {
 async function setup(maxFileSize = 20) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(WebUI)
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(WebUI)
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
-  await ctx.plugin(local, {
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'storage-password-42',
   })
-  const storage = await ctx.plugin(Storage)
+  const storage = await ctx.use(Storage)
   const backend = new MemoryStorage()
-  const owner = await ctx.plugin({
+  const owner = await ctx.use({
     inject: ['storage'],
     apply(ctx: Context) {
       ctx.storage.register(ctx, 'test', backend)
     },
   })
-  const fiber = await ctx.plugin(files, {
+  const fiber = await ctx.use(files, {
     backendId: 'test',
     defaultQuota: maxFileSize,
     maxFileSize,
@@ -563,7 +563,7 @@ it('过期上传不可完成，重载后仍保留目录和清理记录；卸载�
   await expect(old.complete(app.a, pending.token, [])).rejects.toMatchObject({ status: 410 })
   await app.fiber.dispose()
   await expect(old.list(app.a)).rejects.toThrow()
-  await app.ctx.plugin(files, { backendId: 'test', defaultQuota: 20 })
+  await app.ctx.use(files, { backendId: 'test', defaultQuota: 20 })
   const access = await app.ctx.workspaceFile.authorize('test', 'a')
   expect((await app.ctx.workspaceFile.list(access)).entries[0]?.path).toBe('/persistent')
   await app.owner.dispose()
@@ -606,7 +606,7 @@ it('管理 API 显示中文空间来源、限制管理员、校验配额版本�
 })
 it('第三方正常身份解析自动登记空间，刷新名称保留配额和文件，卸载后保留管理记录', async () => {
   const app = await setup()
-  const owner = await app.ctx.plugin({ inject: ['rbac'], apply() {} })
+  const owner = await app.ctx.use({ inject: ['rbac'], apply() {} })
   const provider = await app.ctx.rbac.registerProvider(owner.ctx, 'sso', 'test-sso')
   const identity = await app.ctx.database.transaction(owner.ctx, (transaction) =>
     provider.provision(transaction, 'alice', '企业成员'),
@@ -724,7 +724,7 @@ it('Agent 文件工具只接受核心当前运行上下文，不能通过工具�
   ]
   await app.ctx.workspaceFile.removeResource(app.a, invalidCases[1]!.file.token)
   const attachment = await app.ctx.workspaceFile.resource(app.a, photo.token)
-  await app.ctx.plugin(ai, {})
+  await app.ctx.use(ai, {})
   const access = await app.ctx.ai.authorize('test', 'a')
   app.ctx.ai.registerBackend(app.ctx, {
     id: 'file-test',

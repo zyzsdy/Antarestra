@@ -48,8 +48,8 @@ async function setup(
 ) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  const backend = await ctx.plugin(
+  await ctx.use(DatabaseProvider)
+  const backend = await ctx.use(
     database,
     options.fallback === 'mysql'
       ? { type: 'mysql', url: process.env.ANTARESTRA_TEST_MYSQL! }
@@ -57,9 +57,9 @@ async function setup(
         ? { filename: ':memory:' }
         : { type: 'postgresql', url: url! },
   )
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(ai, {
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(ai, {
     ...(options.idleTimeoutMs ? { modelIdleTimeoutMs: options.idleTimeoutMs } : {}),
   })
   const workspace = randomUUID()
@@ -119,12 +119,12 @@ async function setup(
       return { content: [{ type: 'text', text: '完成' }] }
     },
   })
-  await ctx.plugin(agentCore)
+  await ctx.use(agentCore)
   const config = {
     globalTokenBudget: options.budget ?? 4096,
     ...(options.fallback ? { postgresUrl: url! } : {}),
   }
-  let plugin = await ctx.plugin(memory, config)
+  let plugin = await ctx.use(memory, config)
   const preset: AgentPreset = {
     id: 'memory-test',
     version: '1',
@@ -215,7 +215,7 @@ async function setup(
     plugin: () => plugin,
     async reload(budget = config.globalTokenBudget) {
       await plugin.dispose()
-      plugin = await ctx.plugin(memory, { ...config, globalTokenBudget: budget })
+      plugin = await ctx.use(memory, { ...config, globalTokenBudget: budget })
     },
   }
 }
@@ -237,8 +237,8 @@ it('固定 Token 计数及中英文分词，长文完整分块', () => {
 it('非 PostgreSQL 主库缺少额外连接时明确拒绝', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
   await expect(ctx.database.postgres(ctx, 'missing-postgres')).rejects.toThrow(
     '额外 PostgreSQL 连接串',
   )
@@ -523,8 +523,8 @@ describe.skipIf(!url)('记忆工具与真实 PostgreSQL', () => {
   it('额外 PostgreSQL 查询跟随所属上下文和主后端回收', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    await ctx.plugin(DatabaseProvider)
-    const backend = await ctx.plugin(database, { filename: ':memory:' })
+    await ctx.use(DatabaseProvider)
+    const backend = await ctx.use(database, { filename: ':memory:' })
     const pg = await ctx.database.postgres<Tables>(ctx, pluginId, url)
     await pg.migrate((await import('../../plugins/features/memory/src/store.js')).migrations)
     await backend.dispose()

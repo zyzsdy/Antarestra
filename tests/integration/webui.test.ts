@@ -17,8 +17,8 @@ async function setup() {
   await writeFile(join(directory, 'index.html'), '<div id="app"></div>')
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
-  const server = await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  const webui = await ctx.plugin(WebUI, { directory })
+  const server = await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  const webui = await ctx.use(WebUI, { directory })
   const url = `http://127.0.0.1:${ctx.server.address!.port}`
   return { ctx, webui, server, directory, get: (path: string) => fetch(url + path) }
 }
@@ -52,7 +52,7 @@ describe('WebUI 插件', () => {
   it('入口重复拒绝，独立卸载回收清单与资源，旧回收不删除新入口', async () => {
     const app = await setup()
     let dispose!: () => Promise<void>
-    const first = await app.ctx.plugin({
+    const first = await app.ctx.use({
       inject: ['webui'],
       apply(ctx: Context) {
         dispose = ctx.webui.addEntry(ctx, {
@@ -62,7 +62,7 @@ describe('WebUI 插件', () => {
         })
       },
     })
-    const second = await app.ctx.plugin({
+    const second = await app.ctx.use({
       inject: ['webui'],
       apply(ctx: Context) {
         ctx.webui.addEntry(ctx, { id: 'second', directory: app.directory })
@@ -93,14 +93,14 @@ describe('WebUI 插件', () => {
   })
   it('server 依赖卸载回收 WebUI，重新提供服务后重新注册扩展', async () => {
     const app = await setup()
-    await app.ctx.plugin({
+    await app.ctx.use({
       inject: ['webui'],
       apply(ctx: Context) {
         ctx.webui.addEntry(ctx, { id: 'dependent', directory: app.directory })
       },
     })
     await app.server.dispose()
-    await app.ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
+    await app.ctx.use(Server, { host: '127.0.0.1', port: 0 })
     await app.webui
     await new Promise((resolve) => setTimeout(resolve, 30))
     const response = await fetch(
@@ -112,7 +112,7 @@ describe('WebUI 插件', () => {
 
 it('浏览器直传只允许实现插件登记的精确源，并随所有者独立卸载回收', async () => {
   const app = await setup()
-  const first = await app.ctx.plugin({
+  const first = await app.ctx.use({
     inject: ['webui'],
     apply(ctx: Context) {
       ctx.webui.addConnectOrigin(ctx, 'https://storage.example.com')
@@ -120,7 +120,7 @@ it('浏览器直传只允许实现插件登记的精确源，并随所有者独�
       expect(() => ctx.webui.addConnectOrigin(ctx, 'https://user:password@example.com')).toThrow()
     },
   })
-  const second = await app.ctx.plugin({
+  const second = await app.ctx.use({
     inject: ['webui'],
     apply(ctx: Context) {
       ctx.webui.addConnectOrigin(ctx, 'https://storage.example.com')

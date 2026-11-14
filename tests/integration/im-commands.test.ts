@@ -8,7 +8,7 @@ afterEach(cleanup)
 it('数字开头的命令复用权限策略、帮助和精确匹配，卸载后可重新注册', async () => {
   const app = await setup()
   const register = () =>
-    app.ctx.plugin({
+    app.ctx.use({
       inject: ['imCommands'],
       apply(owner: Context) {
         owner.imCommands.register(owner, {
@@ -128,7 +128,7 @@ it.each([
 
 it('业务插件卸载后回收命令，命令关闭时不会落入 AI', async () => {
   const app = await setup()
-  const plugin = await app.ctx.plugin({
+  const plugin = await app.ctx.use({
     inject: ['imCommands'],
     apply(owner: Context) {
       owner.imCommands.register(owner, {
@@ -154,7 +154,7 @@ it('所属业务插件卸载会取消正在执行的命令并等待清理', asyn
   const app = await setup()
   let started = false
   let cancelled = false
-  const plugin = await app.ctx.plugin({
+  const plugin = await app.ctx.use({
     inject: ['imCommands'],
     apply(owner: Context) {
       owner.imCommands.register(owner, {

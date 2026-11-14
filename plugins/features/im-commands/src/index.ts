@@ -437,6 +437,6 @@ export default defineDatabasePlugin({
   async apply(ctx: Context, input: Partial<Config> = {}) {
     const config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
     const aliases = await new CommandAliases(ctx).list()
-    await ctx.plugin(ImCommandsService, { ...config, aliases })
+    await ctx.use(ImCommandsService, { ...config, aliases })
   },
 })

@@ -63,20 +63,20 @@ export async function setupStickers(ai = false, driver?: ModelDriver) {
     ...(driver ? { driver } : {}),
   })
   const { ctx } = app
-  const web = await ctx.plugin(WebUI)
-  await ctx.plugin(local, {
+  const web = await ctx.use(WebUI)
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'sticker-test-password',
   })
-  await ctx.plugin(adminConsole)
-  await ctx.plugin(imConsole)
-  await ctx.plugin(Storage)
+  await ctx.use(adminConsole)
+  await ctx.use(imConsole)
+  await ctx.use(Storage)
   const storage = new StickerStorage()
   ctx.storage.register(ctx, 'test', storage)
-  const filePlugin = await ctx.plugin(files, { backendId: 'test', defaultQuota: 32 * 1024 ** 2 })
-  const plugin = await ctx.plugin(stickers)
+  const filePlugin = await ctx.use(files, { backendId: 'test', defaultQuota: 32 * 1024 ** 2 })
+  const plugin = await ctx.use(stickers)
   await allowCommand(ctx, 'sticker')
   const base = `http://127.0.0.1:${ctx.server.address!.port}`
   storage.base = base + '/api'

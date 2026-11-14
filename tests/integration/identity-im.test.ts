@@ -27,12 +27,12 @@ const message = (id = '1', sender = 'fish', chat = '33367357'): IncomingMessage 
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(im)
-  const identityFiber = await ctx.plugin(identityIm)
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(im)
+  const identityFiber = await ctx.use(identityIm)
   ctx.rbac.registerPermission(ctx, 'test.im.use', 'IM 测试', ['user'])
   const received: MessageContext[] = []
   ctx.im.registerHandler(ctx, {
@@ -128,7 +128,7 @@ it('映射在身份插件重装后保留，停用主体不会因再次收到消�
   await a.receive(message())
   const first = received[0]!
   await identityFiber.dispose()
-  await ctx.plugin(identityIm)
+  await ctx.use(identityIm)
   await a.receive(message('2'))
   expect(received[1]!.actorId).toBe(first.actorId)
   expect(received[1]!.workspaceId).toBe(first.workspaceId)
@@ -151,10 +151,10 @@ it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与�
   // 模拟升级前只有 IM 私有映射，插件重载时将既有空间迁入统一目录。
   await ctx.database.scope<RbacTables>(ctx, '@antarestra/rbac').deleteFrom('workspace').execute()
   await identityFiber.dispose()
-  const reloaded = await ctx.plugin(identityIm)
+  const reloaded = await ctx.use(identityIm)
   // 映射先建立，文件插件后加载，不依赖文件访问触发目录登记。
-  await ctx.plugin(Storage)
-  await ctx.plugin(files, { defaultQuota: 100 })
+  await ctx.use(Storage)
+  await ctx.use(files, { defaultQuota: 100 })
   const initial = await ctx.workspaceFile.spaces(1, '')
   expect(initial.total).toBe(2)
   expect(initial.entries.map((row) => row.id).sort()).toEqual(
@@ -173,7 +173,7 @@ it('已有群聊和私聊在首次文件授权前进入管理目录，禁用与�
   expect(disabled.entries[0]).toMatchObject({ id: group.id, quota: 50 })
   await reloaded.dispose()
   expect((await ctx.workspaceFile.spaces(1, '')).total).toBe(2)
-  await ctx.plugin(identityIm)
+  await ctx.use(identityIm)
   expect((await ctx.workspaceFile.spaces(1, '群聊')).entries).toEqual(disabled.entries)
 })
 

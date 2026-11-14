@@ -18,7 +18,7 @@ async function connect(filterCitationLinks?: boolean) {
     ai: true,
     driver: { id: 'driver', generate: async () => ({ content: [{ type: 'text', text: answer }] }) },
   })
-  await app.ctx.plugin(OneBot, {
+  await app.ctx.use(OneBot, {
     id: 'filtered',
     selfId: '06',
     token: 'local-test-token',

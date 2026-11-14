@@ -11,15 +11,15 @@ describe('Markdown 增量解析', () => {
   it('插件入口支持独立卸载、WebUI 依赖卸载与恢复', async () => {
     const ctx = new Context()
     try {
-      await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-      const webui = await ctx.plugin(WebUI)
-      const plugin = await ctx.plugin(MarkdownPlugin)
+      await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+      const webui = await ctx.use(WebUI)
+      const plugin = await ctx.use(MarkdownPlugin)
       expect(ctx.webui.getEntries().map((entry) => entry.id)).toEqual(['markdown-render'])
       await plugin.dispose()
       expect(ctx.webui.getEntries()).toEqual([])
-      await ctx.plugin(MarkdownPlugin)
+      await ctx.use(MarkdownPlugin)
       await webui.dispose()
-      await ctx.plugin(WebUI)
+      await ctx.use(WebUI)
       await vi.waitFor(() =>
         expect(ctx.webui.getEntries().map((entry) => entry.id)).toEqual(['markdown-render']),
       )

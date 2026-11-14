@@ -167,7 +167,7 @@ it('目录自动列出其他插件指令，支持搜索分页、插件卸载重�
   ).toBe(404)
   await app.commandPlugin.dispose()
   expect((await request('/im/commands', cookie)).status).toBe(503)
-  await ctx.plugin(commands)
+  await ctx.use(commands)
   const reloaded = await (await request('/im/commands', cookie)).json()
   expect(reloaded.commands.map((item: { name: string }) => item.name)).toContain('sticker')
 })

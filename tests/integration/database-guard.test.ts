@@ -40,16 +40,16 @@ afterEach(async () => {
 async function setup() {
   const root = new Context()
   roots.push(root)
-  await root.plugin(DatabaseProvider)
-  await root.plugin(implementation, { type: 'sqlite', filename: ':memory:' })
-  await root.plugin({
+  await root.use(DatabaseProvider)
+  await root.use(implementation, { type: 'sqlite', filename: ':memory:' })
+  await root.use({
     inject: ['database'],
     async apply(ctx: Context) {
-      await ctx.plugin(DatabaseGuardProbe)
+      await ctx.use(DatabaseGuardProbe)
     },
   })
   const pluginId = `test-${randomUUID()}`
-  await root.plugin(defineDatabasePlugin({ name: pluginId, migrations: [initial], apply() {} }))
+  await root.use(defineDatabasePlugin({ name: pluginId, migrations: [initial], apply() {} }))
   return { root, pluginId }
 }
 
@@ -63,7 +63,7 @@ async function consumer(root: Context, pluginId: string, dependencies: string[] 
       starts++
     },
   }
-  const fiber = await root.plugin(plugin)
+  const fiber = await root.use(plugin)
   return {
     plugin,
     fiber,
@@ -124,7 +124,7 @@ describe('数据库 guard 的影子上下文生命周期', () => {
       expect(client.effects()).toBe(baseline + 1)
       await fiber.dispose()
       const previous = fiber
-      fiber = await root.plugin(client.plugin)
+      fiber = await root.use(client.plugin)
       expect(fiber).not.toBe(previous)
       expect(await client.scope().selectFrom('labels').selectAll().execute()).toEqual([])
       for (const db of stale) expect(() => db.selectFrom('labels')).toThrow('已卸载')
@@ -134,7 +134,7 @@ describe('数据库 guard 的影子上下文生命周期', () => {
 
   it('依赖恢复复用同一个 Fiber 时重新注册 guard，旧代 scope 不会复活', async () => {
     const { root, pluginId } = await setup()
-    let dependency = await root.plugin(TestRegistry)
+    let dependency = await root.use(TestRegistry)
     const client = await consumer(root, pluginId, ['testRegistry'])
     const stale: DatabaseScope<Tables>[] = []
     for (let round = 0; round < 3; round++) {
@@ -145,7 +145,7 @@ describe('数据库 guard 的影子上下文生命周期', () => {
       await dependency.dispose()
       expect(client.effects()).toBe(0)
       for (const db of stale) expect(() => db.selectFrom('labels')).toThrow('已卸载')
-      dependency = await root.plugin(TestRegistry)
+      dependency = await root.use(TestRegistry)
       await client.fiber.await()
       expect(client.starts).toBe(round + 2)
       expect(client.effects()).toBe(baseline)

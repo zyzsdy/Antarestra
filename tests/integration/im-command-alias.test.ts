@@ -161,7 +161,7 @@ it('别名及独立权限在数据库重开后恢复，目标卸载不会落入 
     await reopened.connection.receive('!Pong')
     expect(reopened.sent.at(-1)?.segments).toEqual([{ type: 'text', text: 'pong' }])
     await reopened.commandPlugin.dispose()
-    await reopened.ctx.plugin(commands, { prefix: '!', builtins: false })
+    await reopened.ctx.use(commands, { prefix: '!', builtins: false })
     await reopened.connection.receive('!Pong')
     expect(JSON.stringify(reopened.sent.at(-1)?.segments)).toContain('目标命令不可用')
     expect(reopened.messages).toEqual([])

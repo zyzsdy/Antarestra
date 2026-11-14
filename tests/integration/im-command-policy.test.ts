@@ -179,7 +179,7 @@ it('权限跨插件卸载和数据库重开持久化，离线指令不出现在�
         })
       },
     }
-    const fiber = await app.ctx.plugin(plugin)
+    const fiber = await app.ctx.use(plugin)
     await allowCommand(app.ctx, 'temporary')
     await fiber.dispose()
     expect(
@@ -188,7 +188,7 @@ it('权限跨插件卸载和数据库重开持久化，离线指令不出现在�
     await expect(app.ctx.imCommands.setPolicy('temporary', {}, 0)).rejects.toMatchObject({
       status: 404,
     })
-    await app.ctx.plugin(plugin)
+    await app.ctx.use(plugin)
     expect((await app.ctx.imCommands.getPolicy('temporary')).policy.group.mode).toBe('blacklist')
     await cleanup()
     const reopened = await setup({ allowCommands: false, databaseFilename })
@@ -197,7 +197,7 @@ it('权限跨插件卸载和数据库重开持久化，离线指令不出现在�
       policy: { access: 'bot-admin', group: { mode: 'blacklist' } },
     })
     await reopened.commandPlugin.dispose()
-    await reopened.ctx.plugin(commands)
+    await reopened.ctx.use(commands)
     expect((await reopened.ctx.imCommands.getPolicy('ping')).revision).toBe(1)
   } finally {
     await cleanup()

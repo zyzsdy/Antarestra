@@ -42,7 +42,7 @@ if (!isWorker && settings.supervision === 'internal') {
   }
   const finish = (code: number) => {
     process.exitCode = code
-    if (process.connected) process.disconnect()
+    if (process.connected) process.disconnect?.()
   }
   const launch = () => {
     child = spawn(
@@ -113,7 +113,7 @@ if (!isWorker && settings.supervision === 'internal') {
       void stop(0)
   })
   try {
-    await ctx.plugin(loader, {
+    await ctx.use(loader, {
       filename,
       resolvePlugin,
       baseUrl: new URL('../../../', import.meta.url).href,

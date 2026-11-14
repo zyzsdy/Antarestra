@@ -13,7 +13,7 @@ it('附件预检随归档插件卸载等待完成，重新注册后使用新实�
   const app = await setup()
   let entered = false
   let release!: () => void
-  const owner = await app.ctx.plugin({
+  const owner = await app.ctx.use({
     apply(ctx) {
       app.ctx.im.registerMediaArchive(ctx, {
         store: async () => {
@@ -128,7 +128,7 @@ it('默认最多重试十次，插件重载继续累计，耗尽后退出队列�
   })
 
   await app.imPlugin.dispose()
-  await app.ctx.plugin(im)
+  await app.ctx.use(im)
   await app.connect('retry-limit', '08', app.defaultPolicy, download)
   archive(app)
   for (let index = 0; index < 20; index++) await app.ctx.im.maintainHistory()
@@ -236,7 +236,7 @@ it('卸载连接取消下载，不消耗取消资源的次数，也不丢失同�
   archive(app)
   const started = Promise.withResolvers<void>()
   let connection: ConnectionHandle | undefined
-  const owner = await app.ctx.plugin({
+  const owner = await app.ctx.use({
     inject: ['im'],
     async apply(ctx) {
       connection = ctx.im.registerConnection(ctx, {

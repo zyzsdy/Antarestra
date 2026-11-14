@@ -82,8 +82,8 @@ it('已执行原始 002 的数据库可追加索引迁移，保留提供商与�
   const filename = join(directory, 'upgrade.sqlite')
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename })
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename })
   // 此指纹来自已经执行原始建表迁移的数据库，防止再次修改历史。
   expect(checkMigrations(migrations)[1]!.checksum).toBe(
     '63caa99e360d4a6fe685f8ac9e5d397d0a878c385e61b4db3e5a809d1d819339',
@@ -125,7 +125,7 @@ it('已执行原始 002 的数据库可追加索引迁移，保留提供商与�
       .execute(),
   ).toEqual([usage])
   await restored.fiber.dispose()
-  await restored.ctx.plugin(provider, {})
+  await restored.ctx.use(provider, {})
   expect(restored.ctx.aiProvider.detail(input.id).name).toBe(input.name)
 })
 it('内置工具额度按空间和提供商隔离，原子预占、到期恢复、失败保留及 SQLite 重启恢复', async () => {
@@ -316,20 +316,20 @@ it.each(['openai-completions', 'openai-responses', 'anthropic-messages'])(
 async function setup(filename = ':memory:') {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(WebUI)
-  const core = await ctx.plugin(ai, {})
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(WebUI)
+  const core = await ctx.use(ai, {})
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
-  await ctx.plugin(local, {
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'provider-password-42',
   })
-  const fiber = await ctx.plugin(provider, {})
+  const fiber = await ctx.use(provider, {})
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   const request = (path: string, cookie = '', body?: object, method = 'POST') =>
     fetch(base + path, {
@@ -440,10 +440,10 @@ it('SQLite 文件重启恢复提供商和模型，独立卸载及 AI 依赖恢�
   await app.ctx.aiProvider.models(input.id, { revision: first.revision, models: [model] })
   await app.fiber.dispose()
   expect((await app.ctx.ai.catalog(app.access)).providers).toHaveLength(0)
-  await app.ctx.plugin(provider, {})
+  await app.ctx.use(provider, {})
   expect((await app.ctx.ai.catalog(app.access)).providers).toHaveLength(1)
   await app.core.dispose()
-  await app.ctx.plugin(ai, {})
+  await app.ctx.use(ai, {})
   const access = await app.ctx.ai.authorize('test', {})
   expect((await app.ctx.ai.catalog(access)).providers).toHaveLength(1)
   await app.ctx.fiber.dispose()
@@ -733,7 +733,7 @@ it('同步增改删通过模型接口保存，拒绝过期修订，插件重载�
     409,
   )
   await app.fiber.dispose()
-  await app.ctx.plugin(provider, {})
+  await app.ctx.use(provider, {})
   expect(app.ctx.aiProvider.detail(input.id).models).toEqual(updated.models)
   expect((await app.ctx.ai.catalog(app.access)).providers[0]?.models).toEqual(updated.models)
 })
@@ -1147,7 +1147,7 @@ it('内置工具不发送上游限额，达到本地额度后移除声明，并�
   expect(() =>
     validateBuiltinTools([{ ...tools[0], options: { type: 'function' } }], saved.models),
   ).toThrow()
-  await ctx.plugin(agentCore)
+  await ctx.use(agentCore)
   const storeImage = vi.fn(async (image: GeneratedImage, context: RunContext) => {
     expect(context.workspaceId).toBe(access.workspaceId)
     expect(ctx.ai.running.get(context.runId)?.ownsToolContext(context)).toBe(true)
@@ -1281,7 +1281,7 @@ it('各提供商代理独立保存，重载恢复，省略保留、留空清除�
   expect(first.proxy).toBe('socks5://127.0.0.1:7890')
   expect(second.proxy).toBe('http://127.0.0.1:7891/')
   await fiber.dispose()
-  await ctx.plugin(provider, {})
+  await ctx.use(provider, {})
   expect(ctx.aiProvider.detail(input.id).proxy).toBe(first.proxy)
   expect(ctx.aiProvider.detail(second.id).proxy).toBe(second.proxy)
   const unchanged = await ctx.aiProvider.save({ ...input, revision: first.revision }, input.id)

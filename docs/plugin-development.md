@@ -47,7 +47,7 @@ export function apply(ctx: Context) {
 1. 通过 `pnpm --filter 目标包 add 包名` 添加真实依赖；内部包使用 `@workspace:*`。新增服务端包同步项目引用、构建脚本及 `development` / 默认导出。
 2. 安装到 server 可解析范围，例如 `pnpm --filter @antarestra/server add '@antarestra/plugin-example@workspace:*'`；随后在主配置启用。加载器无须手写别名表。
 3. 通过 `inject` 或局部 `ctx.inject()` 声明服务依赖。界面注册可放进只依赖 WebUI 的子插件，避免网页服务失效连带停止后台能力。
-4. 注册方法显式传入调用方 `ctx`，资源用 `ctx.effect()` 绑定回收。等候就绪用 `await ctx.plugin()`；卸载用 `await fiber.dispose()`。
+4. 注册方法显式传入调用方 `ctx`，资源用 `ctx.effect()` 绑定回收。等候就绪用 `await ctx.use()`；卸载用 `await fiber.dispose()`。
 5. 验证重复标识、独立卸载、依赖撤销与恢复、多实例隔离、异步初始化中卸载和晚到资源清理。
 
 配置文件中的实例键、业务后端/提供商 ID、Cordis Fiber 编号是不同概念。只加随机实例后缀不能让单例服务自动支持多实例。只声明依赖也不能代替所选后端就绪检查。

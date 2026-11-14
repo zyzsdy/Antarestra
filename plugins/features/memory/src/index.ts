@@ -28,8 +28,8 @@ export async function apply(ctx: Context, input: Partial<Config> = {}) {
   const db = await ctx.database.postgres<Tables>(ctx, pluginId, config.postgresUrl)
   await db.migrate(migrations)
   ctx.fiber.assertActive()
-  await ctx.plugin(MemoryService, { config, db })
-  await ctx.plugin({ inject: ['memory', 'ai'], apply: registerTools })
+  await ctx.use(MemoryService, { config, db })
+  await ctx.use({ inject: ['memory', 'ai'], apply: registerTools })
 }
 
 function registerTools(ctx: Context) {

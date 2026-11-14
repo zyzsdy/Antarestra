@@ -59,11 +59,11 @@ async function setup(
 ) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  const backend = await ctx.plugin(database, databaseConfig ?? { filename })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  const core = await ctx.plugin(ai, {})
+  await ctx.use(DatabaseProvider)
+  const backend = await ctx.use(database, databaseConfig ?? { filename })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  const core = await ctx.use(ai, {})
   let allowed = true
   ctx.rbac.registerRequestSource(ctx, 'test', {
     id: 'test',
@@ -130,9 +130,9 @@ async function setup(
       return { content: [{ type: 'text', text: '完成' }] }
     },
   })
-  await ctx.plugin(agentCore)
+  await ctx.use(agentCore)
   ctx.ai.registerAgent(ctx, agent)
-  const plugin = await ctx.plugin(wakeTasks, { ...config, ...options })
+  const plugin = await ctx.use(wakeTasks, { ...config, ...options })
   const db = ctx.database.scope<Tables>(ctx, pluginId)
   const conversation = await ctx.ai.createConversation(access, agent.id)
   async function call(name: string, args: JsonObject = {}, space = access) {
@@ -488,7 +488,7 @@ it('独立卸载取消活动运行、回收轮询，重载保留任务', async (
   expect((await app.ctx.ai.getRun(app.access, runId)).status).toBe('cancelled')
   await service.tick()
   expect(app.inputs).toHaveLength(1)
-  await app.ctx.plugin(wakeTasks, config)
+  await app.ctx.use(wakeTasks, config)
   await poll(async () => (await app.row(task.id)).status).toBe('failed')
   expect(app.inputs).toHaveLength(1)
 })
@@ -536,7 +536,7 @@ it('依赖卸载取消运行，恢复 AI 依赖后调度服务自动重新就绪
   await app.core.dispose()
   await old.tick()
   expect(app.inputs).toHaveLength(0)
-  await app.ctx.plugin(ai, {})
+  await app.ctx.use(ai, {})
   await poll(() => app.ctx.wakeTasks !== old).toBe(true)
   expect((await app.row(task.id)).status).toBe('pending')
 })

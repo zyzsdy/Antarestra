@@ -74,11 +74,11 @@ async function setup(
 ) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: options.filename ?? ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  const core = await ctx.plugin(ai, options.config ?? {})
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: options.filename ?? ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  const core = await ctx.use(ai, options.config ?? {})
   ctx.rbac.registerRequestSource(ctx, 'test', {
     id: 'test',
     resolve(request) {
@@ -109,7 +109,7 @@ async function setup(
     ],
   })
   ctx.ai.registerDriver(ctx, options.driver ?? plain)
-  const backend = await ctx.plugin(agentCore)
+  const backend = await ctx.use(agentCore)
   const removeAgent = ctx.ai.registerAgent(ctx, options.agent ?? agent())
   const conversation = await ctx.ai.createConversation(access, 'assistant')
   return { ctx, access, other, conversation, core, backend, removeAgent }
@@ -367,7 +367,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       })
       let owner!: Context
-      const fiber = await app.ctx.plugin((ctx: Context) => {
+      const fiber = await app.ctx.use((ctx: Context) => {
         owner = ctx
       })
       const provider = app.ctx.ai.registerProvider(owner, {
@@ -1072,7 +1072,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       },
     })
-    await app.ctx.plugin(basicTools)
+    await app.ctx.use(basicTools)
     await send(app)
     const id = app.conversation.id
     await app.ctx.fiber.dispose()
@@ -1090,7 +1090,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       },
     })
-    const plugin = await next.ctx.plugin(basicTools)
+    const plugin = await next.ctx.use(basicTools)
     expect((await next.ctx.ai.getConversation(next.access, id)).conversation.todos).toEqual([
       { id: 'a', text: '未完成任务', status: 'pending' },
     ])
@@ -1101,7 +1101,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
       (await next.ctx.ai.getConversation(next.access, id)).conversation.todos?.[0]?.status,
     ).toBe('pending')
     expect(next.ctx.ai.capabilities().tools).toEqual([])
-    const restored = await next.ctx.plugin(basicTools)
+    const restored = await next.ctx.use(basicTools)
     expect(next.ctx.ai.capabilities().tools.map((tool) => tool.id)).toEqual([
       'get_datetime',
       'rename_conversation',
@@ -1137,7 +1137,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       },
     })
-    await app.ctx.plugin(basicTools)
+    await app.ctx.use(basicTools)
     const run = await send(app)
     expect(run.status).toBe('completed')
     const results = run.messages
@@ -1165,7 +1165,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       },
     })
-    const plugin = await app.ctx.plugin(basicTools)
+    const plugin = await app.ctx.use(basicTools)
     const todo = (id: string, arguments_: import('@antarestra/ai').JsonObject) => ({
       type: 'tool-call' as const,
       id,
@@ -1236,7 +1236,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       },
     })
-    await app.ctx.plugin(basicTools)
+    await app.ctx.use(basicTools)
     calls = [
       {
         type: 'tool-call',
@@ -1484,7 +1484,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
       },
     })
     let registrations = 0
-    const consumer = await app.ctx.plugin({
+    const consumer = await app.ctx.use({
       inject: ['ai'],
       apply(ctx: Context) {
         registrations++
@@ -1505,7 +1505,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
       await command(app.ctx, app.access, app.conversation.id),
     )
     await app.core.dispose()
-    await app.ctx.plugin(ai, {})
+    await app.ctx.use(ai, {})
     await consumer
     await app.backend
     // 依赖恢复后，执行后端应重新注册，不能只恢复其他消费者。
@@ -1562,7 +1562,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
     expect((await app.ctx.ai.getRun(app.access, run.id)).status).toBe('cancelled')
     await expect.poll(() => aborted).toBe(true)
     await expect(send(app)).rejects.toMatchObject({ code: 'capability_unavailable' })
-    await app.ctx.plugin(agentCore)
+    await app.ctx.use(agentCore)
     expect(
       (await send(app, { operation: 'regenerate', targetNodeId: run.userNodeId })).status,
     ).toBe('completed')
@@ -1850,7 +1850,7 @@ describe('AI 核心与实际 SQLite 数据库', () => {
   it('Cordis 串行钩子支持 prepend 与卸载，通知失败不改变成功结果', async () => {
     const app = await setup()
     const sequence: string[] = []
-    const extension = await app.ctx.plugin((ctx: Context) => {
+    const extension = await app.ctx.use((ctx: Context) => {
       ctx.on('ai/request', (_context, draft) => {
         sequence.push('后')
         draft.systemPrompt += '后'
@@ -2141,8 +2141,8 @@ describe('AI 核心与实际 SQLite 数据库', () => {
         },
       },
     })
-    await app.ctx.plugin(WebUI)
-    await app.ctx.plugin(local, {
+    await app.ctx.use(WebUI)
+    await app.ctx.use(local, {
       providerId: 'local',
       bootstrapEmail: 'admin@example.com',
       bootstrapPassword: 'test-password-123',

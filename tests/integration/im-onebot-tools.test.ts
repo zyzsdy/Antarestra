@@ -52,9 +52,9 @@ async function installStorage(ctx: Awaited<ReturnType<typeof setup>>['ctx']) {
       return `https://example.invalid/${key}`
     },
   }
-  await ctx.plugin(Storage)
+  await ctx.use(Storage)
   ctx.storage.register(ctx, 'test', backend)
-  await ctx.plugin(files, { backendId: 'test', defaultQuota: 1024 ** 2 })
+  await ctx.use(files, { backendId: 'test', defaultQuota: 1024 ** 2 })
   return blobs
 }
 async function createApp(
@@ -88,7 +88,7 @@ async function createApp(
   const blobs = withFiles ? await installStorage(app.ctx) : undefined
   const registered = vi.spyOn(app.ctx.ai, 'registerTool')
   async function connect(connectionId: string, selfId: string) {
-    const fiber = await app.ctx.plugin(OneBot, {
+    const fiber = await app.ctx.use(OneBot, {
       id: connectionId,
       selfId,
       token: 'test-secret',

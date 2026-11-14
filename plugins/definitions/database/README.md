@@ -63,7 +63,7 @@ export default defineDatabasePlugin({
 })
 ```
 
-包装函数会补充 `database` 注入并保留 `inject` 中的其他必需依赖。无论通过配置加载器还是直接 `ctx.plugin()` 加载，均先迁移、再执行业务 `apply`。不需要建表的消费者也可以使用普通 `inject: ['database']`；需要手动控制时，可显式等待 `ctx.database.migrate(ctx, pluginId, migrations)`。
+包装函数会补充 `database` 注入并保留 `inject` 中的其他必需依赖。无论通过配置加载器还是直接 `ctx.use()` 加载，均先迁移、再执行业务 `apply`。不需要建表的消费者也可以使用普通 `inject: ['database']`；需要手动控制时，可显式等待 `ctx.database.migrate(ctx, pluginId, migrations)`。
 
 ## 查询契约
 

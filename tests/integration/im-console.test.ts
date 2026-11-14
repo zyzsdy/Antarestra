@@ -16,20 +16,20 @@ afterEach(async () => {
 it('IM 管理接口校验登录、角色、同源和修订号，卸载后撤销路由', async () => {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(Database)
-  await ctx.plugin(sqlite, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(WebUI)
+  await ctx.use(Database)
+  await ctx.use(sqlite, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(WebUI)
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
-  await ctx.plugin(local, {
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'im-console-test-42',
   })
-  await ctx.plugin(im)
-  const fiber = await ctx.plugin(consolePlugin)
+  await ctx.use(im)
+  const fiber = await ctx.use(consolePlugin)
   ctx.im.registerConnection(ctx, {
     id: 'test',
     platform: 'qq',

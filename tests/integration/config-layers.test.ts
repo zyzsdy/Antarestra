@@ -238,7 +238,7 @@ it('配置管理器保存、启停、删除、布局和启动设置统一写覆�
   const resolver: PluginResolver = async () => () => {}
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(loader, { filename: app.filename, resolvePlugin: resolver })
+  await ctx.use(loader, { filename: app.filename, resolvePlugin: resolver })
   const manager = ctx.configManager
   const operation = (): Operation => ({ id: 'test', state: 'running', saved: false, message: '' })
   await manager.save(
@@ -283,6 +283,6 @@ it('配置管理器保存、启停、删除、布局和启动设置统一写覆�
   expect(next.layout.instances.sample).toBeUndefined()
   const restored = new Context()
   contexts.push(restored)
-  await restored.plugin(loader, { filename: app.filename, resolvePlugin: resolver })
+  await restored.use(loader, { filename: app.filename, resolvePlugin: resolver })
   expect((await restored.configManager.snapshot()).instances).toEqual([])
 })

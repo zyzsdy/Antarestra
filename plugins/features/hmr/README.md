@@ -1,8 +1,8 @@
 # 插件源码热更新
 
-`@antarestra/plugin-hmr` 基于官方 [`@cordisjs/plugin-hmr`](https://github.com/cordiverse/cordis/tree/main/packages/hmr) 1.1.1，使用官方 loader 1.0.0-rc.8、timer 1.1.4 与项目固定的 `cordis@4.0.0-rc.11`。官方 npm 包名不是 `@cordis/plugin-hmr`。
+`@antarestra/plugin-hmr` 基于官方 [`@cordisjs/hmr`](https://github.com/cordiverse/cordis/tree/v4.0.0-rc.13/packages/hmr) 2.0.0-rc.0，使用官方 loader 1.0.0-rc.10 与项目固定的 `cordis@4.0.0-rc.13`，不再依赖 timer。
 
-模块依赖分析、ESM / CommonJS 缓存失效、导入失败回滚和 Fiber 替换均由官方实现。项目只适配目录配置、Windows 路径以及现有配置加载器的模块与实例登记；主配置格式、环境变量规则保持一致，不启用官方 loader 的 JS 配置表达式。
+模块依赖分析、ESM / CommonJS 缓存失效、导入失败回滚和 Fiber 替换均由官方实现。项目通过 Chokidar 监视字面目录，显式关闭官方内置 `watch`，调用公开的 `ctx.hmr.reconcile()`，事务与配置管理共用生命周期队列，不再修改私有刷新方法。主配置格式、环境变量规则保持一致，不启用官方 loader 的 JS 配置表达式。
 
 ## 使用
 
@@ -15,7 +15,7 @@ plugins:
     exclude: []
 ```
 
-完成首次 `pnpm build` 后运行 `pnpm dev`，保存插件源码时，受影响的插件实例会在原进程中卸载并重新创建，不需要手动重启服务器。依赖服务的消费者按 Cordis 生命周期重新激活；未受影响的插件继续运行。多实例保留各自配置，但内存运行状态会随实例重建丢失。
+完成首次 `pnpm build` 后运行 `pnpm dev`，保存插件源码时，受影响的插件会在原进程中清理并重新执行，Fiber 身份和配置保持不变，不需要手动重启服务器。依赖服务的消费者按 Cordis 生命周期重新激活；未受影响的插件继续运行。多实例保留各自配置，但内存运行状态会随实例重建丢失。
 
 | 字段      | 类型       | 默认值      | 含义                                     |
 | --------- | ---------- | ----------- | ---------------------------------------- |
@@ -24,7 +24,7 @@ plugins:
 
 相对路径以项目根目录为基准，与工作目录、`--conf` 指向的配置文件位置无关，也支持绝对目录。目录按字面路径处理，不接受 glob 通配符语义。例如排除 `plugins/implementations/example` 不会排除同级 `example-extra`。即使某个排除目录也出现在 include 中，仍不触发刷新。
 
-沿用官方对 `node_modules` 的排除，避免监视 pnpm 依赖链接；工作区插件实际源码仍从 `plugins` 目录监视。
+继续排除 `node_modules`，避免监视 pnpm 依赖链接；工作区插件实际源码仍从 `plugins` 目录监视。
 
 开发命令通过 `--expose-internals` 提供官方 HMR 需要的 Node 模块缓存接口，并以 `development` 条件加载 TypeScript 源码。`tsx watch` 额外监视 `packages`、`apps` 的源码，排除 `plugins`；前两者修改会重启进程，插件修改由 HMR 处理。重新加载的模块沿用原 URL，不通过不断附加查询参数制造新缓存。
 
@@ -43,10 +43,12 @@ plugins:
 ### 服务端插件
 
 - 监视已导入模块的文件修改，包含插件入口和间接依赖。语法或导入失败保留旧实例，修复保存后重试；插件启动失败会留下失败实例，修复后可重新加载。
-- 使用官方默认 100 毫秒防抖，额外等待文件写入稳定 150 毫秒，减少编辑器保存过程中的半写入状态。
+- 使用 100 毫秒防抖，额外等待文件写入稳定 150 毫秒，减少编辑器保存过程中的半写入状态。
 - 新增未被导入的文件、删除文件、修改主 YAML 配置或包的 exports 不属于当前自动重载入口；可通过插件设置面板显式应用配置，或重启开发服务。主配置外部编辑不会自动应用。
 - `pnpm start` 运行编译产物；修改 TypeScript 源码后要先构建，只有实际加载的 `dist` 模块更新才会热替换。源码开发使用 `pnpm dev`。
 - 禁用时将配置键改为 `~plugin-hmr` 并重启；此时插件源码修改不会被 `tsx watch` 接管。卸载 HMR 插件会回收监视器和定时器。
-- 框架核心改动由 `tsx watch` 重启处理。HMR 不提供状态迁移、请求无缝切换或不可信插件隔离。
+- 框架核心改动由 `tsx watch` 重启处理。官方 HMR 不再主动重启宿主进程，跳过的模块变更会记录重启提示。HMR 不提供状态迁移、请求无缝切换或不可信插件隔离。
 
 验证使用真实 Node 子进程与文件监视器，覆盖间接 TypeScript 依赖、多个实例、服务依赖变化、异步清理、排除优先级、失败恢复及卸载；另复用开发命令验证 HTTP 内容原进程更新，以及 packages / apps 修改触发重启。
+
+完整的上游破坏性变更与项目处理见 [Cordis rc.13 升级记录](../../../docs/cordis-rc13-upgrade.md)。

@@ -1,4 +1,4 @@
-import type { Plugin } from '@antarestra/plugin-sdk'
+import type { Component } from '@antarestra/plugin-sdk'
 import type { PluginResolver } from './index.js'
 
 export function pluginCandidates(name: string): readonly string[] {
@@ -53,7 +53,7 @@ export function createPluginResolver(
         code: 'ERR_PLUGIN_INVALID_EXPORT',
       })
     }
-    return plugin as Plugin<unknown>
+    return plugin as Component<unknown>
   }
   resolver.resolveUrl = resolveUrl
   return resolver

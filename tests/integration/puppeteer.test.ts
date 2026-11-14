@@ -44,7 +44,7 @@ function browserMock() {
 async function setup(config: plugin.Config = {}) {
   const ctx = new Context()
   contexts.push(ctx)
-  const fiber = await ctx.plugin(plugin, config)
+  const fiber = await ctx.use(plugin, config)
   return { ctx, fiber }
 }
 
@@ -109,7 +109,7 @@ describe('浏览器生命周期', () => {
       }),
     ).rejects.toThrow('操作失败')
     let handle!: plugin.PageHandle
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['puppeteer'],
       async apply(owner: Context) {
         handle = await owner.puppeteer.createPage(owner)
@@ -159,7 +159,7 @@ describe('浏览器生命周期', () => {
     const { ctx, fiber } = await setup()
     const old = ctx.puppeteer
     let starts = 0
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['puppeteer'],
       apply() {
         starts++
@@ -167,7 +167,7 @@ describe('浏览器生命周期', () => {
     })
     await fiber.dispose()
     await expect(old.createPage(ctx)).rejects.toThrow('已卸载')
-    await ctx.plugin(plugin)
+    await ctx.use(plugin)
     await consumer.await()
     expect(starts).toBe(2)
   })
@@ -175,7 +175,7 @@ describe('浏览器生命周期', () => {
   it('拒绝错误启动配置', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    await expect(ctx.plugin(plugin, { args: '无效' } as never)).rejects.toThrow('配置校验失败')
+    await expect(ctx.use(plugin, { args: '无效' } as never)).rejects.toThrow('配置校验失败')
   })
 
   it('页面创建过程中卸载调用方会等待并回收迟到的上下文', async () => {
@@ -193,7 +193,7 @@ describe('浏览器生命周期', () => {
     })
     const { ctx } = await setup()
     let pending!: Promise<unknown>
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['puppeteer'],
       apply(owner: Context) {
         pending = expect(owner.puppeteer.createPage(owner)).rejects.toThrow('已卸载')

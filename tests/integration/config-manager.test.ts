@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@antarestra/plugin-sdk'
-import type { Plugin } from '@antarestra/plugin-sdk'
+import type { Component } from '@antarestra/plugin-sdk'
 import { resolveConfigEnvironment, validateConfig } from '@antarestra/plugin-sdk/schema'
 import * as loader from '@antarestra/config-loader'
 import type { Operation } from '@antarestra/config-loader'
@@ -26,7 +26,7 @@ async function setup(source: string, resolver?: loader.PluginResolver) {
   await writeFile(filename, source)
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(loader, { filename, resolvePlugin: resolver ?? resolvePlugin })
+  await ctx.use(loader, { filename, resolvePlugin: resolver ?? resolvePlugin })
   return { ctx, filename, manager: ctx.configManager }
 }
 
@@ -89,7 +89,7 @@ describe('配置面板管理服务', () => {
   )
   it('删除服务提供者由 Cordis 暂停消费者，缺失依赖可保存并删除', async () => {
     const cleaned = vi.fn()
-    const resolver = async (id: string): Promise<Plugin<unknown>> =>
+    const resolver = async (id: string): Promise<Component<unknown>> =>
       id === 'provider'
         ? TestRegistry
         : {
@@ -124,7 +124,7 @@ describe('配置面板管理服务', () => {
   })
   it('隔离初始化失败，保留禁用和缺失依赖实例，独立插件继续运行', async () => {
     const cleaned = vi.fn()
-    const resolver = async (id: string): Promise<Plugin<unknown>> => {
+    const resolver = async (id: string): Promise<Component<unknown>> => {
       if (id === 'broken')
         return () => {
           throw new Error('不可回传的凭据')
@@ -150,7 +150,7 @@ describe('配置面板管理服务', () => {
   })
   it('保存后重载失败保留新配置；外部版本冲突不覆盖文件', async () => {
     const values: unknown[] = []
-    const resolver = async (): Promise<Plugin<unknown>> => (_ctx, config) => {
+    const resolver = async (): Promise<Component<unknown>> => (_ctx, config) => {
       values.push(config)
       if ((config as { bad?: boolean }).bad) throw new Error('失败')
     }
@@ -325,12 +325,12 @@ describe('配置面板管理服务', () => {
     const waiting = new Promise<void>((resolve) => {
       ready = resolve
     })
-    const resolver = async (id: string): Promise<Plugin<unknown>> =>
+    const resolver = async (id: string): Promise<Component<unknown>> =>
       id === 'consumer'
         ? { inject: ['testRegistry'], apply() {} }
         : async (ctx) => {
             await waiting
-            await ctx.plugin(TestRegistry)
+            await ctx.use(TestRegistry)
           }
     const app = await setup(
       'loader: { initializationTimeoutMs: 150 }\nplugins:\n  consumer: {}\n  provider: {}\n',

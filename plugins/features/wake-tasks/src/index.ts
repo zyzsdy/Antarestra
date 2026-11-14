@@ -13,8 +13,8 @@ export default defineDatabasePlugin({
   inject: ['ai'],
   async apply(ctx: Context, input: Partial<Config> = {}) {
     const config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
-    await ctx.plugin(WakeTasksService, config)
-    await ctx.plugin({
+    await ctx.use(WakeTasksService, config)
+    await ctx.use({
       inject: ['wakeTasks', 'ai'],
       apply(owner: Context) {
         owner.ai.registerTool(owner, {

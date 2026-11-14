@@ -254,7 +254,7 @@ it('IM 服务卸载会取消并等待当前及排队发送，清理所有延迟�
 
 it('独立卸载接入取消当前及排队发送，其他接入继续发送', async () => {
   const app = await prepare()
-  const owner = await app.ctx.plugin(() => {})
+  const owner = await app.ctx.use(() => {})
   const send = vi.fn(async () => ({}))
   const handle = app.ctx.im.registerConnection(owner.ctx, {
     id: 'temporary',
@@ -405,7 +405,7 @@ it('独立卸载 AI 插件会取消发送延迟，仍保留可恢复的待投递
   expect((await app.jobs())[0]?.delivery).toBe('pending')
   expect((await app.jobs())[0]?.attempts).toBe(1)
   expect(vi.getTimerCount()).toBe(0)
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   for (let attempt = 0; attempt < 1000 && !vi.getTimerCount(); attempt++) await realDelay(1)
   expect(vi.getTimerCount()).toBe(1)
   await vi.advanceTimersByTimeAsync(699)

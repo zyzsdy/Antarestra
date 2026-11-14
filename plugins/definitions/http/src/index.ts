@@ -1,4 +1,4 @@
-import { Http } from '@cordisjs/plugin-http'
+import { Http } from '@cordisjs/http'
 import type { Context, Fiber } from '@antarestra/plugin-sdk'
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import * as undici from 'undici'

@@ -1409,6 +1409,6 @@ export default defineDatabasePlugin({
       .selectFrom('policy')
       .selectAll()
       .execute()
-    await ctx.plugin(ImService, { config, policies })
+    await ctx.use(ImService, { config, policies })
   },
 })

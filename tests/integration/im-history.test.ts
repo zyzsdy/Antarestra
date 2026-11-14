@@ -46,9 +46,9 @@ async function storage(app: Awaited<ReturnType<typeof setup>>) {
       return `https://example.invalid/${key}`
     },
   }
-  await app.ctx.plugin(Storage)
+  await app.ctx.use(Storage)
   app.ctx.storage.register(app.ctx, 'test', backend)
-  const fiber = await app.ctx.plugin(files, { backendId: 'test', defaultQuota: 1000 })
+  const fiber = await app.ctx.use(files, { backendId: 'test', defaultQuota: 1000 })
   return { fiber, blobs, backend }
 }
 const download = async (_message: unknown, media: MediaSegment) => ({
@@ -266,7 +266,7 @@ it('未读游标与请求快照持久化，重载后不重复读取，最后消�
   expect(JSON.stringify(run.messages)).toContain('原因=命令')
   await app.aiPlugin!.dispose()
   await app.connection.receive('离线期间的闲聊')
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await app.connection.receive('/ai 第二次')
   await poll(() => app.aiState.calls).toBe(2)
   expect((await app.jobs())[1]?.input).toContain('离线期间的闲聊')

@@ -104,7 +104,7 @@ it('共享 ID 可在不同空间读取和准备发送，原有私有文件与写
   expect((await ctx.workspaceFile.list(b)).entries).toHaveLength(0)
   await plugin.dispose()
   await expect(ctx.workspaceFile.resource(a, row.id)).rejects.toMatchObject({ status: 410 })
-  const replacement = await ctx.plugin(stickers)
+  const replacement = await ctx.use(stickers)
   expect(await ctx.workspaceFile.resource(a, row.id)).toMatchObject({ id: row.id })
   await ctx.imStickers.remove(row.id, 0)
   await expect(ctx.workspaceFile.resource(a, row.id)).rejects.toMatchObject({ status: 410 })
@@ -131,7 +131,7 @@ it('表情包添加、删除只对当前群 bot 管理员开放，图片独立�
 it('表情包命令统一遵循配置覆盖和名单，私聊获准后可以操作共享库', async () => {
   const { ctx, commandPlugin, receive, sent } = await setupStickers()
   await commandPlugin.dispose()
-  await ctx.plugin(commands)
+  await ctx.use(commands)
   const current = await ctx.imCommands.getPolicy('sticker')
   await ctx.imCommands.setPolicy(
     'sticker',
@@ -180,7 +180,7 @@ it('群主自动授权、平台管理员不自动授权，管理员按群持久�
   await receive('/admin add intruder', 'delegate', 'g2')
   expect((await ctx.imCommands.admins.get(workspace('g2'))).users).toEqual([])
   await commandPlugin.dispose()
-  await ctx.plugin(commands)
+  await ctx.use(commands)
   expect((await ctx.imCommands.admins.get(workspace('g1'))).users).toContain('delegate')
   owners.set('g1', 'new-owner')
   await receive('/admin add obsolete', 'owner')
@@ -305,7 +305,7 @@ it('卸载取消并等待在途图片上传，重新加载后不保留未发布�
   await plugin.dispose()
   expect(cancelled).toBe(true)
   expect(await result).toBeInstanceOf(Error)
-  await ctx.plugin(stickers)
+  await ctx.use(stickers)
   expect(await ctx.imStickers.list()).toEqual([])
 })
 

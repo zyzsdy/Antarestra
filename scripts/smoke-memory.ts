@@ -13,12 +13,12 @@ const url = process.env.ANTARESTRA_TEST_POSTGRES
 assert(url, '请设置 ANTARESTRA_TEST_POSTGRES 指向独立测试 PostgreSQL')
 const ctx = new Context()
 try {
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { type: 'postgresql', url })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(ai, {})
-  await ctx.plugin(memory, { globalTokenBudget: 4096 })
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { type: 'postgresql', url })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(ai, {})
+  await ctx.use(memory, { globalTokenBudget: 4096 })
   const workspaceId = randomUUID()
   ctx.rbac.registerRequestSource(ctx, 'memory-smoke-stable', {
     id: 'memory-smoke-stable',

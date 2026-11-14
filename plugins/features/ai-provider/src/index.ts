@@ -18,8 +18,8 @@ export default defineDatabasePlugin({
   inject: ['ai', 'rbac'],
   async apply(ctx) {
     ctx.rbac.registerPermission(ctx, 'admin.ai.providers.manage', '管理 AI 提供商与模型', ['admin'])
-    await ctx.plugin(AiProviderService)
-    await ctx.plugin({
+    await ctx.use(AiProviderService)
+    await ctx.use({
       inject: ['aiProvider', 'ai', 'rbac'],
       async apply(ctx: Context) {
         await ctx.aiProvider.initialize()

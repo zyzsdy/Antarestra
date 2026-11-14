@@ -66,14 +66,14 @@ export async function setup(
 ) {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: options.databaseFilename ?? ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: options.databaseFilename ?? ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
   // 无关延迟的功能测试立即投递；延迟专项测试显式传入配置（空对象使用默认值）。
-  const imPlugin = await ctx.plugin(im, options.imConfig ?? { sendDelayPerCharMs: 0 })
-  await ctx.plugin(identityIm)
-  const commandPlugin = await ctx.plugin(commands, options.commands ?? {})
+  const imPlugin = await ctx.use(im, options.imConfig ?? { sendDelayPerCharMs: 0 })
+  await ctx.use(identityIm)
+  const commandPlugin = await ctx.use(commands, options.commands ?? {})
   const messages: MessageContext[] = []
   ctx.im.registerHandler(ctx, {
     id: 'capture',
@@ -126,7 +126,7 @@ export async function setup(
   const aiState = { calls: 0 }
   let aiPlugin: Awaited<ReturnType<typeof ctx.plugin>> | undefined
   if (options.ai) {
-    await ctx.plugin(ai, options.aiConfig ?? {})
+    await ctx.use(ai, options.aiConfig ?? {})
     ctx.ai.registerProvider(ctx, {
       id: 'provider',
       title: '测试连接',
@@ -161,7 +161,7 @@ export async function setup(
         },
       },
     )
-    await ctx.plugin(agentCore)
+    await ctx.use(agentCore)
     const preset: AgentPreset = {
       id: 'assistant',
       version: '1',
@@ -188,7 +188,7 @@ export async function setup(
     }
     ctx.ai.registerAgent(ctx, preset)
     ctx.ai.registerAgent(ctx, { ...preset, id: 'second' })
-    aiPlugin = await ctx.plugin(imAi, {
+    aiPlugin = await ctx.use(imAi, {
       pollIntervalMs: 20,
       queueLimit: options.queueLimit ?? 5,
       deliveryAttempts: options.deliveryAttempts ?? 2,

@@ -45,8 +45,8 @@ try {
   await listenForTest(server)
   const address = server.address()
   assert(address && typeof address !== 'string')
-  await ctx.plugin(http)
-  await ctx.plugin(playwright)
+  await ctx.use(http)
+  await ctx.use(playwright)
   browser = new BrowserTools(ctx, { timeoutMs: 10000 })
   const run: RunContext = {
     runId: 'smoke',

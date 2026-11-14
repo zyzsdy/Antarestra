@@ -18,11 +18,11 @@ afterEach(async () => {
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  const backend = await ctx.plugin(database, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  const definition = await ctx.plugin(rbac)
-  const owner = await ctx.plugin({ inject: ['rbac'], apply() {} })
+  await ctx.use(DatabaseProvider)
+  const backend = await ctx.use(database, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  const definition = await ctx.use(rbac)
+  const owner = await ctx.use({ inject: ['rbac'], apply() {} })
   return { ctx, owner, backend, definition }
 }
 
@@ -34,9 +34,9 @@ async function directory(ctx: Context) {
 
 it('已有本地账号在升级时补入统一目录，未登录和停用账号均保留', async () => {
   const { ctx } = await setup()
-  await ctx.plugin(WebUI)
+  await ctx.use(WebUI)
   const config = { bootstrapEmail: 'directory-test', bootstrapPassword: 'directory-password-42' }
-  const implementation = await ctx.plugin(local, config)
+  const implementation = await ctx.use(local, config)
   const original = await directory(ctx)
   expect(original).toHaveLength(1)
   expect(original[0]!.id).toMatch(/^personal:/)
@@ -45,7 +45,7 @@ it('已有本地账号在升级时补入统一目录，未登录和停用账号�
   await implementation.dispose()
   await db.deleteFrom('workspace').execute()
   await db.updateTable('principal').set({ status: 'disabled' }).execute()
-  await ctx.plugin(local, config)
+  await ctx.use(local, config)
   expect(await directory(ctx)).toEqual(original)
 })
 
@@ -69,8 +69,8 @@ it('任意身份来源只实现正常解析，空间自动持久化，来源卸�
   // 无认证流程的可信业务也通过统一空间接口创建，不依赖文件插件。
   await ctx.rbac.ensureWorkspace(owner.ctx, { id: 'project:42', label: '项目·42' })
   await owner.dispose()
-  await ctx.plugin(Storage)
-  await ctx.plugin(files)
+  await ctx.use(Storage)
+  await ctx.use(files)
   const spaces = await ctx.workspaceFile.spaces(1, '')
   expect(spaces.entries.map(({ id, label }) => ({ id, label }))).toEqual([
     { id: 'oauth:workspace', label: 'oauth·成员空间' },
@@ -99,7 +99,7 @@ it('并发重复空间合并，缺省名称不覆盖正式名称，超过一页�
   const old = ctx.rbac
   await definition.dispose()
   await expect(old.workspaceDirectory().next()).rejects.toThrow('已卸载')
-  await ctx.plugin(rbac)
+  await ctx.use(rbac)
   expect(await directory(ctx)).toEqual([{ id: 'shared', label: '共享空间' }, ...rows])
 })
 

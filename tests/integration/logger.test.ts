@@ -146,8 +146,8 @@ describe('Cordis 输出器生命周期', () => {
     const path = join(await directory(), '未创建')
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
     ctx.logger.info('历史')
-    const fiber = await ctx.plugin(plugin, { directory: path })
-    await ctx.plugin({
+    const fiber = await ctx.use(plugin, { directory: path })
+    await ctx.use({
       name: 'example',
       apply(owner: Context) {
         owner.logger.debug('调试')
@@ -161,7 +161,7 @@ describe('Cordis 输出器生命周期', () => {
     stdout.mockClear()
     ctx.logger.error('卸载之后')
     expect(stdout).not.toHaveBeenCalled()
-    const restored = await ctx.plugin(plugin)
+    const restored = await ctx.use(plugin)
     ctx.logger.info('恢复')
     expect(stdout).toHaveBeenCalledTimes(1)
     expect(stdout.mock.calls[0]![0]).toContain('恢复')
@@ -172,7 +172,7 @@ describe('Cordis 输出器生命周期', () => {
     const path = await directory()
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
     const ctx = context()
-    const fiber = await ctx.plugin(plugin, {
+    const fiber = await ctx.use(plugin, {
       file: true,
       directory: path,
       rotation: 'none',
@@ -196,13 +196,13 @@ describe('Cordis 输出器生命周期', () => {
     const firstPath = await directory()
     const secondPath = await directory()
     const ctx = context()
-    const first = await ctx.plugin(plugin, {
+    const first = await ctx.use(plugin, {
       console: false,
       file: true,
       directory: firstPath,
       rotation: 'none',
     })
-    const second = await ctx.plugin(plugin, {
+    const second = await ctx.use(plugin, {
       console: false,
       file: true,
       directory: secondPath,
@@ -228,7 +228,7 @@ describe('日志文件轮转与故障', () => {
     const ctx = context()
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
-    const fiber = await ctx.plugin(plugin, { file: true, directory: path })
+    const fiber = await ctx.use(plugin, { file: true, directory: path })
     await mkdir(join(path, 'antarestra-2026-09-12.log'))
     vi.setSystemTime(new Date('2026-09-12T12:00:00'))
     ctx.logger.info('触发文件故障')

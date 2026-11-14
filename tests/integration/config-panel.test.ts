@@ -16,7 +16,7 @@ afterEach(async () => {
 const password = 'panel-test-password-42'
 it('模型目录受插件管理权限保护，只返回元数据，AI 卸载后移除路由', async () => {
   const app = await setup()
-  const fiber = await app.ctx.plugin(ai, {})
+  const fiber = await app.ctx.use(ai, {})
   app.ctx.ai.registerProvider(app.ctx, {
     id: 'provider',
     title: '测试提供商',
@@ -71,7 +71,7 @@ async function setup(local = false) {
   const ctx = new Context()
   contexts.push(ctx)
   const restart = vi.fn(async () => {})
-  await ctx.plugin(loader, { filename, resolvePlugin, restart })
+  await ctx.use(loader, { filename, resolvePlugin, restart })
   await vi.waitFor(
     async () =>
       expect(
@@ -254,7 +254,7 @@ it('显式公共接口不依赖认证器，旧认证器卸载不会公开受保�
   const { default: Server } = await import('@antarestra/plugin-server')
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
   const url = `http://127.0.0.1:${ctx.server.address!.port}`
   ctx.server.route(ctx, 'GET', '/private', (http) => {
     http.body = '私有'

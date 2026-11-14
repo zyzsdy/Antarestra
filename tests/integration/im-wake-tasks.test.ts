@@ -56,7 +56,7 @@ async function reminder(
       },
     },
   })
-  const plugin = await app.ctx.plugin(wakeTasks, config)
+  const plugin = await app.ctx.use(wakeTasks, config)
   await app.connection.receive('普通聊天背景')
   await app.connection.receive('/ai 安排提醒')
   await poll(() => app.sent.length).toBe(1)
@@ -131,7 +131,7 @@ it('来源处理器未加载时重试，恢复后执行且不退回普通 AI 会
   await poll(async () => (await app.row()).attempts).toBe(1)
   expect((await app.row()).last_run_id).toBeNull()
   expect(app.requests).toHaveLength(2)
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await poll(async () => (await app.row()).status).toBe('completed')
   expect(app.sent).toHaveLength(2)
 })
@@ -143,7 +143,7 @@ it('离线排队、插件重载和重复交接只执行及发送一次', async (
   await poll(async () => (await app.jobs()).length).toBe(2)
   expect((await app.row()).status).toBe('running')
   await app.aiPlugin!.dispose()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   const access = await app.ctx.ai.authorizeBackground(
     app.ctx,
     'im',
@@ -212,7 +212,7 @@ it('IM 卸载期间取消的排队任务恢复后不再发送', async () => {
     .set({ status: 'cancelled', lease_token: '' })
     .where('id', '=', app.task.id)
     .execute()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   app.connection.handle.setStatus('online')
   await poll(
     async () => (await app.jobs()).find((job) => job.id.startsWith('wake:'))?.delivery,

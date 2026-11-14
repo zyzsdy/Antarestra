@@ -14,7 +14,7 @@ try {
   const address = server.address()
   assert(address && typeof address !== 'string')
   const url = `http://127.0.0.1:${address.port}/`
-  const fiber = await ctx.plugin(
+  const fiber = await ctx.use(
     puppeteer,
     process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {},
   )

@@ -16,8 +16,8 @@ export default defineDatabasePlugin({
   inject: ['ai', 'rbac'],
   async apply(ctx) {
     ctx.rbac.registerPermission(ctx, 'admin.ai.mcp.manage', '管理 MCP 服务器', ['admin'])
-    await ctx.plugin(McpService)
-    await ctx.plugin({
+    await ctx.use(McpService)
+    await ctx.use({
       inject: ['mcp', 'ai', 'rbac'],
       async apply(ctx: Context) {
         await ctx.mcp.initialize()

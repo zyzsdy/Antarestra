@@ -22,10 +22,10 @@ export default defineDatabasePlugin({
     config = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), config)
     ctx.rbac.registerPermission(ctx, 'workspace.file.use', '使用工作空间文件', ['user', 'admin'])
     ctx.rbac.registerPermission(ctx, 'admin.storage.manage', '管理工作空间存储配额', ['admin'])
-    await ctx.plugin(WorkspaceFileService, config)
-    await ctx.plugin(agentFiles)
-    await ctx.plugin(imFiles)
-    await ctx.plugin({
+    await ctx.use(WorkspaceFileService, config)
+    await ctx.use(agentFiles)
+    await ctx.use(imFiles)
+    await ctx.use({
       inject: ['workspaceFile'],
       apply(ctx: Context) {
         const service = ctx.workspaceFile
@@ -152,7 +152,7 @@ export default defineDatabasePlugin({
         })
       },
     })
-    await ctx.plugin({
+    await ctx.use({
       inject: ['webui', 'workspaceFile'],
       apply(ctx: Context) {
         ctx.webui.addEntry(ctx, {

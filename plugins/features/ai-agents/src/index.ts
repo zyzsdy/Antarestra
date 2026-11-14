@@ -17,8 +17,8 @@ export default defineDatabasePlugin({
   inject: ['ai', 'rbac'],
   async apply(ctx) {
     ctx.rbac.registerPermission(ctx, 'admin.ai.agents.manage', '管理 Agents', ['admin'])
-    await ctx.plugin(AiAgentsService)
-    await ctx.plugin({
+    await ctx.use(AiAgentsService)
+    await ctx.use({
       inject: ['aiAgents', 'ai', 'rbac'],
       async apply(ctx: Context) {
         await ctx.aiAgents.initialize()

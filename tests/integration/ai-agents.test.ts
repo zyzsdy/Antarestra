@@ -23,20 +23,20 @@ afterEach(async () => {
 async function setup(filename = ':memory:') {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  await ctx.plugin(WebUI)
-  const core = await ctx.plugin(ai, {})
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  await ctx.use(WebUI)
+  const core = await ctx.use(ai, {})
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
-  await ctx.plugin(local, {
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'agents-password-42',
   })
-  const fiber = await ctx.plugin(agents)
+  const fiber = await ctx.use(agents)
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   const request = (path: string, cookie = '', body?: object, method = 'POST') =>
     fetch(base + path, {
@@ -171,7 +171,7 @@ it('管理 API 拒绝未登录和普通用户；默认会话跨空间隔离', as
 it('变量目录包含内置与已注册说明，不解析空间内容，卸载后移除', async () => {
   const app = await setup()
   let resolved = false
-  const plugin = await app.ctx.plugin({
+  const plugin = await app.ctx.use({
     inject: ['ai'],
     apply(ctx: Context) {
       ctx.ai.registerTemplateVariable(ctx, {
@@ -294,7 +294,7 @@ it('运行固定配置快照；更新不打断运行，卸载清理运行与默�
   await app.fiber.dispose()
   expect((await app.ctx.ai.getRun(app.access, run.id)).status).toBe('cancelled')
   expect(app.ctx.ai.defaultAgentId).toBeNull()
-  await app.ctx.plugin(agents)
+  await app.ctx.use(agents)
   expect(app.ctx.aiAgents.detail(defaultAgentId).title).toBe('修改名称')
   await expect(start(app)).rejects.toMatchObject({ code: 'capability_unavailable' })
 })
@@ -331,7 +331,7 @@ it('AI 依赖卸载再接入时重新注册，并保留默认助理的修改', a
   const value = app.ctx.aiAgents.detail(defaultAgentId)
   await app.ctx.aiAgents.save({ ...value, title: '保留的名字' }, defaultAgentId)
   await app.core.dispose()
-  await app.ctx.plugin(ai, {})
+  await app.ctx.use(ai, {})
   await expect.poll(() => app.ctx.ai.defaultAgentId).toBe(defaultAgentId)
   expect(app.ctx.aiAgents.detail(defaultAgentId).title).toBe('保留的名字')
   expect(app.ctx.aiAgents.list()).toHaveLength(1)

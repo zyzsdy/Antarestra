@@ -1,7 +1,8 @@
 import { schemaConfig } from '@antarestra/plugin-sdk/schema'
 import type { Context } from '@antarestra/plugin-sdk'
-import { Hmr, TimerService, coordinateHmr } from '@antarestra/plugin-sdk/hmr'
+import { Hmr, coordinateHmr } from '@antarestra/plugin-sdk/hmr'
 import type {} from '@antarestra/config-loader'
+import { watch } from 'chokidar'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { applyWebHmr } from './webui.js'
@@ -22,58 +23,100 @@ function directories(value: unknown, fallback: string[], key: string): string[] 
   return value as string[]
 }
 
-export function resolveConfig(input: Config, baseDir: string): Hmr.Config {
+function within(parent: string, path: string): boolean {
+  const suffix = relative(parent, path)
+  return !isAbsolute(suffix) && suffix !== '..' && !suffix.startsWith(`..${sep}`)
+}
+
+export function resolveConfig(input: Config, baseDir: string) {
   input = schemaConfig<Config>(new URL('../config.schema.json', import.meta.url), input)
-  const include = directories(input.include, ['plugins'], 'include')
-  const exclude = directories(input.exclude, [], 'exclude')
-  const excluded = exclude.map((directory) => resolve(baseDir, directory))
-  return {
+  const excluded = directories(input.exclude, [], 'exclude').map((path) => resolve(baseDir, path))
+  const roots = directories(input.include, ['plugins'], 'include')
+    .map((path) => resolve(baseDir, path))
+    .filter((path) => !excluded.some((parent) => within(parent, path)))
+  const hmr: Hmr.Config = {
     base: pathToFileURL(resolve(baseDir) + sep).href,
-    root: include
-      .map((directory) => resolve(baseDir, directory))
-      .filter(
-        (directory) =>
-          !excluded.some((parent) => {
-            const path = relative(parent, directory)
-            return !path || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`))
-          }),
-      ),
-    // 官方 ignored 使用 glob，转义目录中的特殊字符，避免把目录配置当成通配符。
-    ignored: [
-      '**/node_modules',
-      String.raw`**\\node_modules`,
-      ...exclude.flatMap((directory) => {
-        const path = relative(baseDir, resolve(baseDir, directory)).split(sep).join('/')
-        if (!path) return ['**']
-        // 官方把 node:path.relative() 原样交给 picomatch；兼容 Windows 的反斜杠。
-        const escaped = path.replace(/[!*?\[\]{}()]/g, '\\$&').replaceAll('/', String.raw`[/\\]`)
-        return [escaped, `${escaped}${String.raw`[/\\]`}**`]
-      }),
-    ],
-    debounce: 100,
+    // 项目按字面目录监视，保留根目录之外的绝对路径与写入稳定检测。
+    watch: { enabled: false, files: [], debounce: 100 },
+  }
+  return { roots, excluded, hmr }
+}
+
+function watchSources(ctx: Context, roots: string[], excluded: string[]): void {
+  let active = true
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const pending = new Set<string>()
+  let flushing = Promise.resolve()
+  const watcher = watch(roots, {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 25 },
+    ignored: (path) =>
+      path.split(/[\\/]/).includes('node_modules') ||
+      excluded.some((parent) => within(parent, resolve(path))),
+  })
+  const flush = async () => {
+    if (!active || !pending.size) return
+    const paths = [...pending]
+    pending.clear()
+    try {
+      const result = await ctx.hmr.reconcile(() => (active ? paths : []))
+      // 导入失败的事务保留旧实例；下一次修改时连同失败根目录一起重试。
+      for (const aborted of result.aborted) {
+        const files = aborted.urls
+          .filter((url) => url.startsWith('file:'))
+          .map((url) => fileURLToPath(url))
+        for (const path of paths) {
+          if (files.some((file) => within(path, file))) pending.add(path)
+        }
+        ctx.logger.warn('源码重载失败，保留旧实例：%s', aborted.error)
+      }
+      for (const skipped of result.skipped)
+        ctx.logger.warn(
+          '源码变更需要重启才能应用：%s (%s)',
+          skipped.urls.join('、'),
+          skipped.reason,
+        )
+    } catch (error) {
+      for (const path of paths) pending.add(path)
+      if (active) ctx.logger.warn('源码重载失败：%s', error)
+    }
   }
+  watcher.on('error', (error) => ctx.logger.warn('源码监视失败：%s', error))
+  watcher.on('change', (path) => {
+    if (!active) return
+    pending.add(resolve(path))
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      flushing = flushing.then(flush)
+    }, 100)
+  })
+  ctx.effect(() => async () => {
+    active = false
+    clearTimeout(timer)
+    pending.clear()
+    await watcher.close()
+    // 不等待排在配置卸载之后的事务，避免和配置管理队列互相等待。
+    // 已运行的事务由 coordinateHmr 等待结束；排队事务通过 active 检查跳过。
+  })
 }
 
 export async function apply(ctx: Context, config: Config = {}): Promise<void> {
-  if (!ctx.loader.internal) {
-    throw new Error('HMR 需要 Node 模块缓存访问权限，请使用 --expose-internals 启动服务端')
-  }
   const baseUrl = ctx.loader.ctx.baseUrl
   if (!baseUrl) throw new Error('HMR 需要配置加载器提供项目根目录')
-  const resolved = resolveConfig(config, fileURLToPath(new URL('.', baseUrl)))
-  await ctx.plugin(TimerService)
-  await ctx.plugin(Hmr, resolved)
-  ctx.inject(['hmr', 'configManager'], (owner) => {
-    owner.effect(() => coordinateHmr(owner.hmr, (action) => owner.configManager.exclusive(action)))
+  const { roots, excluded, hmr } = resolveConfig(config, fileURLToPath(new URL('.', baseUrl)))
+  await ctx.use(Hmr, hmr)
+  ctx.inject(['hmr'], (owner) => {
+    let exclusive = <T>(action: () => Promise<T>) => action()
+    owner.inject(['configManager'], (manager) => {
+      manager.effect(() => {
+        exclusive = (action) => manager.configManager.exclusive(action)
+        return () => {
+          exclusive = (action) => action()
+        }
+      })
+    })
+    owner.effect(() => coordinateHmr(owner.hmr, (action) => exclusive(action)))
+    watchSources(owner, roots, excluded)
   })
-  ctx.inject(['webui', 'server'], (web) => {
-    const baseDir = fileURLToPath(new URL('.', baseUrl))
-    applyWebHmr(
-      web,
-      resolved.root!.map((path) => resolve(baseDir, path)),
-      directories(config.exclude, [], 'exclude').map((path) => resolve(baseDir, path)),
-    )
-  })
+  ctx.inject(['webui', 'server'], (web) => applyWebHmr(web, roots, excluded))
 }

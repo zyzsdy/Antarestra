@@ -1,4 +1,4 @@
-import type { Context, Fiber, Plugin } from '@antarestra/plugin-sdk'
+import type { Context, Fiber, Component } from '@antarestra/plugin-sdk'
 import { Entry, Loader } from '@antarestra/plugin-sdk/loader'
 import { readConfig } from './config.js'
 import type { PluginEntry } from './config.js'
@@ -15,7 +15,7 @@ export type { ConfigLocation, PluginEntry } from './config.js'
 export { createPluginResolver, pluginCandidates } from './resolver.js'
 
 export interface PluginResolver {
-  (pluginId: string): Promise<Plugin<unknown>>
+  (pluginId: string): Promise<Component<unknown>>
   resolveUrl?: (pluginId: string) => string
   searchPaths?: readonly string[]
 }
@@ -41,7 +41,7 @@ export async function loadPlugins(
   if (baseUrl) ctx = ctx.extend({ baseUrl })
   // 保留原有配置解析与启动语义，只向官方 loader 登记模块和实例供 HMR 使用。
   if (!resolvePlugin.resolveUrl) return loadEntries(ctx, entries, resolvePlugin)
-  const loaderFiber = await ctx.plugin(Loader, baseUrl ? { baseUrl } : {})
+  const loaderFiber = await ctx.use(Loader, baseUrl ? { baseUrl } : {})
   let result: ReadonlyMap<string, Fiber> = new Map()
   const scope = ctx.inject(['loader'], async (owner) => {
     result = await loadEntries(owner, entries, resolvePlugin)
@@ -96,10 +96,10 @@ async function loadEntries(
           tracked.ctx = owner
           ctx.loader.store[entry.instanceId] = tracked
           ctx.loader.root.data.push(tracked.options)
-          fiber = owner.plugin(plugin, structuredClone(entry.config))
-          tracked.fiber = fiber
+          fiber = owner.use(plugin, structuredClone(entry.config))
+          tracked.innerFiber = fiber
         } else {
-          fiber = owner.plugin(plugin, structuredClone(entry.config))
+          fiber = owner.use(plugin, structuredClone(entry.config))
         }
         instances.set(entry.instanceId, fiber)
         track(fiber, entry)
@@ -137,9 +137,9 @@ async function loadEntries(
 export async function apply(ctx: Context, config: Config): Promise<void> {
   if (config.baseUrl) ctx = ctx.extend({ baseUrl: config.baseUrl })
   if (config.resolvePlugin.resolveUrl) {
-    await ctx.plugin(Loader, config.baseUrl ? { baseUrl: config.baseUrl } : {})
+    await ctx.use(Loader, config.baseUrl ? { baseUrl: config.baseUrl } : {})
     await ctx.inject(['loader'], async (owner) => {
-      await owner.plugin(ConfigManager, config)
+      await owner.use(ConfigManager, config)
     })
-  } else await ctx.plugin(ConfigManager, config)
+  } else await ctx.use(ConfigManager, config)
 }

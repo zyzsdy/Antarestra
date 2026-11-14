@@ -23,10 +23,10 @@ async function setup(excludeAssets = false) {
   await writeFile(join(directory, 'component.js'), 'export default () => "初始"')
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  const webui = await ctx.plugin(WebUI, { directory })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  const webui = await ctx.use(WebUI, { directory })
   const origin = `http://127.0.0.1:${ctx.server.address!.port}`
-  const bridge = await ctx.plugin({
+  const bridge = await ctx.use({
     apply(owner: Context) {
       owner.inject(['webui', 'server'], (scope) =>
         applyWebHmr(scope, [directory], excludeAssets ? [directory] : []),
@@ -52,7 +52,7 @@ describe('前端 HMR 通道', () => {
   it('推送加载、资源变化和卸载；重连获得快照；停用后回收连接与监视器', async () => {
     const app = await setup()
     expect(app.messages[0]).toEqual([])
-    const entry = await app.ctx.plugin({
+    const entry = await app.ctx.use({
       inject: ['webui'],
       apply(ctx: Context) {
         ctx.webui.addEntry(ctx, { id: 'demo', directory: app.directory })
@@ -94,7 +94,7 @@ describe('前端 HMR 通道', () => {
 
   it('排除目录不触发资源刷新，但仍通知扩展注册与卸载', async () => {
     const app = await setup(true)
-    const plugin = await app.ctx.plugin({
+    const plugin = await app.ctx.use({
       inject: ['webui'],
       apply(ctx: Context) {
         ctx.webui.addEntry(ctx, { id: 'excluded', directory: app.directory })
@@ -119,7 +119,7 @@ describe('前端 HMR 通道', () => {
     const closed = new Promise((resolve) => app.socket.once('close', resolve))
     await app.webui.dispose()
     await closed
-    await app.ctx.plugin(WebUI, { directory: app.directory })
+    await app.ctx.use(WebUI, { directory: app.directory })
     await expect
       .poll(async () =>
         (await fetch(`${app.origin}/webui/entries.json`)).headers.get('X-WebUI-HMR'),

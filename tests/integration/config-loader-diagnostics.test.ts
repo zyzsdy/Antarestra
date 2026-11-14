@@ -62,7 +62,7 @@ async function setup(
     options.resolve ?? (() => pathToFileURL(join(directory, 'index.mjs')).href),
     options.import ?? (options.source === undefined ? async () => ({ default() {} }) : undefined),
   )
-  await ctx.plugin(loader, { filename, resolvePlugin: resolver })
+  await ctx.use(loader, { filename, resolvePlugin: resolver })
   return { ctx, filename, logs, manager: ctx.configManager }
 }
 

@@ -20,7 +20,7 @@ async function listen(server: Server) {
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  const fiber = await ctx.plugin(plugin)
+  const fiber = await ctx.use(plugin)
   return { ctx, fiber }
 }
 afterEach(async () => {
@@ -34,6 +34,25 @@ afterEach(async () => {
 })
 
 describe('HTTP 服务', () => {
+  it('合并注入元数据、上下文拦截与单次请求配置', async () => {
+    const port = await listen(createServer((req, res) => res.end(req.url)))
+    const { ctx } = await setup()
+    let response: unknown
+    await ctx.intercept('http', { params: { source: '上下文' } }).use({
+      inject: { http: { baseUrl: `http://127.0.0.1:${port}`, params: { source: '注入' } } },
+      async apply(owner) {
+        response = await owner.http.get('/metadata', { responseType: 'text' })
+        expect(
+          await owner.http.get('/metadata', {
+            responseType: 'text',
+            params: { source: '请求' },
+          }),
+        ).toBe('/metadata?source=%E8%AF%B7%E6%B1%82')
+      },
+    })
+    expect(response).toBe('/metadata?source=%E4%B8%8A%E4%B8%8B%E6%96%87')
+  })
+
   it('复用请求解析、JSON 请求体、状态错误及调用方客户端配置', async () => {
     const port = await listen(
       createServer(async (req, res) => {
@@ -166,7 +185,7 @@ describe('HTTP 服务', () => {
     const { ctx, fiber } = await setup()
     let pending!: Promise<unknown>
     let starts = 0
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['http'],
       apply(owner: Context) {
         starts++
@@ -176,7 +195,7 @@ describe('HTTP 服务', () => {
     await ready
     await fiber.dispose()
     await pending
-    await ctx.plugin(plugin)
+    await ctx.use(plugin)
     await consumer.await()
     expect(starts).toBe(2)
     await consumer.dispose()
@@ -186,7 +205,7 @@ describe('HTTP 服务', () => {
   it('拒绝插件级代理配置', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    await expect(ctx.plugin(plugin, { proxyAgent: 'http://127.0.0.1:1' } as never)).rejects.toThrow(
+    await expect(ctx.use(plugin, { proxyAgent: 'http://127.0.0.1:1' } as never)).rejects.toThrow(
       '配置校验失败',
     )
   })
@@ -202,7 +221,7 @@ describe('HTTP 服务', () => {
     )
     const { ctx } = await setup()
     let response!: Response
-    const consumer = await ctx.plugin({
+    const consumer = await ctx.use({
       inject: ['http'],
       async apply(owner: Context) {
         response = await owner.http(`http://127.0.0.1:${port}/stream`)

@@ -18,9 +18,9 @@ afterEach(async () => {
 describe('Cordis 4 插件生命周期', () => {
   it('同一实现加载两份，卸载甲实例不影响乙实例', async () => {
     const ctx = createContext()
-    await ctx.plugin(TestRegistry)
-    const first = await ctx.plugin(registration, { id: 'a', value: '甲：' })
-    await ctx.plugin(registration, { id: 'b', value: '乙：' })
+    await ctx.use(TestRegistry)
+    const first = await ctx.use(registration, { id: 'a', value: '甲：' })
+    await ctx.use(registration, { id: 'b', value: '乙：' })
     expect(ctx.testRegistry.entries.list()).toEqual(['a', 'b'])
 
     await first.dispose()
@@ -31,27 +31,27 @@ describe('Cordis 4 插件生命周期', () => {
 
   it('重复加载与卸载不残留注册项，根上下文销毁时一起回收', async () => {
     const ctx = createContext()
-    await ctx.plugin(TestRegistry)
+    await ctx.use(TestRegistry)
     const registry = ctx.testRegistry.entries
     for (let index = 0; index < 3; index++) {
-      const instance = await ctx.plugin(registration, { id: 'a', value: '' })
+      const instance = await ctx.use(registration, { id: 'a', value: '' })
       await instance.dispose()
       expect(registry.list()).toEqual([])
     }
-    await ctx.plugin(registration, { id: 'a', value: '' })
+    await ctx.use(registration, { id: 'a', value: '' })
     await ctx.fiber.dispose()
     expect(registry.list()).toEqual([])
   })
 
   it('服务先卸载再恢复时，依赖它的实现随之清理和重新注册', async () => {
     const ctx = createContext()
-    const definition = await ctx.plugin(TestRegistry)
-    const implementation = await ctx.plugin(registration, { id: 'a', value: '' })
+    const definition = await ctx.use(TestRegistry)
+    const implementation = await ctx.use(registration, { id: 'a', value: '' })
     const oldRegistry = ctx.testRegistry.entries
     await definition.dispose()
     expect(oldRegistry.list()).toEqual([])
 
-    await ctx.plugin(TestRegistry)
+    await ctx.use(TestRegistry)
     await implementation.await()
     expect(ctx.testRegistry.entries.list()).toEqual(['a'])
   })
@@ -73,7 +73,7 @@ describe('带归属的注册表', () => {
     const ctx = createContext()
     const registry = new ScopedRegistry<string>()
     expect(() => registry.register(ctx, ' ', '无效')).toThrow('注册标识不能为空')
-    const child = await ctx.plugin(() => {})
+    const child = await ctx.use(() => {})
     await child.dispose()
     expect(() => registry.register(child.ctx, 'a', '无效')).toThrow()
     expect(registry.list()).toEqual([])

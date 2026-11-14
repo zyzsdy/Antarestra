@@ -84,7 +84,7 @@ it('内置图片生成保存空间文件后自动续轮，IM 最终实际投递�
 })
 
 async function storage(app: Awaited<ReturnType<typeof setup>>) {
-  await app.ctx.plugin(Storage)
+  await app.ctx.use(Storage)
   const blobs = new Map<string, Uint8Array>()
   const tickets = new Map<string, { key: string; expiresAt: number }>()
   const server = createServer((request, response) => {
@@ -152,7 +152,7 @@ async function storage(app: Awaited<ReturnType<typeof setup>>) {
     temporaryUrl,
   }
   app.ctx.storage.register(app.ctx, 'test', backend)
-  const fiber = await app.ctx.plugin(files, { backendId: 'test' })
+  const fiber = await app.ctx.use(files, { backendId: 'test' })
   await app.connection.receive('建立空间')
   const message = app.messages.at(-1)!
   const access = await app.ctx.workspaceFile.authorize('im', message.request)
@@ -373,7 +373,7 @@ it('恢复持久化回复时重新生成临时地址，不重新调用模型', a
     .set({ delivery: 'pending', attempts: 0 })
     .where('id', '=', job.id)
     .execute()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect(generate).toHaveBeenCalledTimes(1)
   expect(state.temporaryUrl).toHaveBeenCalledTimes(2)
@@ -385,7 +385,7 @@ it('文件扩展独立卸载后拒绝内部资源，重载后恢复；取消在�
   const state = await storage(app)
   await state.fiber.dispose()
   await expect(app.ctx.im.validateSend(state.target, state.segments)).rejects.toThrow('能力不可用')
-  const fiber = await app.ctx.plugin(files, { backendId: 'test' })
+  const fiber = await app.ctx.use(files, { backendId: 'test' })
   await app.ctx.im.validateSend(state.target, state.segments)
   let resolve!: (value: { url: string; expiresAt: number }) => void
   state.temporaryUrl.mockImplementationOnce(
@@ -402,7 +402,7 @@ it('文件扩展独立卸载后拒绝内部资源，重载后恢复；取消在�
   await disposed
   await failed
   expect(app.sent).toHaveLength(0)
-  await app.ctx.plugin(files, { backendId: 'test' })
+  await app.ctx.use(files, { backendId: 'test' })
   await app.ctx.im.send(state.target, state.segments, { idempotencyKey: 'cancel' })
   expect(app.sent).toHaveLength(1)
 })

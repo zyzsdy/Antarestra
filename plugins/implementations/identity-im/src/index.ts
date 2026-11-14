@@ -203,6 +203,6 @@ export default defineDatabasePlugin({
       for (const row of rows) await ctx.rbac.ensureWorkspace(ctx, row)
       if (rows.length < 100) break
     }
-    await ctx.plugin(IdentityImService, { provider, providerId })
+    await ctx.use(IdentityImService, { provider, providerId })
   },
 })

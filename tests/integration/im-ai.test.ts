@@ -331,7 +331,7 @@ it('投递结果未知时不重复发送、不重跑模型；插件重载沿用�
   const first = (await app.jobs())[0]!
   await app.aiPlugin!.dispose()
   app.setSendError()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await app.connection.receive('/ai 第二次')
   await poll(() => app.sent.length).toBe(1)
   const jobs = await app.jobs()
@@ -424,7 +424,7 @@ it('原始命令持久化后可以恢复未保存 run_id 的消息，不再次�
     .set({ status: 'running', run_id: null, answer: null, delivery: 'pending' })
     .where('id', '=', original.id)
     .execute()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect((await app.jobs())[0]?.run_id).toBe(original.run_id)
   expect(app.aiState.calls).toBe(1)

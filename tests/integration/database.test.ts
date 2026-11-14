@@ -40,8 +40,8 @@ afterEach(async () => {
 async function setup(config: Config) {
   const ctx = new Context()
   contexts.push(ctx)
-  const definition = await ctx.plugin(DatabaseProvider)
-  const backend = await ctx.plugin(implementation, config)
+  const definition = await ctx.use(DatabaseProvider)
+  const backend = await ctx.use(implementation, config)
   return { ctx, definition, backend }
 }
 
@@ -91,7 +91,7 @@ for (const { name, config, enabled } of backends) {
     it('同一插件完成建表、升级、CRUD、关联、别名、子查询与跨空间显式筛选', async () => {
       const { ctx } = await setup(config)
       const app = consumer(id())
-      await ctx.plugin(app.plugin)
+      await ctx.use(app.plugin)
       expect(ctx.database.type).toBe(config.type)
       const db = app.db
       await db
@@ -180,7 +180,7 @@ for (const { name, config, enabled } of backends) {
     it('事务提交、异常回滚及事务结束后旧入口拒绝访问', async () => {
       const { ctx } = await setup(config)
       const app = consumer(id())
-      await ctx.plugin(app.plugin)
+      await ctx.use(app.plugin)
       let old: Queries<Tables> | undefined
       await app.db.transaction(async (trx) => {
         old = trx
@@ -202,9 +202,9 @@ for (const { name, config, enabled } of backends) {
       const first = consumer(pluginId)
       const second = consumer(pluginId)
       const other = consumer(id())
-      const fiber = await ctx.plugin(first.plugin)
-      await ctx.plugin(second.plugin)
-      await ctx.plugin(other.plugin)
+      const fiber = await ctx.use(first.plugin)
+      await ctx.use(second.plugin)
+      await ctx.use(other.plugin)
       await first.db.insertInto('records').values(record()).execute()
       const stale = first.db.selectFrom('records').selectAll()
       await fiber.dispose()
@@ -212,14 +212,14 @@ for (const { name, config, enabled } of backends) {
       await expect(stale.execute()).rejects.toThrow()
       expect(await second.db.selectFrom('records').select('id').execute()).toEqual([{ id: 'a' }])
       expect(await other.db.selectFrom('records').selectAll().execute()).toEqual([])
-      await ctx.plugin(first.plugin)
+      await ctx.use(first.plugin)
       expect(await first.db.selectFrom('records').select('id').execute()).toEqual([{ id: 'a' }])
     })
 
     it('校验历史内容、缺失、顺序和代码降级，失败时不执行 apply', async () => {
       const { ctx } = await setup(config)
       const pluginId = id()
-      await ctx.plugin(consumer(pluginId).plugin)
+      await ctx.use(consumer(pluginId).plugin)
       for (const migrations of [
         [initial],
         [upgrade],
@@ -233,12 +233,12 @@ for (const { name, config, enabled } of backends) {
         ],
       ]) {
         const app = consumer(pluginId, migrations)
-        await expect(ctx.plugin(app.plugin)).rejects.toThrow()
+        await expect(ctx.use(app.plugin)).rejects.toThrow()
         expect(app.starts).toBe(0)
       }
       // 对象键排列变化不会改变迁移校验和。
       const reordered = { steps: initial.steps, id: initial.id }
-      await ctx.plugin(consumer(pluginId, [reordered, upgrade]).plugin)
+      await ctx.use(consumer(pluginId, [reordered, upgrade]).plugin)
     })
 
     it('部分 DDL 失败：事务库回滚，MySQL 阻止自动重试', async () => {
@@ -252,14 +252,14 @@ for (const { name, config, enabled } of backends) {
         ],
       })
       const app = consumer(pluginId, [broken])
-      await expect(ctx.plugin(app.plugin)).rejects.toThrow('迁移失败')
+      await expect(ctx.use(app.plugin)).rejects.toThrow('迁移失败')
       expect(app.starts).toBe(0)
       const fixed = consumer(pluginId, [{ ...broken, steps: broken.steps.slice(0, 1) }])
       if (config.type === 'mysql') {
-        await expect(ctx.plugin(fixed.plugin)).rejects.toThrow('人工恢复')
+        await expect(ctx.use(fixed.plugin)).rejects.toThrow('人工恢复')
         expect(fixed.starts).toBe(0)
       } else {
-        await ctx.plugin(fixed.plugin)
+        await ctx.use(fixed.plugin)
         expect(fixed.starts).toBe(1)
       }
     })
@@ -267,13 +267,13 @@ for (const { name, config, enabled } of backends) {
     it('后端卸载与恢复触发消费者重启，拒绝重复注册及旧入口', async () => {
       const { ctx, backend } = await setup(config)
       const app = consumer(id())
-      const fiber = await ctx.plugin(app.plugin)
+      const fiber = await ctx.use(app.plugin)
       const old = app.db
       const duplicate = { ...implementation }
-      await expect(ctx.plugin(duplicate, config)).rejects.toThrow('启动失败')
+      await expect(ctx.use(duplicate, config)).rejects.toThrow('启动失败')
       await backend.dispose()
       expect(() => old.selectFrom('records')).toThrow()
-      await ctx.plugin(implementation, config)
+      await ctx.use(implementation, config)
       await fiber.await()
       expect(app.starts).toBe(2)
       await app.db.selectFrom('records').selectAll().execute()
@@ -282,7 +282,7 @@ for (const { name, config, enabled } of backends) {
     it('关闭后端等待在途事务回滚后释放连接', async () => {
       const { ctx, backend } = await setup(config)
       const app = consumer(id())
-      await ctx.plugin(app.plugin)
+      await ctx.use(app.plugin)
       let entered!: () => void
       let release!: () => void
       const started = new Promise<void>((resolve) => {
@@ -324,11 +324,11 @@ for (const { name, config, enabled } of backends) {
     it('定义服务卸载后恢复，后端与消费者都重新就绪', async () => {
       const { ctx, definition, backend } = await setup(config)
       const app = consumer(id())
-      const fiber = await ctx.plugin(app.plugin)
+      const fiber = await ctx.use(app.plugin)
       const old = app.db
       await definition.dispose()
       expect(() => old.selectFrom('records')).toThrow()
-      await ctx.plugin(DatabaseProvider)
+      await ctx.use(DatabaseProvider)
       await backend.await()
       await fiber.await()
       expect(app.starts).toBe(2)
@@ -337,13 +337,13 @@ for (const { name, config, enabled } of backends) {
 
     it('保留其他注入依赖，依赖恢复后新作用域可用而旧作用域失效', async () => {
       const { ctx } = await setup(config)
-      const dependency = await ctx.plugin(TestRegistry)
+      const dependency = await ctx.use(TestRegistry)
       const app = consumer(id(), [initial], ['testRegistry'])
-      const fiber = await ctx.plugin(app.plugin)
+      const fiber = await ctx.use(app.plugin)
       const old = app.db
       await dependency.dispose()
       expect(() => old.selectFrom('records')).toThrow()
-      await ctx.plugin(TestRegistry)
+      await ctx.use(TestRegistry)
       await fiber.await()
       expect(app.starts).toBe(2)
       await app.db.selectFrom('records').selectAll().execute()
@@ -400,7 +400,7 @@ for (const { name, config, enabled } of backends) {
       const results = await Promise.allSettled([worker(), worker(), worker()])
       for (const result of results) if (result.status === 'rejected') throw result.reason
       const { ctx } = await setup(shared)
-      await ctx.plugin(consumer(pluginId, [initial]).plugin)
+      await ctx.use(consumer(pluginId, [initial]).plugin)
     }, 60_000)
 
     it.skipIf(config.type !== 'mysql')(
@@ -451,7 +451,7 @@ for (const { name, config, enabled } of backends) {
           await exited
         }
         const app = consumer(pluginId, [interrupted])
-        await expect(ctx.plugin(app.plugin)).rejects.toThrow('running')
+        await expect(ctx.use(app.plugin)).rejects.toThrow('running')
         expect(app.starts).toBe(0)
       },
       15_000,
@@ -473,7 +473,7 @@ describe('database 声明与配置校验', () => {
       '逻辑标识',
     )
     const app = consumer(pluginId)
-    await ctx.plugin(app.plugin)
+    await ctx.use(app.plugin)
     await expect(app.db.selectFrom('records').selectAll().execute()).resolves.toEqual([])
     expect(() => ctx.database.scope(ctx, 'Bad Plugin')).toThrow('插件标识')
     expect(() => values.readBoolean(2)).toThrow()
@@ -483,11 +483,11 @@ describe('database 声明与配置校验', () => {
   it('网络连接串必须显式配置且拒绝无效值', async () => {
     const ctx = new Context()
     contexts.push(ctx)
-    await ctx.plugin(DatabaseProvider)
-    await expect(ctx.plugin({ ...implementation }, { type: 'mysql' })).rejects.toThrow('url')
-    await expect(ctx.plugin({ ...implementation }, { filename: '' })).rejects.toThrow('filename')
+    await ctx.use(DatabaseProvider)
+    await expect(ctx.use({ ...implementation }, { type: 'mysql' })).rejects.toThrow('url')
+    await expect(ctx.use({ ...implementation }, { filename: '' })).rejects.toThrow('filename')
     await expect(
-      ctx.plugin({ ...implementation }, { type: 'postgresql', url: 'invalid-secret' }),
+      ctx.use({ ...implementation }, { type: 'postgresql', url: 'invalid-secret' }),
     ).rejects.toThrow('连接串格式无效')
   })
 })

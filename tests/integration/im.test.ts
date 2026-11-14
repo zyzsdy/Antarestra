@@ -35,9 +35,9 @@ const identity = (input: IdentityInput) => ({
 async function setup() {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
-  const fiber = await ctx.plugin(im)
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
+  const fiber = await ctx.use(im)
   ctx.im.registerIdentity(ctx, {
     resolve: async (input) => identity(input),
     validate: async () => true,
@@ -127,7 +127,7 @@ it.each(['onebot11', 'feishu'])(
 
 it('按持久化空间解析连接，禁用与卸载后拒绝访问，卸载取消并等待操作', async () => {
   const { ctx } = await setup()
-  const owner = await ctx.plugin(() => {})
+  const owner = await ctx.use(() => {})
   let operationSignal: AbortSignal | undefined
   const descriptor = {
     id: 'onebot',
@@ -266,7 +266,7 @@ it('并发投递去重在卸载重装后仍有效，处理失败也不重复执�
   ).toEqual(['duplicate', 'processed'])
   expect(run).toHaveBeenCalledTimes(1)
   await fiber.dispose()
-  await ctx.plugin(im)
+  await ctx.use(im)
   ctx.im.registerIdentity(ctx, {
     resolve: async (input) => identity(input),
     validate: async () => true,
@@ -295,7 +295,7 @@ it('可信请求拒绝JSON伪造并在连接卸载或策略撤销后失效', asy
       context = value
     },
   })
-  const owner = await ctx.plugin({
+  const owner = await ctx.use({
     inject: ['im'],
     async apply(owner: Context) {
       handle = owner.im.registerConnection(owner, {
@@ -385,7 +385,7 @@ it('策略持久化、校验格式，并发更新只有一个相同修订号获�
   ).rejects.toMatchObject({ status: 400 })
   expect(ctx.im.getPolicyRevision('qq')).toBe(1)
   await fiber.dispose()
-  await ctx.plugin(im)
+  await ctx.use(im)
   ctx.im.registerConnection(ctx, descriptor)
   expect(ctx.im.getPolicyRevision('qq')).toBe(1)
   expect(ctx.im.getChatPolicy('qq', message().chat).enabled).toBe(false)
@@ -394,7 +394,7 @@ it('策略持久化、校验格式，并发更新只有一个相同修订号获�
 it('卸载处理器后回收且同名注册可恢复，后台身份需要在线验证成员', async () => {
   const { ctx } = await setup(),
     run = vi.fn()
-  const handler = await ctx.plugin({
+  const handler = await ctx.use({
     inject: ['im'],
     apply(owner: Context) {
       owner.im.registerHandler(owner, { id: 'test', stage: 'message', handle: run })
@@ -422,7 +422,7 @@ it('独立卸载处理器会取消并等待正在处理的普通消息', async (
     started = Promise.withResolvers<void>(),
     cleaned = Promise.withResolvers<void>()
   let finished = false
-  const handler = await ctx.plugin({
+  const handler = await ctx.use({
     inject: ['im'],
     apply(owner: Context) {
       owner.im.registerHandler(owner, {
@@ -475,7 +475,7 @@ it('连接卸载会取消并等待该连接的活动处理，不影响其他连�
       return 'consumed' as const
     },
   })
-  const owner = await ctx.plugin({
+  const owner = await ctx.use({
     inject: ['im'],
     async apply(owner: Context) {
       handle = owner.im.registerConnection(owner, {

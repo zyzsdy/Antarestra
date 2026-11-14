@@ -101,7 +101,7 @@ try {
     return url
   })
   let instances
-  await ctx.plugin(async (scope) => {
+  await ctx.use(async (scope) => {
     const entries = [
       plugin('hmr', { include: ['plugins', 'plugins/excluded'], exclude: ['plugins/excluded'] }),
       plugin('changed', { id: 'a' }),
@@ -121,15 +121,17 @@ try {
           plugins: Object.fromEntries(entries.map((item) => [item.instanceId, item.config])),
         }),
       )
-      await scope.plugin(configLoader, { filename, resolvePlugin: resolver, baseUrl })
+      await scope.use(configLoader, { filename, resolvePlugin: resolver, baseUrl })
       instances = { get: (id) => ctx.configManager.instances.get(id)?.fiber }
     } else instances = await loadPlugins(scope, entries, resolver, baseUrl)
   })
+  const originalFiber = instances.get('changed')
   const originalPid = process.pid
   await delay(500)
   await writeFile(changed, source('更新'))
   await waitFor(() => state.active.get('a') === '更新' && state.active.get('b') === '更新')
   assert.equal(state.cleanups.get('a'), 1)
+  assert.equal(instances.get('changed'), originalFiber)
   assert.equal(state.starts.get('unrelated'), 1)
   assert.equal(process.pid, originalPid)
   await writeFile(serviceFile, serviceSource('服务已替换'))
@@ -166,7 +168,6 @@ try {
   await waitFor(() => state.active.get('a') === '独立运行')
   assert.equal(state.active.has('b'), false)
   await instances.get('hmr').dispose()
-  assert.equal(ctx.timer, undefined)
   assert.equal(ctx.hmr, undefined)
   await writeFile(changed, source('停止监视'))
   await delay(600)

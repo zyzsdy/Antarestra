@@ -119,13 +119,13 @@ async function fixture(directory?: string, proxy?: string) {
   if (!directory) directories.push(root)
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  const core = await ctx.plugin(ai, {})
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  const core = await ctx.use(ai, {})
   let subscriptions!: CodexSubscriptions
-  const fiber = await ctx.plugin({
+  const fiber = await ctx.use({
     inject: ['ai'],
     async apply(ctx: Context) {
       subscriptions = new CodexSubscriptions(ctx, root, proxy)
@@ -304,7 +304,7 @@ it('助理授权与模型范围共同控制原生搜索，SSE 结果进入历史
     revision: 0,
   })
   const { ctx } = app
-  await ctx.plugin(agents)
+  await ctx.use(agents)
   ctx.rbac.registerRequestSource(ctx, 'search-test', {
     id: 'search-test',
     resolve: async (value) => ({
@@ -602,20 +602,20 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
   directories.push(root)
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(DatabaseProvider)
-  await ctx.plugin(database, { filename: ':memory:' })
-  await ctx.plugin(Server, { host: '127.0.0.1', port: 0 })
-  await ctx.plugin(rbac)
-  const core = await ctx.plugin(ai, {})
+  await ctx.use(DatabaseProvider)
+  await ctx.use(database, { filename: ':memory:' })
+  await ctx.use(Server, { host: '127.0.0.1', port: 0 })
+  await ctx.use(rbac)
+  const core = await ctx.use(ai, {})
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
-  await ctx.plugin(WebUI)
-  await ctx.plugin(local, {
+  await ctx.use(WebUI)
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'test-codex-password-42',
   })
-  let subscription = await ctx.plugin(codexPlugin, {
+  let subscription = await ctx.use(codexPlugin, {
     credentialsDirectory: root,
     proxy: 'http://127.0.0.1:7890',
   })
@@ -678,7 +678,7 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
   expect(ctx.ai.capabilities().tools.map((tool) => tool.id)).toContain(searchId)
   expect(ctx.ai.capabilities().providers.map((entry) => entry.id)).toEqual([accountId])
 
-  let ordinary = await ctx.plugin(provider, {})
+  let ordinary = await ctx.use(provider, {})
   await ctx.aiProvider.save({
     id: 'ordinary',
     name: '普通提供商',
@@ -694,7 +694,7 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
   expect((await request('/ai-providers')).status).toBe(404)
   expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
   expect(ctx.ai.capabilities().providers.map((entry) => entry.id)).toEqual([accountId])
-  ordinary = await ctx.plugin(provider, {})
+  ordinary = await ctx.use(provider, {})
 
   const pending = (await (await request('/codex-subscription/login', {})).json()) as CodexLoginView
   await subscription.dispose()
@@ -705,12 +705,12 @@ it('订阅插件独立加载、与普通提供商互不影响，卸载和依赖�
   expect((await request('/ai-providers')).status).toBe(200)
   expect(ctx.ai.capabilities().providers.some((entry) => entry.id === accountId)).toBe(false)
   await expect(realFetch(pending.redirectUri)).rejects.toThrow()
-  subscription = await ctx.plugin(codexPlugin, { credentialsDirectory: root })
+  subscription = await ctx.use(codexPlugin, { credentialsDirectory: root })
   expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
   await core.dispose()
   expect((await request('/codex-subscription')).status).toBe(404)
   expect(entries()).not.toContain('codex-subscription')
-  await ctx.plugin(ai, {})
+  await ctx.use(ai, {})
   await expect.poll(async () => (await request('/codex-subscription')).status).toBe(200)
   expect(await (await request('/codex-subscription')).json()).toEqual(accounts)
   expect(ctx.ai.capabilities().providers.filter((entry) => entry.id === accountId)).toHaveLength(1)

@@ -230,7 +230,7 @@ it.each(['<message></message>', '<im_reply><message> \n </message></im_reply>', 
       .set({ delivery: 'pending' })
       .where('id', '=', job.id)
       .execute()
-    await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+    await app.ctx.use(imAi, { pollIntervalMs: 20 })
     await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
     expect(generate).toHaveBeenCalledTimes(1)
     expect(app.sent).toHaveLength(0)
@@ -460,7 +460,7 @@ it('中途明确失败后恢复已保存的发送计划，跳过已送达消息�
     .set({ delivery: 'pending', attempts: 0 })
     .where('id', '=', job.id)
     .execute()
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   await poll(async () => (await app.jobs())[0]?.delivery).toBe('sent')
   expect(generate).toHaveBeenCalledTimes(1)
   expect(app.sent.map((entry) => entry.segments)).toEqual(

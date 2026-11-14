@@ -1168,8 +1168,8 @@ export default defineDatabasePlugin({
   migrations,
   inject: ['server'],
   async apply(ctx: Context, config: Config = {}) {
-    await ctx.plugin(RbacService, config)
-    await ctx.plugin({
+    await ctx.use(RbacService, config)
+    await ctx.use({
       inject: ['rbac'],
       async apply(ctx: Context) {
         await ctx.rbac.initializeRoles()

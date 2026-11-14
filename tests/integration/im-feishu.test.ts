@@ -94,8 +94,8 @@ async function setup() {
       }
     }
   }
-  await ctx.plugin(ImProbe)
-  const fiber = await ctx.plugin(Feishu, {
+  await ctx.use(ImProbe)
+  const fiber = await ctx.use(Feishu, {
     id: 'feishu-test',
     ...account,
     appSecret: 'test-secret',

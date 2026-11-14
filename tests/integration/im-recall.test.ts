@@ -11,7 +11,7 @@ it('撤回工具拒绝伪造运行上下文，并随 IM AI 插件卸载和重载
   await app.aiPlugin!.dispose()
   expect(JSON.stringify(app.ctx.ai.capabilities())).not.toContain('im_recall_message')
   const registered = vi.spyOn(app.ctx.ai, 'registerTool')
-  await app.ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await app.ctx.use(imAi, { pollIntervalMs: 20 })
   const tool = registered.mock.calls.find(([, tool]) => tool.id === 'im_recall_message')![1]
   const invoke = vi.spyOn(app.ctx.im, 'invoke')
   await expect(

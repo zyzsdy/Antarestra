@@ -13,15 +13,15 @@ afterEach(cleanup)
 async function appFixture(databaseFilename?: string) {
   const app = await setup({ ai: true, ...(databaseFilename ? { databaseFilename } : {}) })
   const { ctx } = app
-  await ctx.plugin(WebUI)
+  await ctx.use(WebUI)
   ctx.rbac.registerPermission(ctx, 'admin.console.view', '控制台', ['admin'])
-  await ctx.plugin(local, {
+  await ctx.use(local, {
     providerId: 'local',
     allowRegistration: true,
     bootstrapEmail: 'admin@example.com',
     bootstrapPassword: 'history-test-42',
   })
-  const consoleFiber = await ctx.plugin(consolePlugin)
+  const consoleFiber = await ctx.use(consolePlugin)
   const base = `http://127.0.0.1:${ctx.server.address!.port}/api`
   const request = (path: string, cookie = '', body?: object, method = 'POST') =>
     fetch(base + path, {
@@ -200,7 +200,7 @@ it('从群读取实际 AI 请求与返回，保留 reset 前会话，防止跨�
     available: false,
   })
   expect((await request(`/im/groups/${group}/ai/${firstJob.id}`, cookie)).status).toBe(503)
-  await ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await ctx.use(imAi, { pollIntervalMs: 20 })
   expect((await request(`/im/groups/${group}/ai/${firstJob.id}`, cookie)).status).toBe(200)
 })
 
@@ -283,7 +283,7 @@ it('AI 历史服务缺失或任务未结束时拒绝删除，保留已归档群�
   expect((await request(`/im/groups/${group}`, cookie, {}, 'DELETE')).status).toBe(503)
   expect((await ctx.im.listGroups(0, 20, true)).total).toBe(1)
   expect(await ctx.im.history(group)).toHaveLength(1)
-  await ctx.plugin(imAi, { pollIntervalMs: 20 })
+  await ctx.use(imAi, { pollIntervalMs: 20 })
   app.connection.handle.setStatus('offline')
   await app.connection.receive('/ai 排队的任务')
   expect((await request(`/im/groups/${group}`, cookie, {}, 'DELETE')).status).toBe(409)
